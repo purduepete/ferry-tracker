@@ -4,7 +4,7 @@ import { createApp } from '../src/app';
 import { isScheduleVisible } from '../src/ferryDataService';
 
 const fixtureNow = Date.parse('2026-09-01T18:30:00.000Z');
-const app = createApp({ port: 8787, dataSource: 'fixture', rawInspector: true }, () => fixtureNow);
+const app = createApp({ host: '127.0.0.1', port: 8787, dataSource: 'fixture', rawInspector: true }, () => fixtureNow);
 
 describe('Ferry Tracker API', () => {
   it('keeps schedules from the past two hours through the next twelve hours', () => {
@@ -81,7 +81,7 @@ describe('Ferry Tracker API', () => {
   });
 
   it('can disable raw source responses', async () => {
-    const privateApp = createApp({ port: 8787, dataSource: 'fixture', rawInspector: false });
+    const privateApp = createApp({ host: '127.0.0.1', port: 8787, dataSource: 'fixture', rawInspector: false });
     const response = await request(privateApp).get('/api/terminals').expect(200);
     expect(response.body.raw).toBeNull();
   });
