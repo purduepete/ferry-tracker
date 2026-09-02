@@ -12,6 +12,7 @@
   --accent: #0f766e;
   --accent-soft: #ccfbf1;
   --accent-contrast: #ffffff;
+  --success: #15803d;
   --warning: #c2410c;
   --warning-soft: #ffedd5;
   --danger: #b91c1c;
@@ -38,6 +39,7 @@
   --accent: #5eead4;
   --accent-soft: #134e4a;
   --accent-contrast: #042f2e;
+  --success: #4ade80;
   --warning: #fdba74;
   --warning-soft: #7c2d12;
   --danger: #fca5a5;
@@ -59,6 +61,7 @@
   --accent: #5eead4;
   --accent-soft: #134e4a;
   --accent-contrast: #042f2e;
+  --success: #4ade80;
   --warning: #fdba74;
   --warning-soft: #7c2d12;
   --danger: #fca5a5;
@@ -173,13 +176,14 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 @keyframes data-reveal { from { opacity: 0; } to { opacity: 1; } }
 
 .relationship-grid { display: grid; grid-template-columns: minmax(210px, 0.8fr) 90px minmax(230px, 1fr) 90px minmax(280px, 1.25fr); align-items: center; gap: 12px; }
-.relationship-node { align-self: stretch; padding: 17px; border: 1px solid var(--line); border-top: 3px solid var(--accent); background: var(--surface); box-shadow: var(--shadow); min-width: 0; }
+.relationship-node { align-self: stretch; padding: 17px; border: 1px solid var(--line); border-top: 3px solid var(--accent); background: var(--surface); box-shadow: var(--shadow); min-width: 0; position: relative; }
 .relationship-node code, .data-card code { display: inline-block; font-size: 11px; color: var(--muted); background: var(--surface-2); padding: 3px 6px; margin-bottom: 12px; }
 .relationship-node p { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 13px; }
 .relationship-link { position: relative; display: grid; place-items: center; color: var(--accent); }
 .relationship-link::before { content: ''; position: absolute; left: 0; right: 0; height: 1px; background: var(--accent); opacity: .35; }
 .relationship-link span { position: relative; z-index: 1; background: var(--bg); padding: 4px; font-size: 10px; color: var(--muted); }
-.relationship-link svg { position: absolute; right: -4px; background: var(--bg); }
+.relationship-link svg { position: absolute; right: -4px; stroke-width: 1 !important; stroke-linecap: butt !important; stroke-linejoin: miter !important; opacity: .35; }
+.relationship-link svg path:first-child { display: none; }
 .vessel-stack { display: grid; gap: 10px; }
 .field { display: grid; grid-template-columns: 90px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .field dt { color: var(--muted); }
@@ -187,18 +191,23 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 .null { color: #b05d36; font-family: 'Cascadia Code', 'Consolas', monospace; font-style: italic; }
 .sailing-list { margin: 12px 0 0; padding: 0; list-style: none; }
 .sailing-list li { padding: 9px 0; border-top: 1px solid var(--line); display: grid; gap: 2px; }
+.sailing-list li.current { background: color-mix(in srgb, var(--accent-soft) 48%, transparent); padding: 9px 8px; margin: 0 -8px; border-left: 3px solid var(--accent); border-top-color: var(--accent); }
 .sailing-list strong { font-size: 13px; }
 .sailing-list span { color: var(--muted); font-size: 12px; }
 .sailing-list .space-count { color: var(--text); }
+span.capacity-pill { display: inline-flex; align-items: center; margin-left: 8px; padding: 0 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--success) 55%, var(--bg)); background: var(--bg); color: color-mix(in srgb, var(--success) 70%, var(--muted)); font-size: 11px; font-weight: 600; line-height: 18px; font-variant-numeric: tabular-nums; vertical-align: 1px; }
+span.capacity-pill.tight { border-color: color-mix(in srgb, var(--warning) 55%, var(--bg)); color: color-mix(in srgb, var(--warning) 70%, var(--muted)); }
+span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, var(--bg)); color: color-mix(in srgb, var(--danger) 70%, var(--muted)); }
 .relationship-node .window-label { margin: 0; font-size: 11px; }
 .schedule-node, .schedule-card { position: relative; }
 .sailing-placeholder { min-height: 180px; padding-top: 20px; display: grid; align-content: start; gap: 28px; }
 .sailing-placeholder i { width: 100%; }
 
 .data-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 12px; }
-.data-card { padding: 16px; border: 1px solid var(--line); border-radius: 0; background: var(--surface); }
+.data-card { padding: 16px; border: 1px solid var(--line); border-radius: 0; background: var(--surface); position: relative; }
 .data-card:hover { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); background: color-mix(in srgb, var(--surface) 94%, var(--accent-soft)); }
 .data-card dl { margin: 0; }
+.vessel-status-icon { position: absolute; top: 8px; right: 8px; color: var(--accent); display: flex; align-items: center; justify-content: center; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
 .schedule-card { border: 1px solid var(--line); background: var(--surface); }
 .schedule-card .table-wrap { border: 0; border-top: 1px solid var(--line); }
@@ -209,6 +218,7 @@ th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: l
 td small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
 th { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; background: var(--surface-2); }
 tbody tr:hover { background: color-mix(in srgb, var(--surface) 92%, var(--accent-soft)); }
+tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transparent); border-left: 3px solid var(--accent); }
 .raw-panel { border: 1px solid var(--line); background: var(--surface); }
 .raw-heading { padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); }
 .raw-heading h2 { margin: 2px 0 0; }
