@@ -86,24 +86,28 @@ function CapacityMeter({ sailing }: { sailing: SailingView }) {
 function getCurrentSailing(sailings: SailingView[]): SailingView | null {
   const now = new Date();
   const fifteenMinutesMs = 15 * 60 * 1000;
+  const departedAt = (sailing: SailingView) => (sailing.departingTime === null ? null : new Date(sailing.departingTime).getTime());
 
   // Find sailings that departed within the last 15 minutes
   const recentPast = sailings.filter(sailing => {
-    const timeDiff = now.getTime() - new Date(sailing.departingTime).getTime();
+    const departure = departedAt(sailing);
+    if (departure === null) return false;
+    const timeDiff = now.getTime() - departure;
     return timeDiff >= 0 && timeDiff <= fifteenMinutesMs;
   });
 
   if (recentPast.length) {
     // Return the most recent one (latest departure time)
     return recentPast.reduce((latest, current) =>
-      new Date(current.departingTime).getTime() > new Date(latest.departingTime).getTime() ? current : latest
+      (departedAt(current) ?? 0) > (departedAt(latest) ?? 0) ? current : latest
     );
   }
 
   // Otherwise, return the next upcoming sailing
-  const upcoming = sailings.filter(sailing =>
-    new Date(sailing.departingTime).getTime() > now.getTime()
-  );
+  const upcoming = sailings.filter(sailing => {
+    const departure = departedAt(sailing);
+    return departure !== null && departure > now.getTime();
+  });
 
   return upcoming.length ? upcoming[0] : null;
 }
