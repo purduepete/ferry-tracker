@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { FilterSelect } from '../src/components/FilterSelect';
 
 const options = [
-  { value: 7, label: 'Seattle · 7' },
-  { value: 3, label: 'Bainbridge Island · 3' },
+  { value: 7, label: 'Seattle' },
+  { value: 3, label: 'Bainbridge Island' },
 ];
 
 describe('FilterSelect', () => {
@@ -15,8 +15,8 @@ describe('FilterSelect', () => {
     const user = userEvent.setup();
     render(<FilterSelect ariaLabel="Terminal" options={options} value={7} onChange={onChange} />);
     await user.click(screen.getByRole('button', { name: 'Terminal' }));
-    expect(screen.getByRole('option', { name: 'Seattle · 7' })).toHaveAttribute('aria-selected', 'true');
-    await user.click(screen.getByRole('option', { name: 'Bainbridge Island · 3' }));
+    expect(screen.getByRole('option', { name: 'Seattle' })).toHaveAttribute('aria-selected', 'true');
+    await user.click(screen.getByRole('option', { name: 'Bainbridge Island' }));
     expect(onChange).toHaveBeenCalledWith(3);
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });

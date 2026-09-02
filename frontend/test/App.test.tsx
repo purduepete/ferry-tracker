@@ -12,7 +12,7 @@ const terminals = [
 const vessels = [{
   id: 1, name: 'Tacoma', vesselClass: 'Jumbo Mark II', departingTerminalId: 7, arrivingTerminalId: 3,
   departingTerminalName: 'Seattle', arrivingTerminalName: 'Bainbridge Island', latitude: 47.61, longitude: -122.4,
-  speed: 15, heading: 278, inService: true, atDock: false, scheduledDeparture: null, updatedAt: null, raw: [],
+  speed: 15, heading: 278, inService: true, atDock: false, scheduledDeparture: null, updatedAt: '2026-09-01T16:30:00.000Z', raw: [],
 }];
 
 function json(data: unknown) {
@@ -40,15 +40,16 @@ describe('Ferry data explorer', () => {
     expect(await screen.findByRole('heading', { name: 'Seattle' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Tacoma' })).toBeInTheDocument();
     expect(screen.getByText(/Seattle to Bainbridge Island/)).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/VesselID 1/)).toBeInTheDocument());
+    expect(screen.getByText(new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(new Date('2026-09-01T16:30:00.000Z')))).toBeInTheDocument();
+    expect(screen.queryByText(/TerminalID|VesselID/)).not.toBeInTheDocument();
     expect(await screen.findByText(/176 drive-up of 202 spaces/)).toBeInTheDocument();
     expect(screen.getByText('Past 2 hours · Next 12 hours')).toBeInTheDocument();
     expect(screen.queryByText('Current vehicle-space reports')).not.toBeInTheDocument();
     expect(document.querySelector('time[datetime="2026-09-01T16:00:00.000Z"]')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Reverse route' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island · 3'));
-    expect(screen.getByRole('button', { name: 'Associated destination' })).toHaveTextContent('Seattle · 7');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
+    expect(screen.getByRole('button', { name: 'Associated destination' })).toHaveTextContent('Seattle');
     await waitFor(() => expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-busy', 'false'));
 
     const callsBeforeRefresh = scheduleCalls;
@@ -77,6 +78,45 @@ describe('Ferry data explorer', () => {
     expect(screen.getByRole('tabpanel', { name: 'Terminals' })).toBeInTheDocument();
     await user.keyboard('{End}');
     expect(screen.getByRole('tab', { name: 'Raw JSON' })).toHaveFocus();
+  });
+
+  it('sorts persisted favorites alphabetically above other terminals', async () => {
+    const favoriteTerminals = [
+      terminals[0],
+      terminals[1],
+      { id: 1, name: 'Anacortes', subjectName: 'anacortes', latitude: 48.5, longitude: -122.6, city: 'Anacortes', raw: [] },
+    ];
+    localStorage.setItem('ferry-tracker-favorite-terminals', JSON.stringify([7, 1, 999]));
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(favoriteTerminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([
+        { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
+        { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
+      ]);
+      return json([]);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    const terminalTrigger = await screen.findByRole('button', { name: 'Terminal' });
+    await user.click(terminalTrigger);
+    expect(screen.getAllByRole('option').map((option) => option.getAttribute('aria-label') ?? option.textContent?.trim())).toEqual([
+      'Anacortes',
+      'Seattle',
+      'Bainbridge Island',
+    ]);
+
+    await user.click(screen.getByRole('option', { name: 'Bainbridge Island' }));
+    await user.click(screen.getByRole('button', { name: 'Add Bainbridge Island to favorites' }));
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-favorite-terminals') ?? '[]')).toEqual([7, 1, 999, 3]);
+    await user.click(terminalTrigger);
+    expect(screen.getAllByRole('option').map((option) => option.textContent?.trim())).toEqual([
+      'Anacortes',
+      'Bainbridge Island',
+      'Seattle',
+    ]);
   });
 
   it('covers retained sailing content with a skeleton while a changed route loads', async () => {

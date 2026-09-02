@@ -16,9 +16,12 @@ test('shows the terminal to ferry to schedule relationship without external netw
   await page.goto('/');
   await page.getByRole('button', { name: 'Terminal' }).click();
   await expect.poll(() => page.getByRole('listbox', { name: 'Terminal' }).evaluate((element) => getComputedStyle(element).scrollbarWidth)).toBe('thin');
-  await page.getByRole('option', { name: 'Seattle · 7' }).click();
+  await page.getByRole('option', { name: 'Seattle' }).click();
   await expect(page.locator('.terminal-node h2')).toHaveText('Seattle');
-  await expect(page.locator('.vessel-node h2', { hasText: 'Tacoma' })).toBeVisible();
+  const tacomaVessel = page.locator('.vessel-node', { has: page.getByRole('heading', { name: 'Tacoma' }) });
+  await expect(tacomaVessel).toBeVisible();
+  await expect(tacomaVessel.getByText('Updated')).toBeVisible();
+  await expect(page.getByText(/TerminalID|VesselID/)).toHaveCount(0);
   await expect(page.locator('.schedule-node h2')).toHaveText('Seattle to Bainbridge Island');
   await expect(page.getByText('176 drive-up of 202 spaces')).toBeVisible();
   await expect(page.getByText('Past 2 hours · Next 12 hours')).toBeVisible();
@@ -27,8 +30,8 @@ test('shows the terminal to ferry to schedule relationship without external netw
   expect(sailingSpaceRequests).toBe(0);
 
   await page.getByRole('button', { name: 'Reverse route' }).click();
-  await expect(page.getByRole('button', { name: 'Terminal' })).toContainText('Bainbridge Island · 3');
-  await expect(page.getByRole('button', { name: 'Associated destination' })).toContainText('Seattle · 7');
+  await expect(page.getByRole('button', { name: 'Terminal' })).toContainText('Bainbridge Island');
+  await expect(page.getByRole('button', { name: 'Associated destination' })).toContainText('Seattle');
   await expect(page.getByRole('status', { name: 'Loading updated ferry data' })).toBeAttached();
   await expect(page.locator('.view-loading-cover')).toBeVisible();
   await expect(page.getByText('176 drive-up of 202 spaces')).toBeAttached();
@@ -80,6 +83,24 @@ test('persists a selected theme and exposes semantic keyboard tabs', async ({ pa
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: 'Terminals' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('tabpanel', { name: 'Terminals' })).toBeVisible();
+});
+
+test('persists favorite terminals and sorts them first', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Terminal' }).click();
+  await page.getByRole('option', { name: 'Seattle' }).click();
+  await page.getByRole('button', { name: 'Add Seattle to favorites' }).click();
+  await expect(page.getByRole('button', { name: 'Remove Seattle from favorites' })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-favorite-terminals'))).toContain('7');
+
+  await page.getByRole('button', { name: 'Terminal' }).click();
+  await expect(page.getByRole('option').first()).toHaveAccessibleName('Seattle');
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await page.getByRole('button', { name: 'Terminal' }).click();
+  await expect(page.getByRole('option').first()).toHaveAccessibleName('Seattle');
+  await page.getByRole('option', { name: 'Seattle' }).click();
+  await expect(page.getByRole('button', { name: 'Remove Seattle from favorites' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 for (const width of [390, 767, 768, 1024, 1440]) {

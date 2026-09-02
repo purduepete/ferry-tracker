@@ -19,6 +19,7 @@ applyTo: ["frontend/**/*.{tsx,css,html}", "e2e/**/*.ts"]
 
 - Reuse existing components and classes before adding a new visual abstraction.
 - Use `FilterSelect` for terminal-style selectors. Keep its custom listbox appearance, keyboard controls, focus behavior, selected checkmark, and themed scrollbar.
+- Persist favorite terminal IDs in `ferry-tracker-favorite-terminals`. In the primary terminal selector, show favorites first and sort favorites alphabetically; use the adjacent star button for toggling and non-interactive stars as option markers.
 - Use Lucide icons for familiar actions. Navbar actions are borderless, full-height icon buttons with an accessible name and tooltip.
 - Use icon-only buttons for route reversal, refresh, theme, and similar familiar commands. Give each one stable dimensions so state changes do not move nearby content.
 - Keep the custom thin scrollbar on the page and dropdowns. Extend the existing theme scrollbar tokens when another scrollable surface needs styling.
@@ -36,7 +37,9 @@ applyTo: ["frontend/**/*.{tsx,css,html}", "e2e/**/*.ts"]
 
 - Preserve semantic tabs, listboxes, buttons, labels, and status text.
 - Keep full keyboard operation, visible focus, Escape handling, outside-click handling, and focus return for popovers and custom selectors.
+- Keep terminal and vessel IDs in internal state, API calls, keys, favorites, and Raw JSON. Do not render them in selectors, cards, sailing rows, or tables.
 - Use local time for user-facing timestamps. Prefer server response metadata such as `ApiEnvelope.fetchedAt` over client-generated refresh times.
+- Show each relationship vessel's `updatedAt` value as an `Updated` field in local time.
 - Preserve theme preference persistence and the startup theme script that prevents a wrong-theme first frame.
 
 ## Implementation and checks

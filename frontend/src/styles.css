@@ -114,8 +114,9 @@ main { max-width: 1440px; margin: 0 auto; padding: 0 24px calc(48px + var(--safe
 h1 { margin: 3px 0 0; font-size: 26px; font-weight: 650; line-height: 1.15; letter-spacing: 0; }
 h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 .selectors { display: grid; grid-template-columns: minmax(220px, 300px) 36px minmax(220px, 300px); align-items: end; gap: 10px; }
-.selectors label { min-width: 0; display: grid; gap: 6px; }
-.selectors label > span { color: var(--muted); font-size: 12px; }
+.selectors label, .selector-field { min-width: 0; display: grid; gap: 6px; }
+.selectors label > span, .selector-field > span { color: var(--muted); font-size: 12px; }
+.selector-control-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 6px; }
 .filter-select { min-width: 0; position: relative; }
 .filter-select-trigger { width: 100%; height: 40px; padding: 0 11px 0 12px; border: 1px solid var(--line); border-radius: 0; background: var(--surface); color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 520; text-align: left; transition: color .2s ease, background-color .2s ease, border-color .2s ease; }
 .filter-select-trigger:hover:not(:disabled), .filter-select-trigger[aria-expanded='true'] { background: var(--surface-2); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
@@ -129,6 +130,11 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 .filter-select-option.selected { color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 56%, transparent); font-weight: 620; }
 .filter-select-option.highlighted { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 68%, transparent); }
 .option-check { width: 16px; flex: 0 0 16px; display: grid; place-items: center; }
+.option-favorite { width: 16px; flex: 0 0 16px; margin-left: auto; display: grid; place-items: center; color: var(--warning); }
+.favorite-button { width: 40px; height: 40px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); display: grid; place-items: center; transition: color .2s ease, background-color .2s ease, border-color .2s ease; }
+.favorite-button:hover:not(:disabled) { color: var(--warning); background: var(--surface-2); border-color: color-mix(in srgb, var(--warning) 55%, var(--line)); }
+.favorite-button.active { color: var(--warning); background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 55%, var(--line)); }
+.favorite-button:disabled { opacity: .5; cursor: not-allowed; }
 .swap-button { width: 36px; height: 40px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; transition: color .2s ease, background-color .2s ease; }
 .swap-button:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
 .swap-button:disabled { opacity: .35; cursor: not-allowed; }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Anchor, ArrowLeftRight, ArrowRight, Clock3, Database, RefreshCw, Route, Ship, Terminal } from 'lucide-react';
+import { Anchor, ArrowLeftRight, ArrowRight, Clock3, Database, RefreshCw, Route, Ship, Star, Terminal } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
 import { FilterSelect } from './components/FilterSelect';
@@ -16,6 +16,17 @@ const tabs: Array<{ id: Tab; label: string; icon: typeof Route }> = [
 ];
 const MINIMUM_SKELETON_MS = 500;
 const SKELETON_EXIT_MS = 520;
+const favoriteTerminalsKey = 'ferry-tracker-favorite-terminals';
+
+function loadFavoriteTerminalIds() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(favoriteTerminalsKey) ?? '[]');
+    if (!Array.isArray(stored)) return [];
+    return [...new Set(stored.filter((value): value is number => Number.isInteger(value)))];
+  } catch {
+    return [];
+  }
+}
 
 function localTime(value: string | null) {
   return value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : 'Not reported';
@@ -74,6 +85,7 @@ export function App() {
   const [initialDataVisible, setInitialDataVisible] = useState(false);
   const [initialSkeletonVisible, setInitialSkeletonVisible] = useState(true);
   const [retainedUpdateSkeleton, setRetainedUpdateSkeleton] = useState(false);
+  const [favoriteTerminalIds, setFavoriteTerminalIds] = useState<number[]>(loadFavoriteTerminalIds);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const overviewRequestId = useRef(0);
   const scheduleRequestId = useRef(0);
@@ -112,6 +124,10 @@ export function App() {
   }, []);
 
   const terminals = terminalResponse?.data ?? [];
+  const favoriteTerminalIdSet = new Set(favoriteTerminalIds);
+  const terminalOptions = terminals
+    .map((terminal) => ({ value: terminal.id, label: terminal.name, favorite: favoriteTerminalIdSet.has(terminal.id) }))
+    .sort((left, right) => Number(right.favorite) - Number(left.favorite) || left.label.localeCompare(right.label));
   const vessels = vesselResponse?.data ?? [];
   const selectedTerminal = terminals.find((terminal) => terminal.id === selectedTerminalId) ?? null;
   const associatedVessels = selectedTerminalId === null ? [] : vessels.filter((vessel) =>
@@ -203,6 +219,15 @@ export function App() {
     setRefreshVersion((current) => current + 1);
   };
 
+  const toggleFavoriteTerminal = () => {
+    if (selectedTerminalId === null) return;
+    const nextFavorites = favoriteTerminalIds.includes(selectedTerminalId)
+      ? favoriteTerminalIds.filter((id) => id !== selectedTerminalId)
+      : [...favoriteTerminalIds, selectedTerminalId];
+    setFavoriteTerminalIds(nextFavorites);
+    try { localStorage.setItem(favoriteTerminalsKey, JSON.stringify(nextFavorites)); } catch { /* Favorites remain active for this tab. */ }
+  };
+
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let nextIndex: number | null = null;
     if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
@@ -233,9 +258,9 @@ export function App() {
         <section className="selection-band" aria-labelledby="route-heading">
           <div className="route-title"><span className="eyebrow">Live route explorer</span><h1 id="route-heading">Trace the ferry data</h1></div>
           <div className="selectors">
-            <label><span>Terminal</span><FilterSelect ariaLabel="Terminal" value={selectedTerminalId} onChange={setSelectedTerminalId} disabled={loading} options={terminals.map((terminal) => ({ value: terminal.id, label: `${terminal.name} · ${terminal.id}` }))} /></label>
+            <div className="selector-field"><span>Terminal</span><div className="selector-control-row"><FilterSelect ariaLabel="Terminal" value={selectedTerminalId} onChange={setSelectedTerminalId} disabled={loading} options={terminalOptions} /><button className={`favorite-button${selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? ' active' : ''}`} type="button" aria-label={selectedTerminalId === null ? 'Favorite selected origin' : favoriteTerminalIdSet.has(selectedTerminalId) ? `Remove ${selectedTerminal?.name ?? 'selected origin'} from favorites` : `Add ${selectedTerminal?.name ?? 'selected origin'} to favorites`} title={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? 'Remove from favorites' : 'Add to favorites'} disabled={selectedTerminalId === null || loading} aria-pressed={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId)} onClick={toggleFavoriteTerminal}><Star fill={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? 'currentColor' : 'none'} size={16} /></button></div></div>
             <button className="swap-button" type="button" aria-label="Reverse route" title={canSwapRoute ? 'Swap terminal and destination' : 'Reverse route unavailable'} disabled={!canSwapRoute} onClick={swapRoute}><ArrowLeftRight size={18} /></button>
-            <label><span>Associated destination</span><FilterSelect ariaLabel="Associated destination" value={effectiveDestinationId} onChange={setDestinationId} disabled={!destinationIds.length} placeholder="No live association" options={destinationIds.map((id) => ({ value: id, label: `${terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown'} · ${id}` }))} /></label>
+            <label><span>Associated destination</span><FilterSelect ariaLabel="Associated destination" value={effectiveDestinationId} onChange={setDestinationId} disabled={!destinationIds.length} placeholder="No live association" options={destinationIds.map((id) => ({ value: id, label: terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown' }))} /></label>
           </div>
         </section>
 
@@ -250,23 +275,23 @@ export function App() {
 
           {initialDataVisible && <div className={`view-content${viewUpdating ? ' is-updating' : ''}`}>
           {tab === 'relationship' && <div className="relationship-grid">
-            <article className="relationship-node terminal-node"><span className="node-type">Terminal</span><h2>{selectedTerminal?.name ?? 'No terminal'}</h2><code>TerminalID {selectedTerminalId ?? '—'}</code><Field label="City" value={selectedTerminal?.city} /><Field label="Coordinates" value={selectedTerminal ? `${selectedTerminal.latitude}, ${selectedTerminal.longitude}` : null} /></article>
+            <article className="relationship-node terminal-node"><span className="node-type">Terminal</span><h2>{selectedTerminal?.name ?? 'No terminal'}</h2><Field label="City" value={selectedTerminal?.city} /><Field label="Coordinates" value={selectedTerminal ? `${selectedTerminal.latitude}, ${selectedTerminal.longitude}` : null} /></article>
             <div className="relationship-link"><span>{associatedVessels.length} associated</span><ArrowRight /></div>
-            <div className="vessel-stack">{associatedVessels.length ? associatedVessels.map((vessel) => <article className="relationship-node vessel-node" key={vessel.id}><span className="node-type">Vessel</span><h2>{vessel.name}</h2><code>VesselID {vessel.id}</code><p>{vessel.departingTerminalName} <ArrowRight size={14} /> {vessel.arrivingTerminalName}</p><Field label="Class" value={vessel.vesselClass} /><Field label="Left dock" value={localTime(vessel.leftDock)} /><Field label="ETA" value={localTime(vessel.eta)} /><Field label="ETA basis" value={vessel.etaBasis} /><Field label="Speed" value={vessel.speed === null ? null : `${vessel.speed} knots`} /></article>) : <div className="empty">No vessel currently references this terminal.</div>}</div>
+            <div className="vessel-stack">{associatedVessels.length ? associatedVessels.map((vessel) => <article className="relationship-node vessel-node" key={vessel.id}><span className="node-type">Vessel</span><h2>{vessel.name}</h2><p>{vessel.departingTerminalName} <ArrowRight size={14} /> {vessel.arrivingTerminalName}</p><Field label="Class" value={vessel.vesselClass} /><Field label="Left dock" value={localTime(vessel.leftDock)} /><Field label="ETA" value={localTime(vessel.eta)} /><Field label="ETA basis" value={vessel.etaBasis} /><Field label="Speed" value={vessel.speed === null ? null : `${vessel.speed} knots`} /><Field label="Updated" value={localTime(vessel.updatedAt)} /></article>) : <div className="empty">No vessel currently references this terminal.</div>}</div>
             <div className="relationship-link"><span>{scheduleResponse?.data.length ?? 0} sailings</span><ArrowRight /></div>
             <article className="relationship-node schedule-node">
               <span className="node-type">Sailings &amp; vehicle space</span>
               <h2>{selectedTerminal?.name ?? '—'} to {destination?.name ?? '—'}</h2>
               <p className="window-label">Past 2 hours · Next 12 hours</p>
-              {scheduleResponse?.data.length ? <ol className="sailing-list">{scheduleResponse.data.map((sailing, index) => <li key={`${sailing.departingTime}-${index}`}><strong>{localTime(sailing.departingTime)}</strong><span>{sailing.vesselName ?? 'Vessel unassigned'} {sailing.vesselId ? `· ${sailing.vesselId}` : ''}</span><span className="space-count">Vehicle space: {vehicleSpace(sailing)}</span></li>)}</ol> : scheduleLoading ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div> : <div className="empty">No sailings in this 14-hour window.</div>}
+              {scheduleResponse?.data.length ? <ol className="sailing-list">{scheduleResponse.data.map((sailing, index) => <li key={`${sailing.departingTime}-${index}`}><strong>{localTime(sailing.departingTime)}</strong><span>{sailing.vesselName ?? 'Vessel unassigned'}</span><span className="space-count">Vehicle space: {vehicleSpace(sailing)}</span></li>)}</ol> : scheduleLoading ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div> : <div className="empty">No sailings in this 14-hour window.</div>}
             </article>
           </div>}
 
-          {tab === 'terminals' && <div className="data-grid">{terminals.map((terminal) => <article className="data-card" key={terminal.id}><h2>{terminal.name}</h2><code>TerminalID {terminal.id}</code><dl><Field label="Subject" value={terminal.subjectName} /><Field label="City" value={terminal.city} /><Field label="Latitude" value={terminal.latitude} /><Field label="Longitude" value={terminal.longitude} /></dl></article>)}</div>}
+          {tab === 'terminals' && <div className="data-grid">{terminals.map((terminal) => <article className="data-card" key={terminal.id}><h2>{terminal.name}</h2><dl><Field label="Subject" value={terminal.subjectName} /><Field label="City" value={terminal.city} /><Field label="Latitude" value={terminal.latitude} /><Field label="Longitude" value={terminal.longitude} /></dl></article>)}</div>}
 
-          {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className="data-card" key={vessel.id}><h2>{vessel.name}</h2><code>VesselID {vessel.id}</code><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="Terminal IDs" value={`${vessel.departingTerminalId ?? '?'} → ${vessel.arrivingTerminalId ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={localTime(vessel.leftDock)} /><Field label="ETA" value={localTime(vessel.eta)} /><Field label="ETA basis" value={vessel.etaBasis} /><Field label="Updated" value={localTime(vessel.updatedAt)} /></dl></article>)}</div>}
+          {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className="data-card" key={vessel.id}><h2>{vessel.name}</h2><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={localTime(vessel.leftDock)} /><Field label="ETA" value={localTime(vessel.eta)} /><Field label="ETA basis" value={vessel.etaBasis} /><Field label="Updated" value={localTime(vessel.updatedAt)} /></dl></article>)}</div>}
 
-          {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings &amp; vehicle space</span><h2>Past 2 hours · Next 12 hours</h2></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Arrival</th><th>Vessel</th><th>Vehicle space</th><th>Terminal IDs</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => <tr key={`${sailing.departingTime}-${index}`}><td>{localTime(sailing.departingTime)}</td><td>{localTime(sailing.arrivingTime)}</td><td>{sailing.vesselName ?? <span className="null">null</span>}<small>{sailing.vesselId ? `ID ${sailing.vesselId}` : ''}</small></td><td>{vehicleSpace(sailing)}</td><td>{sailing.departingTerminalId} → {sailing.arrivingTerminalId}</td></tr>)}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
+          {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings &amp; vehicle space</span><h2>Past 2 hours · Next 12 hours</h2></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Arrival</th><th>Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => <tr key={`${sailing.departingTime}-${index}`}><td>{localTime(sailing.departingTime)}</td><td>{localTime(sailing.arrivingTime)}</td><td>{sailing.vesselName ?? <span className="null">null</span>}</td><td>{vehicleSpace(sailing)}</td></tr>)}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
 
           {tab === 'raw' && <div className="raw-panel"><div className="raw-heading"><div><span className="node-type">Unmodified source shape</span><h2>WSDOT response JSON</h2></div><span>Secrets removed server-side</span></div><pre>{JSON.stringify(raw, null, 2)}</pre></div>}
           {(viewUpdating || retainedUpdateSkeleton) && <div className={`view-loading-cover${viewUpdating ? '' : ' is-exiting'}`}><ViewPlaceholder label="Loading updated ferry data" tab={tab} /></div>}
