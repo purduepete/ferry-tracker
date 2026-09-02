@@ -1,0 +1,6 @@
+[
+  { "DepartingTerminalID": 7, "DepartingDescription": "Seattle", "ArrivingTerminalID": 3, "ArrivingDescription": "Bainbridge Island" },
+  { "DepartingTerminalID": 7, "DepartingDescription": "Seattle", "ArrivingTerminalID": 9, "ArrivingDescription": "Bremerton" },
+  { "DepartingTerminalID": 3, "DepartingDescription": "Bainbridge Island", "ArrivingTerminalID": 7, "ArrivingDescription": "Seattle" },
+  { "DepartingTerminalID": 9, "DepartingDescription": "Bremerton", "ArrivingTerminalID": 7, "ArrivingDescription": "Seattle" }
+]

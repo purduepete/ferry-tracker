@@ -1,0 +1,76 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import express, { type Request, type Response } from 'express';
+import type { ApiEnvelope } from '@ferry-tracker/shared';
+import { ZodError } from 'zod';
+import type { AppConfig } from './config.js';
+import { FerryDataService } from './ferryDataService.js';
+import { WsdotClient } from './wsdotClient.js';
+
+function terminalId(value: unknown): number | null {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function createApp(config: AppConfig, now: () => number = Date.now) {
+  const app = express();
+  const service = new FerryDataService(new WsdotClient(config), now);
+
+  const send = <T>(response: Response, result: { data: T; raw: unknown }) => {
+    const envelope: ApiEnvelope<T> = {
+      data: result.data,
+      fetchedAt: new Date().toISOString(),
+      source: config.dataSource,
+      raw: config.rawInspector ? result.raw : null,
+    };
+    response.json(envelope);
+  };
+
+  app.get('/api/health', (_request, response) => response.json({ status: 'ok', source: config.dataSource }));
+  app.get('/api/terminals', async (_request, response, next) => {
+    try { send(response, await service.terminals()); } catch (error) { next(error); }
+  });
+  app.get('/api/vessels', async (_request, response, next) => {
+    try { send(response, await service.vessels()); } catch (error) { next(error); }
+  });
+  app.get('/api/terminal-mates', async (_request, response, next) => {
+    try { send(response, await service.terminalMates()); } catch (error) { next(error); }
+  });
+  app.get('/api/sailing-spaces', async (request, response, next) => {
+    const departingId = terminalId(request.query.departingTerminalId);
+    const arrivingId = terminalId(request.query.arrivingTerminalId);
+    if (!departingId || !arrivingId || departingId === arrivingId) {
+      response.status(400).json({ error: 'Valid, different departingTerminalId and arrivingTerminalId values are required.' });
+      return;
+    }
+    try { send(response, await service.sailingSpaces(departingId, arrivingId)); } catch (error) { next(error); }
+  });
+  app.get('/api/schedule', async (request, response, next) => {
+    const departingId = terminalId(request.query.departingTerminalId);
+    const arrivingId = terminalId(request.query.arrivingTerminalId);
+    if (!departingId || !arrivingId || departingId === arrivingId) {
+      response.status(400).json({ error: 'Valid, different departingTerminalId and arrivingTerminalId values are required.' });
+      return;
+    }
+    const onlyRemaining = request.query.onlyRemaining === 'true';
+    try { send(response, await service.schedule(departingId, arrivingId, onlyRemaining)); } catch (error) { next(error); }
+  });
+
+  const frontendDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../frontend/dist');
+  app.use(express.static(frontendDist));
+  app.get('/{*path}', (request, response, next) => {
+    if (request.path.startsWith('/api/')) return next();
+    response.sendFile(path.join(frontendDist, 'index.html'));
+  });
+
+  app.use((error: unknown, _request: Request, response: Response, _next: unknown) => {
+    const message = error instanceof ZodError
+      ? `WSDOT returned an unexpected data shape (${error.issues.length} validation ${error.issues.length === 1 ? 'issue' : 'issues'}).`
+      : error instanceof Error ? error.message : 'Unknown server error.';
+    const safeMessage = config.apiAccessCode ? message.replaceAll(config.apiAccessCode, '[redacted]') : message;
+    response.status(502).json({ error: safeMessage });
+  });
+
+  return app;
+}

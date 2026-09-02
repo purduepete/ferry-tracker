@@ -1,0 +1,29 @@
+[
+  {
+    "TerminalID": 7,
+    "TerminalName": "Seattle",
+    "DepartingSpaces": [
+      {
+        "Departure": "2026-09-01T10:00:00-07:00",
+        "IsCancelled": false,
+        "VesselID": 1,
+        "VesselName": "Tacoma",
+        "MaxSpaceCount": 202,
+        "SpaceForArrivalTerminals": [
+          {
+            "TerminalID": 3,
+            "TerminalName": "Bainbridge Island",
+            "VesselID": 1,
+            "VesselName": "Tacoma",
+            "DisplayReservableSpace": false,
+            "ReservableSpaceCount": null,
+            "DisplayDriveUpSpace": true,
+            "DriveUpSpaceCount": 176,
+            "MaxSpaceCount": 202,
+            "ArrivalTerminalIDs": [3]
+          }
+        ]
+      }
+    ]
+  }
+]

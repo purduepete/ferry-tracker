@@ -1,0 +1,106 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { AppConfig } from './config.js';
+
+type Service = 'Terminals' | 'Vessels' | 'Schedule';
+
+const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const cache = new Map<string, { expiresAt: number; value: unknown }>();
+
+const fixtureNames: Record<string, string> = {
+  'Terminals/terminalbasics': 'terminalbasics.json',
+  'Terminals/terminallocations': 'terminallocations.json',
+  'Vessels/vesselbasics': 'vesselbasics.json',
+  'Vessels/vessellocations': 'vessellocations.json',
+};
+
+export class WsdotClient {
+  constructor(private readonly config: AppConfig) {}
+
+  getTerminalBasics(): Promise<unknown> {
+    return this.get('Terminals', 'terminalbasics');
+  }
+
+  getTerminalLocations(): Promise<unknown> {
+    return this.get('Terminals', 'terminallocations');
+  }
+
+  getVesselBasics(): Promise<unknown> {
+    return this.get('Vessels', 'vesselbasics');
+  }
+
+  getVesselLocations(): Promise<unknown> {
+    return this.get('Vessels', 'vessellocations');
+  }
+
+  getTerminalMates(): Promise<unknown> {
+    return this.config.dataSource === 'fixture'
+      ? this.readFixture('terminalmates.json')
+      : this.get('Schedule', `terminalsandmates/${pacificDate()}`);
+  }
+
+  getTerminalSailingSpaces(): Promise<unknown> {
+    return this.get('Terminals', 'terminalsailingspace', 'terminalsailingspace.json');
+  }
+
+  getSchedule(departingId: number, arrivingId: number, onlyRemaining: boolean): Promise<unknown> {
+    return this.get('Schedule', `scheduletoday/${departingId}/${arrivingId}/${onlyRemaining}`, `schedule-${departingId}-${arrivingId}.json`);
+  }
+
+  private async get(service: Service, operation: string, fixtureName?: string): Promise<unknown> {
+    const key = `${service}/${operation}`;
+    const cached = cache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+    const value = this.config.dataSource === 'fixture'
+      ? await this.readFixture(fixtureName ?? fixtureNames[key])
+      : await this.fetchLive(service, operation);
+    cache.set(key, { expiresAt: Date.now() + 30_000, value });
+    return value;
+  }
+
+  private async readFixture(name?: string): Promise<unknown> {
+    if (!name) return { TerminalCombos: [] };
+    try {
+      const contents = await readFile(path.join(serverRoot, 'fixtures', name), 'utf8');
+      return JSON.parse(contents) as unknown;
+    } catch (error) {
+      if (name.startsWith('schedule-')) return { TerminalCombos: [] };
+      throw error;
+    }
+  }
+
+  private async fetchLive(service: Service, operation: string): Promise<unknown> {
+    if (!this.config.apiAccessCode) throw new Error('WSDOT_API_ACCESS_CODE is required in live mode.');
+    const url = new URL(`https://www.wsdot.wa.gov/Ferries/API/${service}/rest/${operation}`);
+    url.searchParams.set('apiaccesscode', this.config.apiAccessCode);
+
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await fetch(url, {
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!response.ok) throw new Error(`WSDOT returned HTTP ${response.status}.`);
+        return await response.json() as unknown;
+      } catch (error) {
+        lastError = error;
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+    throw lastError;
+  }
+}
+
+function pacificDate(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
