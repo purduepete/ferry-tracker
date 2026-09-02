@@ -30,8 +30,8 @@ export class WsdotClient {
     return this.get('Vessels', 'vesselbasics');
   }
 
-  getVesselLocations(): Promise<unknown> {
-    return this.get('Vessels', 'vessellocations');
+  getVesselLocations(bypassCache = false): Promise<unknown> {
+    return this.get('Vessels', 'vessellocations', undefined, bypassCache);
   }
 
   getTerminalMates(): Promise<unknown> {
@@ -40,8 +40,8 @@ export class WsdotClient {
       : this.get('Schedule', `terminalsandmates/${pacificDate()}`);
   }
 
-  getTerminalSailingSpaces(): Promise<unknown> {
-    return this.get('Terminals', 'terminalsailingspace', 'terminalsailingspace.json');
+  getTerminalSailingSpaces(bypassCache = false): Promise<unknown> {
+    return this.get('Terminals', 'terminalsailingspace', 'terminalsailingspace.json', bypassCache);
   }
 
   getSchedule(departingId: number, arrivingId: number, onlyRemaining: boolean): Promise<unknown> {
@@ -56,10 +56,10 @@ export class WsdotClient {
     return Promise.all(dates.map((date) => this.get('Schedule', `schedule/${date}/${departingId}/${arrivingId}`)));
   }
 
-  private async get(service: Service, operation: string, fixtureName?: string): Promise<unknown> {
+  private async get(service: Service, operation: string, fixtureName?: string, bypassCache = false): Promise<unknown> {
     const key = `${service}/${operation}`;
     const cached = cache.get(key);
-    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    if (!bypassCache && cached && cached.expiresAt > Date.now()) return cached.value;
 
     const value = this.config.dataSource === 'fixture'
       ? await this.readFixture(fixtureName ?? fixtureNames[key])

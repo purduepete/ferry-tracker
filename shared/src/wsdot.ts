@@ -95,6 +95,30 @@ export const terminalMateSchema = z.looseObject({
 
 export type TerminalMate = z.infer<typeof terminalMateSchema>;
 
+export const scheduleTimeSchema = z.looseObject({
+  DepartingTime: z.string(),
+  ArrivingTime: nullableString,
+  VesselID: nullableNumber,
+  VesselName: nullableString,
+  LoadingRule: nullableNumber,
+});
+
+export const terminalComboSchema = z.looseObject({
+  DepartingTerminalID: z.number(),
+  DepartingTerminalName: nullableString,
+  ArrivingTerminalID: z.number(),
+  ArrivingTerminalName: nullableString,
+  Times: z.array(scheduleTimeSchema),
+});
+
+/** Validates the parent shape so a sailing can never be stored without its terminal pair. */
+export const scheduleResponseSchema = z.looseObject({
+  ScheduleID: nullableNumber,
+  TerminalCombos: z.array(terminalComboSchema),
+});
+
+export type ScheduleResponse = z.infer<typeof scheduleResponseSchema>;
+
 export interface TerminalMateView {
   departingTerminalId: number;
   departingTerminalName: string;

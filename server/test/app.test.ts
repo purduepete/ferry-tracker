@@ -1,10 +1,36 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
+import type { AppConfig } from '../src/config';
 import { isScheduleVisible } from '../src/ferryDataService';
 
 const fixtureNow = Date.parse('2026-09-01T18:30:00.000Z');
-const app = createApp({ host: '127.0.0.1', port: 8787, dataSource: 'fixture', rawInspector: true }, () => fixtureNow);
+
+function testConfig(rawInspector: boolean): AppConfig {
+  return {
+    host: '127.0.0.1',
+    port: 8787,
+    dataSource: 'fixture',
+    rawInspector,
+    capture: {
+      enabled: false,
+      allowFixtureSource: false,
+      dbPath: ':memory:',
+      rawArchiveDir: '',
+      vesselIntervalMs: 30_000,
+      spaceIntervalMs: 60_000,
+      referenceIntervalMs: 21_600_000,
+      scheduleIntervalMs: 21_600_000,
+      rollupIntervalMs: 900_000,
+      retentionDays: null,
+      dwellCeilingMinutes: 120,
+      minFreeDiskMb: 512,
+      statusEnabled: true,
+    },
+  };
+}
+
+const app = createApp(testConfig(true), () => fixtureNow);
 
 describe('Ferry Tracker API', () => {
   it('keeps schedules from the past two hours through the next twelve hours', () => {
@@ -81,7 +107,7 @@ describe('Ferry Tracker API', () => {
   });
 
   it('can disable raw source responses', async () => {
-    const privateApp = createApp({ host: '127.0.0.1', port: 8787, dataSource: 'fixture', rawInspector: false });
+    const privateApp = createApp(testConfig(false));
     const response = await request(privateApp).get('/api/terminals').expect(200);
     expect(response.body.raw).toBeNull();
   });

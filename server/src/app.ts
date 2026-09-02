@@ -1,8 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type Request, type Response } from 'express';
-import type { ApiEnvelope } from '@ferry-tracker/shared';
+import { type ApiEnvelope, redactSecrets } from '@ferry-tracker/shared';
 import { ZodError } from 'zod';
+import type { CaptureService } from './capture/captureService.js';
 import type { AppConfig } from './config.js';
 import { FerryDataService } from './ferryDataService.js';
 import { WsdotClient } from './wsdotClient.js';
@@ -13,7 +14,7 @@ function terminalId(value: unknown): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function createApp(config: AppConfig, now: () => number = Date.now) {
+export function createApp(config: AppConfig, now: () => number = Date.now, capture?: CaptureService) {
   const app = express();
   const service = new FerryDataService(new WsdotClient(config), now);
 
@@ -28,6 +29,13 @@ export function createApp(config: AppConfig, now: () => number = Date.now) {
   };
 
   app.get('/api/health', (_request, response) => response.json({ status: 'ok', source: config.dataSource }));
+  app.get('/api/capture/status', (_request, response, next) => {
+    if (!capture || !config.capture.statusEnabled) {
+      response.status(404).json({ error: 'Capture status is not available.' });
+      return;
+    }
+    try { response.json(capture.status()); } catch (error) { next(error); }
+  });
   app.get('/api/terminals', async (_request, response, next) => {
     try { send(response, await service.terminals()); } catch (error) { next(error); }
   });
@@ -68,7 +76,7 @@ export function createApp(config: AppConfig, now: () => number = Date.now) {
     const message = error instanceof ZodError
       ? `WSDOT returned an unexpected data shape (${error.issues.length} validation ${error.issues.length === 1 ? 'issue' : 'issues'}).`
       : error instanceof Error ? error.message : 'Unknown server error.';
-    const safeMessage = config.apiAccessCode ? message.replaceAll(config.apiAccessCode, '[redacted]') : message;
+    const safeMessage = redactSecrets(message, config.apiAccessCode);
     response.status(502).json({ error: safeMessage });
   });
 
