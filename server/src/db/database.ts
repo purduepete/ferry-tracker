@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { latestVersion, migrations } from './schema.js';
+import { applyViews } from './views.js';
 
 export type Db = Database.Database;
 export type Stmt = Database.Statement<unknown[]>;
@@ -14,6 +15,7 @@ export function openDatabase(filePath: string): Db {
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
   migrate(db);
+  applyViews(db);
   return db;
 }
 

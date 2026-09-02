@@ -36,6 +36,45 @@ Open `http://127.0.0.1:8787` on this computer, or `http://<this-computer-ip>:878
 
 Both run modes listen on all local interfaces by default. Set `HOST=127.0.0.1` to restrict the production server to this computer. If another device cannot connect, allow Node.js or the relevant TCP port through Windows Defender Firewall for private networks.
 
+## Data capture
+
+Capture is off unless `CAPTURE_ENABLED=true`. It writes to a SQLite file plus a gzipped NDJSON archive of every raw WSDOT response, both under `CAPTURE_DATA_DIR` (default `./data`, git-ignored). Leave it off on a development laptop and turn it on only where the server runs continuously.
+
+```powershell
+$env:CAPTURE_ENABLED = 'true'
+npm start
+Invoke-RestMethod http://127.0.0.1:8787/api/capture/status
+```
+
+Five loops run on independent timers, and a run that is still in flight is skipped rather than queued.
+
+| Task | Variable | Default |
+| --- | --- | --- |
+| `vessel_locations` | `CAPTURE_VESSEL_INTERVAL_MS` | 30000 |
+| `terminal_sailing_space` | `CAPTURE_SPACE_INTERVAL_MS` | 60000 |
+| `reference` | `CAPTURE_REFERENCE_INTERVAL_MS` | 21600000 |
+| `schedule` | `CAPTURE_SCHEDULE_INTERVAL_MS` | 21600000 |
+| `rollup` | `CAPTURE_ROLLUP_INTERVAL_MS` | 900000 |
+
+A poll whose payload hash matches the previous one is recorded as `skipped_unchanged` and nothing is stored, so a high poll rate costs little. `CAPTURE_MIN_FREE_DISK_MB` (default 512) halts archiving before the disk fills. `CAPTURE_RETENTION_DAYS` is unset by default, which keeps everything; when it is set, the prune still refuses to delete anything the rollup has not yet processed. `CAPTURE_ALLOW_FIXTURE=true` lets capture run against fixtures for a smoke test.
+
+### Analysis
+
+The `rollup` task rebuilds `sailing_leg` from the raw vessel observations. Each leg pairs a departure with the following dock arrival and carries a `confidence` of `high`, `medium` or `low`, plus an `exclusion_reason` when the departure itself is untrustworthy and a separate `load_exclusion_reason` when only the dwell is. Filter on those before averaging anything. Legs are derived, so dropping the table and rerunning the rollup reproduces it exactly.
+
+Six views answer the original questions:
+
+| View | Question |
+| --- | --- |
+| `v_sailing_fill` | When are the busiest times, by vehicle space |
+| `v_departure_delay` | When do ferries run late |
+| `v_crossing_duration` | How long does a crossing take |
+| `v_load_duration` | How long does loading take |
+| `v_update_cadence` | Is a poll every minute too frequent |
+| `v_vessel_update_ratio` | How often does a vessel's own timestamp actually move |
+
+Every view buckets by `service_date`, `weekday` and `hour_local` in Pacific time, computed in TypeScript rather than SQL, so the schema ports to Azure SQL without rewriting date logic.
+
 ## Checks
 
 ```powershell

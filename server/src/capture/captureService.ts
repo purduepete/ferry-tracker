@@ -1,10 +1,12 @@
-import { redactSecrets } from '@ferry-tracker/shared';
+import { pacificParts, redactSecrets } from '@ferry-tracker/shared';
 import type { AppConfig } from '../config.js';
 import type { Db } from '../db/database.js';
+import { runLegRollup } from '../rollup/legRollup.js';
 import type { WsdotClient } from '../wsdotClient.js';
 import type { EndpointId } from './endpoints.js';
 import { RawArchive } from './rawArchive.js';
 import { writeReferenceData, writeScheduleSnapshots } from './referenceWriters.js';
+import { pruneOldData } from './retention.js';
 import { writeSailingSpaceObservations, writeVesselObservations } from './writers.js';
 
 export type RunOutcome = 'success' | 'skipped_overlap' | 'skipped_unchanged' | 'skipped_disk_space' | 'error';
@@ -68,6 +70,12 @@ export class CaptureService {
         endpointId: null,
         intervalMs: capture.scheduleIntervalMs,
         run: (capturedAt) => this.captureSchedule(capturedAt),
+      },
+      {
+        name: 'rollup',
+        endpointId: null,
+        intervalMs: capture.rollupIntervalMs,
+        run: () => this.rollup(),
       },
     ];
     this.tasks = definitions.map((definition) => ({ definition, running: false, timer: null }));
@@ -155,8 +163,8 @@ export class CaptureService {
     this.db
       .prepare(`INSERT INTO capture_run (
         task, endpoint_id, started_at, finished_at, duration_ms, response_hash, changed,
-        rows_written, rows_skipped, outcome, error_category, error_detail
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`)
+        rows_written, rows_skipped, outcome, error_category, error_detail, service_date
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`)
       .run(
         task.definition.name,
         task.definition.endpointId,
@@ -168,6 +176,7 @@ export class CaptureService {
         result.rowsWritten,
         result.rowsSkipped,
         result.outcome ?? 'success',
+        pacificParts(startedAt)?.serviceDate ?? null,
       );
   }
 
@@ -175,8 +184,8 @@ export class CaptureService {
     this.db
       .prepare(`INSERT INTO capture_run (
         task, endpoint_id, started_at, finished_at, duration_ms, response_hash, changed,
-        rows_written, rows_skipped, outcome, error_category, error_detail
-      ) VALUES (?, ?, ?, ?, ?, NULL, NULL, 0, 0, 'error', ?, ?)`)
+        rows_written, rows_skipped, outcome, error_category, error_detail, service_date
+      ) VALUES (?, ?, ?, ?, ?, NULL, NULL, 0, 0, 'error', ?, ?, ?)`)
       .run(
         task.definition.name,
         task.definition.endpointId,
@@ -185,7 +194,16 @@ export class CaptureService {
         this.now() - startedMs,
         categorize(error),
         redactSecrets(error, this.config.apiAccessCode).slice(0, 2000),
+        pacificParts(startedAt)?.serviceDate ?? null,
       );
+  }
+
+  private async rollup(): Promise<TaskOutcome> {
+    const legs = runLegRollup(this.db, { dwellCeilingMinutes: this.config.capture.dwellCeilingMinutes });
+    const pruned = await pruneOldData(this.db, { retentionDays: this.config.capture.retentionDays, now: this.now });
+    const removed =
+      pruned.vesselObservations + pruned.sailingSpaceObservations + pruned.sailingSpaceDepartures + pruned.captureRuns;
+    return { rowsWritten: legs.legsWritten, rowsSkipped: removed };
   }
 
   private async captureVessels(capturedAt: string): Promise<TaskOutcome> {

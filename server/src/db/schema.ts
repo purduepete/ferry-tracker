@@ -176,6 +176,16 @@ export const migrations: Migration[] = [
       )`,
     ],
   },
+  {
+    version: 2,
+    statements: [
+      // Separate from exclusion_reason so a leg with a trustworthy crossing but an
+      // untrustworthy dwell is still usable for crossing analysis.
+      `ALTER TABLE sailing_leg ADD COLUMN load_exclusion_reason TEXT`,
+      `ALTER TABLE capture_run ADD COLUMN service_date TEXT`,
+      `CREATE INDEX ix_capture_run_service_date ON capture_run (service_date, task)`,
+    ],
+  },
 ];
 
 export const latestVersion = migrations.reduce((highest, migration) => Math.max(highest, migration.version), 0);
