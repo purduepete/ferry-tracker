@@ -75,6 +75,15 @@ Six views answer the original questions:
 
 Every view buckets by `service_date`, `weekday` and `hour_local` in Pacific time, computed in TypeScript rather than SQL, so the schema ports to Azure SQL without rewriting date logic.
 
+To read the results, generate an HTML report next to the database and open it:
+
+```powershell
+npm run capture:report
+npm run capture:report -- C:\ProgramData\ferry-tracker\ferry-capture.db
+```
+
+It works against a live database, so you can run it while the server is still capturing.
+
 ## Checks
 
 ```powershell
