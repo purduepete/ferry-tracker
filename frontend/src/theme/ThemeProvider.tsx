@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import {
-  DEFAULT_ACCENT_COLOR,
   DEFAULT_THEME_PREFERENCE,
   isThemePreference,
   resolveTheme,
@@ -11,14 +10,12 @@ import {
 interface ThemeContextValue {
   preference: ThemePreference;
   theme: ResolvedTheme;
-  accent: string;
   setPreference: (preference: ThemePreference) => void;
-  setAccent: (accent: string) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 const themeKey = 'ferry-tracker-theme';
-const accentKey = 'ferry-tracker-accent';
+const legacyAccentKey = 'ferry-tracker-accent';
 const darkQuery = '(prefers-color-scheme: dark)';
 
 function storedPreference(): ThemePreference {
@@ -33,10 +30,11 @@ function storedPreference(): ThemePreference {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>(storedPreference);
   const [systemDark, setSystemDark] = useState(() => window.matchMedia(darkQuery).matches);
-  const [accent, setAccentState] = useState(() => {
-    try { return localStorage.getItem(accentKey) ?? DEFAULT_ACCENT_COLOR; } catch { return DEFAULT_ACCENT_COLOR; }
-  });
   const theme = resolveTheme(preference, systemDark);
+
+  useEffect(() => {
+    try { localStorage.removeItem(legacyAccentKey); } catch { /* Legacy cleanup can fail without blocking themes. */ }
+  }, []);
 
   useEffect(() => {
     const query = window.matchMedia(darkQuery);
@@ -47,20 +45,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document.documentElement.style.setProperty('--accent', accent);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f4f7f5' : '#101a1e');
-  }, [accent, theme]);
+    document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+    const themeColors: Record<ResolvedTheme, string> = { light: '#f9fafb', dark: '#111827', midnight: '#020617' };
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColors[theme]);
+  }, [theme]);
 
   const setPreference = (value: ThemePreference) => {
     setPreferenceState(value);
     try { localStorage.setItem(themeKey, value); } catch { /* The setting remains active for this tab. */ }
   };
-  const setAccent = (value: string) => {
-    setAccentState(value);
-    try { localStorage.setItem(accentKey, value); } catch { /* The setting remains active for this tab. */ }
-  };
-
-  return <ThemeContext.Provider value={{ preference, theme, accent, setPreference, setAccent }}>{children}</ThemeContext.Provider>;
+  return <ThemeContext.Provider value={{ preference, theme, setPreference }}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {

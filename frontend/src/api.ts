@@ -1,4 +1,4 @@
-import type { ApiEnvelope, SailingSpaceView, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
+import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<ApiEnvelope<T>> {
   const response = await fetch(path, { signal });
@@ -11,8 +11,6 @@ export const ferryApi = {
   terminals: (signal?: AbortSignal) => get<TerminalView[]>('/api/terminals', signal),
   vessels: (signal?: AbortSignal) => get<VesselView[]>('/api/vessels', signal),
   terminalMates: (signal?: AbortSignal) => get<TerminalMateView[]>('/api/terminal-mates', signal),
-  sailingSpaces: (departingId: number, arrivingId: number, signal?: AbortSignal) =>
-    get<SailingSpaceView[]>(`/api/sailing-spaces?departingTerminalId=${departingId}&arrivingTerminalId=${arrivingId}`, signal),
   schedule: (departingId: number, arrivingId: number, signal?: AbortSignal) =>
     get<SailingView[]>(`/api/schedule?departingTerminalId=${departingId}&arrivingTerminalId=${arrivingId}&onlyRemaining=false`, signal),
 };

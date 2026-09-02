@@ -7,10 +7,11 @@ const fixtureNow = Date.parse('2026-09-01T18:30:00.000Z');
 const app = createApp({ port: 8787, dataSource: 'fixture', rawInspector: true }, () => fixtureNow);
 
 describe('Ferry Tracker API', () => {
-  it('keeps only schedules from the last two hours or later', () => {
+  it('keeps schedules from the past two hours through the next twelve hours', () => {
     expect(isScheduleVisible('2026-09-01T16:30:00.000Z', fixtureNow)).toBe(true);
     expect(isScheduleVisible('2026-09-01T16:29:59.999Z', fixtureNow)).toBe(false);
-    expect(isScheduleVisible('2026-09-01T19:00:00.000Z', fixtureNow)).toBe(true);
+    expect(isScheduleVisible('2026-09-02T06:30:00.000Z', fixtureNow)).toBe(true);
+    expect(isScheduleVisible('2026-09-02T06:30:00.001Z', fixtureNow)).toBe(false);
     expect(isScheduleVisible(null, fixtureNow)).toBe(true);
   });
 

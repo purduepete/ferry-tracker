@@ -48,6 +48,14 @@ export class WsdotClient {
     return this.get('Schedule', `scheduletoday/${departingId}/${arrivingId}/${onlyRemaining}`, `schedule-${departingId}-${arrivingId}.json`);
   }
 
+  async getScheduleRange(departingId: number, arrivingId: number, start: number, end: number): Promise<unknown> {
+    if (this.config.dataSource === 'fixture') {
+      return this.readFixture(`schedule-${departingId}-${arrivingId}.json`);
+    }
+    const dates = [...new Set([pacificDate(start), pacificDate(end)])];
+    return Promise.all(dates.map((date) => this.get('Schedule', `schedule/${date}/${departingId}/${arrivingId}`)));
+  }
+
   private async get(service: Service, operation: string, fixtureName?: string): Promise<unknown> {
     const key = `${service}/${operation}`;
     const cached = cache.get(key);
@@ -94,13 +102,13 @@ export class WsdotClient {
   }
 }
 
-function pacificDate(): string {
+function pacificDate(timestamp: number = Date.now()): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Los_Angeles',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).formatToParts(new Date());
+  }).formatToParts(new Date(timestamp));
   const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${value.year}-${value.month}-${value.day}`;
 }

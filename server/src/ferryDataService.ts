@@ -20,11 +20,12 @@ const asRecord = (value: unknown): SourceRecord | null => value !== null && type
 const numberValue = (value: unknown): number | null => typeof value === 'number' ? value : null;
 const stringValue = (value: unknown): string | null => typeof value === 'string' ? value : null;
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 
 export function isScheduleVisible(departingTime: string | null, now: number): boolean {
   if (departingTime === null) return true;
   const departure = Date.parse(departingTime);
-  return Number.isNaN(departure) || departure >= now - TWO_HOURS_MS;
+  return Number.isNaN(departure) || (departure >= now - TWO_HOURS_MS && departure <= now + TWELVE_HOURS_MS);
 }
 
 export class FerryDataService {
@@ -122,9 +123,10 @@ export class FerryDataService {
     return { data, raw };
   }
 
-  async schedule(departingId: number, arrivingId: number, onlyRemaining: boolean): Promise<{ data: SailingView[]; raw: unknown }> {
+  async schedule(departingId: number, arrivingId: number, _onlyRemaining: boolean): Promise<{ data: SailingView[]; raw: unknown }> {
+    const now = this.now();
     const [raw, spacesRaw] = await Promise.all([
-      this.client.getSchedule(departingId, arrivingId, onlyRemaining),
+      this.client.getScheduleRange(departingId, arrivingId, now - TWO_HOURS_MS, now + TWELVE_HOURS_MS),
       this.client.getTerminalSailingSpaces(),
     ]);
     const spaces = z.array(terminalSailingSpaceSchema).parse(spacesRaw);
@@ -171,7 +173,7 @@ export class FerryDataService {
     visit(raw, { departingId, arrivingId });
     return {
       data: sailings
-        .filter((sailing) => isScheduleVisible(sailing.departingTime, this.now()))
+        .filter((sailing) => isScheduleVisible(sailing.departingTime, now))
         .sort((left, right) => (left.departingTime ?? '').localeCompare(right.departingTime ?? '')),
       raw: { schedule: raw, sailingSpace: spacesRaw },
     };
