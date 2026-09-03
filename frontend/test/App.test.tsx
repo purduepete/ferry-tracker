@@ -284,11 +284,13 @@ describe('Sailings only', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(document.querySelector('.relationship-grid')).toHaveClass('is-sailings-only');
     expect(document.querySelector('.selection-band')).toHaveClass('is-sailings-only');
+    expect(document.querySelector('.tabs')).toHaveClass('is-sailings-only');
     expect(localStorage.getItem('ferry-tracker-sailings-only')).toBe('true');
 
     await user.click(toggle);
     expect(document.querySelector('.relationship-grid')).not.toHaveClass('is-sailings-only');
     expect(document.querySelector('.selection-band')).not.toHaveClass('is-sailings-only');
+    expect(document.querySelector('.tabs')).not.toHaveClass('is-sailings-only');
     expect(localStorage.getItem('ferry-tracker-sailings-only')).toBe('false');
   });
 
@@ -313,6 +315,7 @@ describe('Sailings only', () => {
     await user.click(screen.getByRole('tab', { name: 'Terminals' }));
     expect(screen.queryByRole('button', { name: 'Sailings only' })).not.toBeInTheDocument();
     expect(document.querySelector('.selection-band')).not.toHaveClass('is-sailings-only');
+    expect(document.querySelector('.tabs')).not.toHaveClass('is-sailings-only');
   });
 });
 

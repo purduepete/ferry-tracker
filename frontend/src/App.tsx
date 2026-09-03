@@ -569,7 +569,7 @@ export function App() {
         </section>
 
         {error && <div className="error-banner" role="alert">{error}</div>}
-        <nav className="tabs" role="tablist" aria-label="Data views">
+        <nav className={`tabs${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}`} role="tablist" aria-label="Data views">
           {tabs.map(({ id, label, icon: Icon }, index) => <button ref={(element) => { tabRefs.current[index] = element; }} id={`tab-${id}`} aria-controls={`panel-${id}`} aria-selected={tab === id} role="tab" tabIndex={tab === id ? 0 : -1} key={id} type="button" className={tab === id ? 'active' : ''} onClick={() => setTab(id)} onKeyDown={(event) => handleTabKeyDown(event, index)}><Icon size={16} />{label}</button>)}
         </nav>
 

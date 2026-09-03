@@ -139,6 +139,16 @@ test('collapses the routes view to the sailings schedule on a phone', async ({ p
   expect(clipped).toEqual([]);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
+  // The band pins under the navbar so the route can change from anywhere in the schedule.
+  await page.mouse.wheel(0, 1200);
+  await expect.poll(() => page.evaluate(() => Math.round(document.querySelector('.selection-band')!.getBoundingClientRect().top - document.querySelector('.app-header')!.getBoundingClientRect().height))).toBe(0);
+  await expect(page.getByRole('button', { name: 'Terminal' })).toBeInViewport();
+  await expect(page.getByRole('button', { name: 'Destination' })).toBeInViewport();
+  await expect(page.getByRole('heading', { name: 'Live sailings and vessel positions' })).toBeAttached();
+  // The title and the tab bar go off screen rather than away, so their IDREFs still resolve.
+  await expect.poll(() => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().height)).toBeLessThan(2);
+  await page.mouse.wheel(0, -1200);
+
   await page.reload();
   await expect(page.getByRole('button', { name: 'Sailings only' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.terminal-node')).toBeHidden();
@@ -148,6 +158,7 @@ test('collapses the routes view to the sailings schedule on a phone', async ({ p
   await expect(page.locator('.terminal-node')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sailings only' })).toBeHidden();
+  await expect.poll(() => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().height)).toBeGreaterThan(40);
 });
 
 for (const width of [390, 767, 768, 1024, 1440]) {

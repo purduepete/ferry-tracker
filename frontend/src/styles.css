@@ -270,6 +270,10 @@ tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transp
   .swap-button { justify-self: center; height: 28px; transform: rotate(90deg); }
   /* Sailings only means live data, so the Day picker goes and the two route selects share a row. */
   .selection-band.is-sailings-only .day-field { display: none; }
+  /* Pinned so the route can be changed from anywhere in a long schedule. */
+  .selection-band.is-sailings-only { position: sticky; top: var(--navbar-height); padding: 10px 0; }
+  /* Off screen instead of display:none, so the h1 and the tab buttons still answer their IDREFs. */
+  .selection-band.is-sailings-only .route-title, .tabs.is-sailings-only { position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
   .selection-band.is-sailings-only .selectors { grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); align-items: center; gap: 6px; }
   .selection-band.is-sailings-only .selectors label > span, .selection-band.is-sailings-only .selector-field > span { display: none; }
   /* The star would squeeze "Bainbridge Island" into an ellipsis, and the route is already chosen by now. */
