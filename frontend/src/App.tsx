@@ -17,6 +17,7 @@ const MINIMUM_SKELETON_MS = 500;
 const SKELETON_EXIT_MS = 520;
 const LIVE_DATE = 'live';
 const favoriteTerminalsKey = 'ferry-tracker-favorite-terminals';
+const lastRouteKey = 'ferry-tracker-last-route';
 
 function loadFavoriteTerminalIds() {
   try {
@@ -25,6 +26,21 @@ function loadFavoriteTerminalIds() {
     return [...new Set(stored.filter((value): value is number => Number.isInteger(value)))];
   } catch {
     return [];
+  }
+}
+
+function loadLastRoute(): { terminalId: number | null; destinationId: number | null } {
+  const empty = { terminalId: null, destinationId: null };
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(lastRouteKey) ?? 'null');
+    if (stored === null || typeof stored !== 'object') return empty;
+    const { terminalId, destinationId } = stored as Record<string, unknown>;
+    return {
+      terminalId: Number.isInteger(terminalId) ? terminalId as number : null,
+      destinationId: Number.isInteger(destinationId) ? destinationId as number : null,
+    };
+  } catch {
+    return empty;
   }
 }
 
@@ -176,6 +192,13 @@ function vehicleSpace(sailing: SailingView) {
   return sailing.maxSpaceCount === null ? counts : `${counts} of ${sailing.maxSpaceCount} spaces`;
 }
 
+// The relationship card column is far narrower than the table cell, so the count sheds its wording there.
+function compactVehicleSpace(sailing: SailingView) {
+  if (!sailing.spaceAvailable) return '—';
+  const counts = spaceCounts(sailing);
+  return sailing.maxSpaceCount === null ? counts : `${counts} / ${sailing.maxSpaceCount}`;
+}
+
 function spaceCounts(space: Pick<SailingView, 'driveUpSpaceCount' | 'reservableSpaceCount'>) {
   const values: string[] = [];
   if (space.driveUpSpaceCount !== null) values.push(`${space.driveUpSpaceCount} drive-up`);
@@ -274,8 +297,9 @@ export function App() {
   const [vesselResponse, setVesselResponse] = useState<ApiEnvelope<VesselView[]> | null>(null);
   const [mateResponse, setMateResponse] = useState<ApiEnvelope<TerminalMateView[]> | null>(null);
   const [scheduleResponse, setScheduleResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
-  const [selectedTerminalId, setSelectedTerminalId] = useState<number | null>(null);
-  const [destinationId, setDestinationId] = useState<number | null>(null);
+  const [restoredRoute] = useState(loadLastRoute);
+  const [selectedTerminalId, setSelectedTerminalId] = useState<number | null>(restoredRoute.terminalId);
+  const [destinationId, setDestinationId] = useState<number | null>(restoredRoute.destinationId);
   const [serviceDate, setServiceDate] = useState<string>(LIVE_DATE);
   const [historyDates, setHistoryDates] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>('relationship');
@@ -308,7 +332,8 @@ export function App() {
         setTerminalResponse(terminals);
         setVesselResponse(vessels);
         setMateResponse(mates);
-        setSelectedTerminalId((current) => current ?? terminals.data[0]?.id ?? null);
+        // A restored terminal is only kept while WSDOT still publishes it.
+        setSelectedTerminalId((current) => (current !== null && terminals.data.some((terminal) => terminal.id === current) ? current : terminals.data[0]?.id ?? null));
         setLastRefreshAt((current) => latestTimestamp(current, terminals.fetchedAt, vessels.fetchedAt, mates.fetchedAt));
       })
       .catch((cause: unknown) => {
@@ -354,6 +379,13 @@ export function App() {
     { value: LIVE_DATE, label: 'Today, live' },
     ...historyDates.map((date) => ({ value: date, label: serviceDayLabel(date), icon: <History className="recorded-mark" size={13} aria-hidden="true" /> })),
   ];
+
+  useEffect(() => {
+    if (selectedTerminalId === null) return;
+    try {
+      localStorage.setItem(lastRouteKey, JSON.stringify({ terminalId: selectedTerminalId, destinationId: effectiveDestinationId }));
+    } catch { /* The route just falls back to the default on the next visit. */ }
+  }, [effectiveDestinationId, selectedTerminalId]);
 
   useEffect(() => {
     if (selectedTerminalId === null || effectiveDestinationId === null) return;
@@ -537,7 +569,7 @@ export function App() {
             <article className="relationship-node schedule-node">
               <span className="node-type">Sailings schedule</span>
               <h2>{selectedTerminal?.name ?? '—'} to {destination?.name ?? '—'}</h2>
-              {scheduleResponse?.data.length ? <ol className="sailing-list">{scheduleResponse.data.map((sailing, index) => <li key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><strong>{localTime(sailing.departingTime)}</strong><span>{sailing.vesselName ?? 'Vessel unassigned'}</span>{sailing.spaceAvailable && <span className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`} title={recordedSpaceLabel(sailing) ?? undefined}>Vehicle space: {vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></span>}<DepartureDelay sailing={sailing} /></li>)}</ol> : scheduleLoading ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div> : <div className="empty">No sailings in this 14-hour window.</div>}
+              {scheduleResponse?.data.length ? <ol className="sailing-list">{scheduleResponse.data.map((sailing, index) => <li key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><strong>{localTime(sailing.departingTime)}</strong><span>{sailing.vesselName ?? 'Vessel unassigned'}</span>{sailing.spaceAvailable && <span className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`} title={recordedSpaceLabel(sailing) ?? undefined}>{compactVehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></span>}<DepartureDelay sailing={sailing} /></li>)}</ol> : scheduleLoading ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div> : <div className="empty">No sailings in this 14-hour window.</div>}
             </article>
           </div>}
 

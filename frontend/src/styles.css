@@ -238,6 +238,11 @@ tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transp
   main { padding: 0 40px calc(48px + var(--safe-area-bottom)); }
 }
 
+@media (min-width: 768px) {
+  .relationship-node { padding: 12px; }
+  .relationship-grid { grid-template-columns: minmax(210px, 1fr) 64px minmax(210px, 1fr) 64px minmax(210px, 1fr); gap: 10px; }
+}
+
 @media (max-width: 1023px) {
   .relationship-grid { grid-template-columns: 1fr; }
   /* Rotating the whole connector spun a full-width rule into a column taller than the row. */
@@ -271,7 +276,7 @@ tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transp
 }
 
 @media (min-width: 1440px) {
-  .relationship-grid { grid-template-columns: minmax(240px, 1fr) 100px minmax(240px, 1fr) 100px minmax(240px, 1fr); }
+  .relationship-grid { grid-template-columns: minmax(240px, 1fr) 72px minmax(240px, 1fr) 72px minmax(240px, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {

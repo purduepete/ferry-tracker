@@ -23,8 +23,7 @@ test('shows the terminal to ferry to schedule relationship without external netw
   await expect(tacomaVessel.getByText('Updated')).toBeVisible();
   await expect(page.getByText(/TerminalID|VesselID/)).toHaveCount(0);
   await expect(page.locator('.schedule-node h2')).toHaveText('Seattle to Bainbridge Island');
-  await expect(page.getByText('176 drive-up of 202 spaces')).toBeVisible();
-  await expect(page.getByText('Past 2 hours · Next 12 hours')).toBeVisible();
+  await expect(page.getByText('176 drive-up / 202')).toBeVisible();
   await expect(page.getByText('Current vehicle-space reports')).toHaveCount(0);
   await expect(page.locator('.refresh-time')).toContainText('Last refresh');
   expect(sailingSpaceRequests).toBe(0);
@@ -34,7 +33,7 @@ test('shows the terminal to ferry to schedule relationship without external netw
   await expect(page.getByRole('button', { name: 'Associated destination' })).toContainText('Seattle');
   await expect(page.getByRole('status', { name: 'Loading updated ferry data' })).toBeAttached();
   await expect(page.locator('.view-loading-cover')).toBeVisible();
-  await expect(page.getByText('176 drive-up of 202 spaces')).toBeAttached();
+  await expect(page.getByText('176 drive-up / 202')).toBeAttached();
   releaseChangedRoute();
   const opacitySamples = await page.evaluate(() => new Promise<Array<{ cover: number; content: number }>>((resolve) => {
     const samples: Array<{ cover: number; content: number }> = [];
@@ -59,14 +58,16 @@ test('shows the terminal to ferry to schedule relationship without external netw
 
   const callsBeforeRefresh = scheduleRequests;
   const refreshStartedAt = Date.now();
-  await page.getByRole('button', { name: 'Refresh data' }).click();
-  await expect(page.locator('.view-loading-cover')).toBeVisible();
+  const refreshButton = page.getByRole('button', { name: 'Refresh data' });
+  await refreshButton.click();
+  // A manual refresh keeps the current view on screen and only marks the button busy.
+  await expect(refreshButton).toHaveClass(/is-busy/);
+  await expect(page.locator('.view-loading-cover')).toHaveCount(0);
+  await expect(page.locator('.schedule-node h2')).toHaveText('Bainbridge Island to Seattle');
   await expect(page.locator('.spin')).toHaveCount(0);
   await expect.poll(() => scheduleRequests).toBeGreaterThan(callsBeforeRefresh);
-  await expect(page.locator('.view-loading-cover')).toBeHidden();
-  expect(Date.now() - refreshStartedAt).toBeGreaterThanOrEqual(850);
-  await page.getByRole('tab', { name: 'Raw JSON' }).click();
-  await expect(page.getByText('WSDOT response JSON')).toBeVisible();
+  await expect(refreshButton).not.toHaveClass(/is-busy/);
+  expect(Date.now() - refreshStartedAt).toBeGreaterThanOrEqual(500);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -103,6 +104,19 @@ test('persists favorite terminals and sorts them first', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Remove Seattle from favorites' })).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('reopens on the terminal and destination chosen before the reload', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Terminal' }).click();
+  await page.getByRole('option', { name: 'Bainbridge Island' }).click();
+  await expect(page.locator('.schedule-node h2')).toHaveText('Bainbridge Island to Seattle');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-last-route'))).toBe('{"terminalId":3,"destinationId":7}');
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Terminal' })).toContainText('Bainbridge Island');
+  await expect(page.getByRole('button', { name: 'Associated destination' })).toContainText('Seattle');
+  await expect(page.locator('.schedule-node h2')).toHaveText('Bainbridge Island to Seattle');
+});
+
 for (const width of [390, 767, 768, 1024, 1440]) {
   test(`keeps the explorer usable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width < 700 ? 844 : 900 });
@@ -111,6 +125,12 @@ for (const width of [390, 767, 768, 1024, 1440]) {
 
     const columns = await page.locator('.relationship-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
     expect(columns).toBe(width < 1024 ? 1 : 5);
+
+    const wrappedSailingRows = await page.locator('.sailing-list li > span').evaluateAll((elements) => elements.filter((element) => {
+      const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+      return element.getBoundingClientRect().height > lineHeight * 1.5;
+    }).map((element) => element.textContent ?? ''));
+    expect(wrappedSailingRows, `wrapped at ${width}px`).toEqual([]);
 
     await page.getByRole('button', { name: 'Appearance' }).click();
     const bounds = await page.getByRole('dialog', { name: 'Appearance settings' }).boundingBox();
