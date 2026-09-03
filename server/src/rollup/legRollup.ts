@@ -204,7 +204,14 @@ function buildLegs(
         legs.push(finish(open, observation.ts, terminalId));
         lastArrival = { terminalId, at: observation.ts, origin: 'observed' };
         open = null;
-      } else if (lastArrival === null || lastArrival.terminalId !== observation.departing_terminal_id) {
+      } else if (
+        lastArrival === null ||
+        // A recorded arrival outranks the feed's departing terminal, which can still name the
+        // crossing that just ended for a poll or two after docking. Discarding it here made the
+        // same observations produce a different dwell depending on where the batch started,
+        // because a whole pass closes the open leg on this observation instead.
+        (lastArrival.origin !== 'observed' && lastArrival.terminalId !== observation.departing_terminal_id)
+      ) {
         lastArrival = {
           terminalId: observation.departing_terminal_id,
           at: observation.ts,

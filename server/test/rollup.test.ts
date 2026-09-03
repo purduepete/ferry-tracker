@@ -477,9 +477,6 @@ describe('dock state debounce', () => {
       { minute: 62, atDock: 0, leftDock: at(62) },
       { minute: 95, atDock: 1 },
     ];
-    // load_exclusion_reason is left out on purpose. A pass that resumes from an anchor loses
-    // the seeded arrival, so it reads 'unobserved_arrival' where a single pass reads
-    // 'terminal_discontinuity'. That split predates the debounce and reproduces at window 0.
     const shape = (rows: Array<Record<string, string | number | null>>) =>
       rows.map((row) => ({
         departed_at: row.departed_at,
@@ -488,6 +485,11 @@ describe('dock state debounce', () => {
         complete: row.complete,
         confidence: row.confidence,
         exclusion_reason: row.exclusion_reason,
+        load_minutes: row.load_minutes,
+        load_exclusion_reason: row.load_exclusion_reason,
+        previous_arrival_at: row.previous_arrival_at,
+        scheduled_departure: row.scheduled_departure,
+        scheduled_departure_source: row.scheduled_departure_source,
       }));
 
     observe(trace);
@@ -503,6 +505,30 @@ describe('dock state debounce', () => {
 
     expect(shape(legs())).toEqual(wholeBatch);
     expect(wholeBatch).toHaveLength(2);
+  });
+
+  it('keeps the dock turnaround when a later pass resumes from a stored leg', () => {
+    // The poll that reports the arrival still names the crossing that just ended, so the
+    // departing terminal disagrees with where the boat was seen to dock.
+    observe([
+      { minute: 0, atDock: 1, departing: 7, arriving: 3 },
+      { minute: 10, atDock: 0, departing: 7, arriving: 3, leftDock: at(10) },
+      { minute: 40, atDock: 1, departing: 7, arriving: 3 },
+    ]);
+    runLegRollup(db, options);
+
+    observe([
+      { minute: 50, atDock: 1, departing: 3, arriving: 7 },
+      { minute: 60, atDock: 0, departing: 3, arriving: 7, leftDock: at(60) },
+      { minute: 90, atDock: 1, departing: 3, arriving: 7 },
+    ]);
+    runLegRollup(db, options);
+
+    const [, second] = legs();
+
+    expect(second.previous_arrival_at).toBe(at(40));
+    expect(second.load_minutes).toBe(20);
+    expect(second.load_exclusion_reason).toBeNull();
   });
 });
 
