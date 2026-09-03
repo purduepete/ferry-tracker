@@ -168,11 +168,15 @@ function SettingField({ label, ariaLabel, hint, setting, unit, settings, onChang
   );
 }
 
+function VesselLink({ vesselId, vesselName, vessels, onOpen }: { vesselId: number | null; vesselName: string; vessels: VesselView[]; onOpen: (terminalId: number | null, destination: number | null) => void }) {
+  const live = vessels.find((vessel) => vessel.id === vesselId);
+  if (!live || live.departingTerminalId === null) return <>{vesselName}</>;
+  return <button className="card-link" type="button" title={`Show ${vesselName}'s current route in the routes view`} onClick={() => onOpen(live.departingTerminalId, live.arrivingTerminalId)}>{vesselName}</button>;
+}
+
 function SailingVessel({ sailing, vessels, onOpen }: { sailing: SailingView; vessels: VesselView[]; onOpen: (terminalId: number | null, destination: number | null) => void }) {
   if (!sailing.vesselName) return <span className="null">null</span>;
-  const live = vessels.find((vessel) => vessel.id === sailing.vesselId);
-  if (!live || live.departingTerminalId === null) return <>{sailing.vesselName}</>;
-  return <button className="card-link" type="button" title={`Show ${sailing.vesselName}'s current route in the routes view`} onClick={() => onOpen(live.departingTerminalId, live.arrivingTerminalId)}>{sailing.vesselName}</button>;
+  return <VesselLink vesselId={sailing.vesselId} vesselName={sailing.vesselName} vessels={vessels} onOpen={onOpen} />;
 }
 
 function ViewPlaceholder({ label, tab, sailingsOnly }: { label: string; tab: Tab; sailingsOnly?: boolean }) {
@@ -605,7 +609,7 @@ export function App() {
                 </div>
                 <dl className="countdown-detail">
                   <Field label="Departure" value={fieldTime(nextCatch.departureAt)} />
-                  <Field label="Vessel" value={nextCatch.vesselName} />
+                  <Field label="Vessel" value={nextCatch.vesselName && <VesselLink vesselId={nextCatch.vesselId} vesselName={nextCatch.vesselName} vessels={vessels} onOpen={openRoute} />} />
                   <Field label="Space" value={nextCatch.spaceLabel && <>{nextCatch.spaceLabel} <CapacityPill percent={nextCatch.spacePercent} total={nextCatch.spaceTotal} /></>} />
                 </dl>
                 {laterCatches.length > 0 && <div className="countdown-later"><span className="node-type">Then</span><ol className="sailing-list">{laterCatches.slice(0, 5).map((window) => <li key={window.departureAt}><strong>{clockTime(window.departureAt)}<span className={`capacity-pill ${catchPillClass(catchWindowLevel(window, settings))}`}>{`${window.minutesAway} min`}</span></strong><span>Leave by {clockTime(window.leaveByAt)}{window.spaceLabel ? ` · ${window.spaceLabel} ` : ''}<CapacityPill percent={window.spacePercent} total={window.spaceTotal} /></span></li>)}</ol></div>}
@@ -622,10 +626,9 @@ export function App() {
                 <span className="countdown-at">Traffic {nextWave.active ? 'since' : 'from'} {clockTime(nextWave.disruptionAt)}</span>
               </div>
               <dl className="countdown-detail">
-                <Field label="Vessel" value={nextWave.vesselName} />
+                <Field label="Vessel" value={<VesselLink vesselId={nextWave.vesselId} vesselName={nextWave.vesselName} vessels={vessels} onOpen={openRoute} />} />
                 <Field label="Lands" value={fieldTime(nextWave.landingAt)} />
-                <Field label="Lead" value={`${settings.disruptionLeadMinutes} min after landing`} />
-                <Field label="Clears" value={nextWave.ongoing ? 'Ongoing' : fieldTime(nextWave.clearsAt)} />
+                <Field label="Disruption" value={nextWave.ongoing ? `${clockTime(nextWave.disruptionAt)} onward` : `${clockTime(nextWave.disruptionAt)} to ${clockTime(nextWave.clearsAt)}`} />
                 <Field label="Capacity" value={nextLoad && <>{`${nextLoad.percentFull}% full`} <CapacityPill percent={nextLoad.openPercent} total={nextLoad.totalSpace} /></>} />
               </dl>
               {laterWaves.length > 0 && <div className="countdown-later"><span className="node-type">Behind it</span><ol className="sailing-list">{laterWaves.map((wave) => <li key={`${wave.vesselId}-${wave.disruptionAt}`}><strong>{clockTime(wave.disruptionAt)}<span className={`capacity-pill ${catchPillClass(disruptionLevel(wave.minutesAway, settings))}`}>{wave.active ? 'now' : `${wave.minutesAway} min`}</span></strong><span>{wave.vesselName} lands {clockTime(wave.landingAt)}</span></li>)}</ol></div>}

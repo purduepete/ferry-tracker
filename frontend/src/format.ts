@@ -335,6 +335,7 @@ export interface CatchWindow {
   departureAt: string;
   leaveByAt: string;
   minutesAway: number;
+  vesselId: number | null;
   vesselName: string | null;
   spaceLabel: string | null;
   spacePercent: number | null;
@@ -373,7 +374,7 @@ export const CATCH_LATE_LIMIT_MINUTES = 15;
 // A boat still at the dock is worth showing once leave-by has passed, so minutesAway can run
 // negative, but only until it is 15 minutes gone or the deck is full.
 export function catchWindows(
-  sailings: Array<Pick<SailingView, 'departingTime' | 'actualDeparture' | 'vesselName' | 'isCancelled' | 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount'>>,
+  sailings: Array<Pick<SailingView, 'departingTime' | 'actualDeparture' | 'vesselId' | 'vesselName' | 'isCancelled' | 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount'>>,
   now: number,
   padMinutes: number = DEFAULT_SETTINGS.catchPadMinutes,
 ): CatchWindow[] {
@@ -392,6 +393,7 @@ export function catchWindows(
         departureAt: new Date(departsAt).toISOString(),
         leaveByAt: new Date(leaveBy).toISOString(),
         minutesAway,
+        vesselId: sailing.vesselId,
         vesselName: sailing.vesselName ?? null,
         spaceLabel: sailing.spaceAvailable ? compactVehicleSpace(sailing) : null,
         spacePercent: openSpacePercent(sailing),
