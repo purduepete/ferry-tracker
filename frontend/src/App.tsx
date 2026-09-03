@@ -18,6 +18,7 @@ const tabs: Array<{ id: Tab; label: string; icon: typeof Waypoints }> = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 const COUNTDOWN_TICK_MS = 15_000;
+const COUNTDOWN_REFRESH_MS = 60_000;
 const MINIMUM_SKELETON_MS = 500;
 const SKELETON_EXIT_MS = 520;
 const LIVE_DATE = 'live';
@@ -399,6 +400,18 @@ export function App() {
     if (tab !== 'catch' && tab !== 'disruption') return;
     setCountdownNow(Date.now());
     const timer = window.setInterval(() => setCountdownNow(Date.now()), COUNTDOWN_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [tab]);
+
+  // Ticking the clock is not enough: a boat that ties up leaves the vessel feed and the one
+  // behind it only appears in a fresh fetch, so the countdown tabs poll while they are open.
+  useEffect(() => {
+    if (tab !== 'catch' && tab !== 'disruption') return;
+    const timer = window.setInterval(() => {
+      setBackgroundRefresh(true);
+      loadOverview();
+      setRefreshVersion((current) => current + 1);
+    }, COUNTDOWN_REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [tab]);
 
