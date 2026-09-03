@@ -30,6 +30,7 @@ function captureConfig(overrides: Partial<AppConfig['capture']> = {}): AppConfig
       rollupIntervalMs: 1_000_000,
       retentionDays: null,
       dwellCeilingMinutes: 120,
+      dockDebounceSeconds: 120,
       minFreeDiskMb: 0,
       statusEnabled: true,
       ...overrides,

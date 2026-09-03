@@ -19,6 +19,7 @@ export interface CaptureConfig {
   rollupIntervalMs: number;
   retentionDays: number | null;
   dwellCeilingMinutes: number;
+  dockDebounceSeconds: number;
   minFreeDiskMb: number;
   statusEnabled: boolean;
 }
@@ -60,6 +61,10 @@ function getCaptureConfig(): CaptureConfig {
     rollupIntervalMs: positive(process.env.CAPTURE_ROLLUP_INTERVAL_MS, 900_000),
     retentionDays: retention(process.env.CAPTURE_RETENTION_DAYS),
     dwellCeilingMinutes: positive(process.env.CAPTURE_DWELL_CEILING_MINUTES, 120),
+    // Twice the p99 poll gap of 60s, so a blip cannot outlive it. The ceiling is the
+    // shortest genuine dock turnaround, not the shortest crossing: replaying the captured
+    // observations at 300s drops 10 real legs by swallowing quick interisland turnarounds.
+    dockDebounceSeconds: positive(process.env.CAPTURE_DOCK_DEBOUNCE_SECONDS, 120),
     minFreeDiskMb: positive(process.env.CAPTURE_MIN_FREE_DISK_MB, 512),
     statusEnabled: process.env.CAPTURE_STATUS_ENABLED !== 'false',
   };

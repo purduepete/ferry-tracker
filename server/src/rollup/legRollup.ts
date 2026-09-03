@@ -3,6 +3,7 @@ import type { Db } from '../db/database.js';
 
 export interface RollupOptions {
   dwellCeilingMinutes: number;
+  dockDebounceSeconds: number;
 }
 
 export interface RollupResult {
@@ -56,6 +57,76 @@ interface Leg {
 
 const SLOT_LOOKBACK_MINUTES = 15;
 
+interface DockRun {
+  state: number;
+  segment: number;
+  startMs: number;
+  indexes: number[];
+}
+
+// WSDOT flips AtDock on and off for a minute or two either side of a real departure, and
+// every blip would otherwise open a leg and close it again on the next poll. A state has to
+// hold for the window before the machine believes it.
+function debounceDockState(observations: Observation[], windowSeconds: number): Observation[] {
+  if (windowSeconds <= 0 || observations.length === 0) return observations;
+  const windowMs = windowSeconds * 1000;
+  const runs = dockRuns(observations);
+  const settled = observations.map((observation) => observation.at_dock);
+
+  // The last run of a segment has no successor, so how long it held is not known yet. Neither
+  // is a run whose only successor sits on the far side of a long poll gap.
+  const brief = (index: number): boolean =>
+    index < runs.length - 1 &&
+    runs[index + 1].segment === runs[index].segment &&
+    runs[index + 1].startMs - runs[index].startMs < windowMs;
+
+  for (let i = 1; i < runs.length; i += 1) {
+    if (runs[i - 1].segment !== runs[i].segment || !brief(i)) continue;
+
+    // Once the feed starts flapping, nothing it says until it settles again is worth
+    // anything, so the whole stretch reads as the last state that held.
+    const { state, segment } = runs[i - 1];
+    let end = i;
+    while (end < runs.length && runs[end].segment === segment && brief(end)) {
+      for (const index of runs[end].indexes) settled[index] = state;
+      end += 1;
+    }
+    i = end - 1;
+  }
+
+  return observations.map((observation, index) =>
+    settled[index] === observation.at_dock ? observation : { ...observation, at_dock: settled[index] },
+  );
+}
+
+function dockRuns(observations: Observation[]): DockRun[] {
+  const runs: DockRun[] = [];
+  let open: DockRun | null = null;
+  let segment = 0;
+
+  for (let index = 0; index < observations.length; index += 1) {
+    const observation = observations[index];
+    // A service gap breaks continuity, so no run may span one.
+    if (observation.in_service === 0) {
+      segment += 1;
+      open = null;
+      continue;
+    }
+    const state = observation.at_dock;
+    if (state === null) continue;
+    const startMs = Date.parse(observation.ts);
+    if (Number.isNaN(startMs)) continue;
+
+    if (open && open.state === state) {
+      open.indexes.push(index);
+      continue;
+    }
+    open = { state, segment, startMs, indexes: [index] };
+    runs.push(open);
+  }
+  return runs;
+}
+
 export function runLegRollup(db: Db, options: RollupOptions): RollupResult {
   const vessels = db
     .prepare('SELECT DISTINCT vessel_id FROM vessel_observation ORDER BY vessel_id')
@@ -69,7 +140,10 @@ export function runLegRollup(db: Db, options: RollupOptions): RollupResult {
       const anchor = lastCompleteLeg(db, vesselId);
       result.legsRemoved += clearFrom(db, vesselId, anchor?.departed_at ?? null);
 
-      const observations = readObservations(db, vesselId, anchor?.dock_arrival_at ?? null);
+      const observations = debounceDockState(
+        readObservations(db, vesselId, anchor?.dock_arrival_at ?? null),
+        options.dockDebounceSeconds,
+      );
       if (observations.length === 0) continue;
 
       const seed: Arrival | null = anchor?.dock_arrival_at

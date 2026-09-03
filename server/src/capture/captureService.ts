@@ -160,6 +160,7 @@ export class CaptureService {
   }
 
   private record(task: TaskState, startedAt: string, startedMs: number, result: TaskOutcome): void {
+    if (this.stopping) return;
     this.db
       .prepare(`INSERT INTO capture_run (
         task, endpoint_id, started_at, finished_at, duration_ms, response_hash, changed,
@@ -181,6 +182,9 @@ export class CaptureService {
   }
 
   private recordError(task: TaskState, startedAt: string, startedMs: number, error: unknown): void {
+    // stop() cannot cancel a request already in flight and the caller closes the database
+    // straight after, so a late run row would throw on a closed connection.
+    if (this.stopping) return;
     this.db
       .prepare(`INSERT INTO capture_run (
         task, endpoint_id, started_at, finished_at, duration_ms, response_hash, changed,
@@ -199,7 +203,10 @@ export class CaptureService {
   }
 
   private async rollup(): Promise<TaskOutcome> {
-    const legs = runLegRollup(this.db, { dwellCeilingMinutes: this.config.capture.dwellCeilingMinutes });
+    const legs = runLegRollup(this.db, {
+      dwellCeilingMinutes: this.config.capture.dwellCeilingMinutes,
+      dockDebounceSeconds: this.config.capture.dockDebounceSeconds,
+    });
     const pruned = await pruneOldData(this.db, { retentionDays: this.config.capture.retentionDays, now: this.now });
     const removed =
       pruned.vesselObservations + pruned.sailingSpaceObservations + pruned.sailingSpaceDepartures + pruned.captureRuns;

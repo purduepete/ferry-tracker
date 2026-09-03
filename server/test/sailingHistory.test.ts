@@ -285,6 +285,7 @@ function testConfig(): AppConfig {
       rollupIntervalMs: 900_000,
       retentionDays: null,
       dwellCeilingMinutes: 120,
+      dockDebounceSeconds: 120,
       minFreeDiskMb: 512,
       statusEnabled: true,
     },

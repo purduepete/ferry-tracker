@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase, type Db } from '../src/db/database';
 import { runLegRollup } from '../src/rollup/legRollup';
 
-const options = { dwellCeilingMinutes: 120 };
+const options = { dwellCeilingMinutes: 120, dockDebounceSeconds: 120 };
 
 let db: Db;
 let clock = 0;
@@ -336,6 +336,173 @@ describe('leg state machine', () => {
     expect(result.vessels).toBe(2);
     expect(stored.watermark).toBe(result.watermark);
     expect(result.watermark).not.toBeNull();
+  });
+});
+
+describe('dock state debounce', () => {
+  // Replayed from the Tacoma 07:05 Seattle to Bainbridge sailing on 2026-09-03, where
+  // AtDock flipped three times over three minutes before the boat actually left.
+  it('ignores AtDock blips and takes the departure from the settled reading', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 9.5, atDock: 1 },
+      { minute: 10, atDock: 0 },
+      { minute: 10.5, atDock: 1 },
+      { minute: 15.6, atDock: 0, leftDock: at(15.6) },
+      { minute: 16.1, atDock: 0, leftDock: at(16) },
+      { minute: 16.8, atDock: 1 },
+      { minute: 17.3, atDock: 1 },
+      { minute: 17.5, atDock: 0, leftDock: at(17.5) },
+      { minute: 18.2, atDock: 1 },
+      { minute: 18.8, atDock: 0, leftDock: at(18.4) },
+      { minute: 25, atDock: 0, leftDock: at(18.4) },
+      { minute: 50, atDock: 1 },
+    ]);
+
+    runLegRollup(db, options);
+    const rows = legs();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].departed_at).toBe(at(18.4));
+    expect(rows[0].dock_arrival_at).toBe(at(50));
+    expect(rows[0].crossing_minutes).toBe(31.6);
+    expect(rows[0].confidence).toBe('high');
+  });
+
+  it('keeps a genuine crossing that lasts longer than the window', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 13, atDock: 1 },
+      { minute: 40, atDock: 0, leftDock: at(40) },
+      { minute: 70, atDock: 1 },
+    ]);
+
+    runLegRollup(db, options);
+    const rows = legs();
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].departed_at).toBe(at(10));
+    expect(rows[0].dock_arrival_at).toBe(at(13));
+    expect(rows[1].departed_at).toBe(at(40));
+  });
+
+  it('leaves a lone reading before a long poll gap alone', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 40, atDock: 1 },
+      { minute: 62, atDock: 0, leftDock: at(62) },
+      { minute: 95, atDock: 1 },
+    ]);
+
+    runLegRollup(db, options);
+    const rows = legs();
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].dock_arrival_at).toBe(at(40));
+    expect(rows[1].departed_at).toBe(at(62));
+  });
+
+  it('never absorbs a blip across an out of service gap', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 40, atDock: 1 },
+      { minute: 40.5, atDock: 0, inService: 0 },
+      { minute: 41, atDock: 1 },
+      { minute: 60, atDock: 0, leftDock: at(60) },
+      { minute: 95, atDock: 1 },
+    ]);
+
+    runLegRollup(db, options);
+    const rows = legs();
+
+    expect(rows[0].dock_arrival_at).toBe(at(40));
+    expect(rows[1].load_exclusion_reason).toBe('service_gap');
+  });
+
+  it('records no leg at all when the vessel only ever flickered', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 10.5, atDock: 1 },
+      { minute: 20, atDock: 0, leftDock: at(20) },
+      { minute: 20.6, atDock: 1 },
+      { minute: 40, atDock: 1 },
+    ]);
+
+    runLegRollup(db, options);
+
+    expect(legs()).toHaveLength(0);
+  });
+
+  // A run at the end of the batch has no successor yet, so the debounce cannot know whether
+  // it held. The next pass sees the successor and may collapse it, so the incremental result
+  // has to converge on what a single pass over everything would have produced.
+  it('settles a trailing blip once the next pass sees what followed it', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+    ]);
+    runLegRollup(db, options);
+    // Nothing has closed, so the blip is still standing as an open leg.
+    expect(legs()).toHaveLength(1);
+    expect(legs()[0].complete).toBe(0);
+
+    observe([
+      { minute: 10.5, atDock: 1 },
+      { minute: 30, atDock: 0, leftDock: at(30) },
+      { minute: 62, atDock: 1 },
+    ]);
+    runLegRollup(db, options);
+
+    const rows = legs();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].departed_at).toBe(at(30));
+    expect(rows[0].dock_arrival_at).toBe(at(62));
+    expect(rows[0].complete).toBe(1);
+  });
+
+  it('reaches the same legs whether replayed in one pass or many', () => {
+    const trace: Array<{ minute: number; atDock: number; leftDock?: string }> = [
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 10.5, atDock: 1 },
+      { minute: 15.6, atDock: 0, leftDock: at(15.6) },
+      { minute: 16.8, atDock: 1 },
+      { minute: 18.8, atDock: 0, leftDock: at(18.4) },
+      { minute: 25, atDock: 0, leftDock: at(18.4) },
+      { minute: 50, atDock: 1 },
+      { minute: 62, atDock: 0, leftDock: at(62) },
+      { minute: 95, atDock: 1 },
+    ];
+    // load_exclusion_reason is left out on purpose. A pass that resumes from an anchor loses
+    // the seeded arrival, so it reads 'unobserved_arrival' where a single pass reads
+    // 'terminal_discontinuity'. That split predates the debounce and reproduces at window 0.
+    const shape = (rows: Array<Record<string, string | number | null>>) =>
+      rows.map((row) => ({
+        departed_at: row.departed_at,
+        dock_arrival_at: row.dock_arrival_at,
+        crossing_minutes: row.crossing_minutes,
+        complete: row.complete,
+        confidence: row.confidence,
+        exclusion_reason: row.exclusion_reason,
+      }));
+
+    observe(trace);
+    runLegRollup(db, options);
+    const wholeBatch = shape(legs());
+
+    db.prepare('DELETE FROM sailing_leg').run();
+    db.prepare('DELETE FROM vessel_observation').run();
+    for (const input of trace) {
+      observe([input]);
+      runLegRollup(db, options);
+    }
+
+    expect(shape(legs())).toEqual(wholeBatch);
+    expect(wholeBatch).toHaveLength(2);
   });
 });
 
