@@ -1,10 +1,11 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Check, ChevronDown, Star } from 'lucide-react';
 
 export interface FilterSelectOption<T extends string | number> {
   value: T;
   label: string;
   favorite?: boolean;
+  icon?: ReactNode;
 }
 
 interface FilterSelectProps<T extends string | number> {
@@ -90,7 +91,7 @@ export function FilterSelect<T extends string | number>({ ariaLabel, disabled = 
         onClick={() => open ? setOpen(false) : openMenu()}
         onKeyDown={handleKeyDown}
       >
-        <span>{selected?.label ?? placeholder}</span>
+        <span>{selected?.label ?? placeholder}{selected?.icon}</span>
         <ChevronDown className={open ? 'open' : ''} size={15} />
       </button>
       {open && <div className="filter-select-menu" id={listboxId} role="listbox" aria-label={ariaLabel}>
@@ -107,7 +108,7 @@ export function FilterSelect<T extends string | number>({ ariaLabel, disabled = 
             onClick={() => select(index)}
           >
             <span className="option-check">{active && <Check size={14} />}</span>
-            <span>{option.label}</span>
+            <span className="option-label">{option.label}{option.icon}</span>
             <span className="option-favorite" aria-hidden="true">{option.favorite && <Star fill="currentColor" size={13} />}</span>
           </button>;
         })}

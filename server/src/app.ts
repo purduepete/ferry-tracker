@@ -6,6 +6,7 @@ import { ZodError } from 'zod';
 import type { CaptureService } from './capture/captureService.js';
 import type { AppConfig } from './config.js';
 import { FerryDataService } from './ferryDataService.js';
+import type { SailingHistory } from './history/sailingHistory.js';
 import { WsdotClient } from './wsdotClient.js';
 
 function terminalId(value: unknown): number | null {
@@ -14,9 +15,14 @@ function terminalId(value: unknown): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function createApp(config: AppConfig, now: () => number = Date.now, capture?: CaptureService) {
+export function createApp(
+  config: AppConfig,
+  now: () => number = Date.now,
+  capture?: CaptureService,
+  history?: SailingHistory,
+) {
   const app = express();
-  const service = new FerryDataService(new WsdotClient(config), now);
+  const service = new FerryDataService(new WsdotClient(config), now, history);
 
   const send = <T>(response: Response, result: { data: T; raw: unknown }) => {
     const envelope: ApiEnvelope<T> = {
@@ -63,6 +69,34 @@ export function createApp(config: AppConfig, now: () => number = Date.now, captu
     }
     const onlyRemaining = request.query.onlyRemaining === 'true';
     try { send(response, await service.schedule(departingId, arrivingId, onlyRemaining)); } catch (error) { next(error); }
+  });
+
+  app.get('/api/history/dates', (request, response, next) => {
+    const departingId = terminalId(request.query.departingTerminalId);
+    const arrivingId = terminalId(request.query.arrivingTerminalId);
+    if (!departingId || !arrivingId || departingId === arrivingId) {
+      response.status(400).json({ error: 'Valid, different departingTerminalId and arrivingTerminalId values are required.' });
+      return;
+    }
+    if (!history) {
+      response.status(404).json({ error: 'Recorded sailings are not available.' });
+      return;
+    }
+    try { send(response, { data: history.serviceDates(departingId, arrivingId), raw: null }); } catch (error) { next(error); }
+  });
+  app.get('/api/history/sailings', (request, response, next) => {
+    const departingId = terminalId(request.query.departingTerminalId);
+    const arrivingId = terminalId(request.query.arrivingTerminalId);
+    const serviceDate = typeof request.query.serviceDate === 'string' ? request.query.serviceDate : '';
+    if (!departingId || !arrivingId || departingId === arrivingId || !/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
+      response.status(400).json({ error: 'Valid, different terminal ids and a YYYY-MM-DD serviceDate are required.' });
+      return;
+    }
+    if (!history) {
+      response.status(404).json({ error: 'Recorded sailings are not available.' });
+      return;
+    }
+    try { send(response, { data: history.daySailings(departingId, arrivingId, serviceDate), raw: null }); } catch (error) { next(error); }
   });
 
   const frontendDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../frontend/dist');

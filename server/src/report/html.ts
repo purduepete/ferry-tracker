@@ -180,7 +180,7 @@ function delaySection(data: ReportData): string {
     num(row.p90Minutes, ' min'),
     row.onTimePct === null ? '<span class="muted">n/a</span>' : bar(row.onTimePct),
   ]);
-  const note = `Departures with high or medium confidence only. ${data.delayExcluded} low confidence legs were left out. On time means within 5 minutes; a negative median means the boat usually leaves early.`;
+  const note = `Departures with high or medium confidence only. ${data.delayExcluded} low confidence legs were left out. On time means within 5 minutes.`;
   return section('delay', 'clock', 'When do ferries run late', escape(note), table(['Hour', 'Legs', 'Median delay', '90th percentile', 'On time'], rows));
 }
 

@@ -179,7 +179,7 @@ function start(
 ): Leg {
   const cleanDeparture = previous !== null && previous.at_dock === 1;
   const departedAt = observation.left_dock ?? observation.ts;
-  const scheduled = resolveScheduledDeparture(db, observation, lastArrival, options);
+  const scheduled = resolveScheduledDeparture(db, observation, lastArrival, departedAt, options);
   const dwell = resolveDwell(observation, lastArrival, departedAt, options);
 
   return {
@@ -238,27 +238,35 @@ function resolveScheduledDeparture(
   db: Db,
   observation: Observation,
   lastArrival: Arrival | null,
+  departedAt: string,
   options: RollupOptions,
 ): { value: string | null; source: string | null } {
-  if (observation.scheduled_departure) return { value: observation.scheduled_departure, source: 'feed' };
+  // A ferry never leaves before its slot, so a later slot means the feed rolled forward
+  // while left_dock still held the previous crossing. Fall through to the schedule instead.
+  const departedMs = Date.parse(departedAt);
+  const sane = (value: string) => Number.isNaN(departedMs) || Date.parse(value) <= departedMs;
+
+  if (observation.scheduled_departure && sane(observation.scheduled_departure)) {
+    return { value: observation.scheduled_departure, source: 'feed' };
+  }
   if (!lastArrival || observation.departing_terminal_id === null || observation.arriving_terminal_id === null) {
     return { value: null, source: null };
   }
 
   // Matched against the DOCK ARRIVAL. Matching the actual departure would let a
-  // 45 minute late sailing claim the next slot and read as early.
+  // 45 minute late sailing claim the next slot.
   const arrivalMs = Date.parse(lastArrival.at);
   if (Number.isNaN(arrivalMs)) return { value: null, source: null };
   const windowStart = new Date(arrivalMs - SLOT_LOOKBACK_MINUTES * 60_000).toISOString();
   const windowEnd = new Date(arrivalMs + options.dwellCeilingMinutes * 60_000).toISOString();
 
-  const slots = db
+  const slots = (db
     .prepare(`SELECT departing_time FROM schedule_snapshot
       WHERE departing_terminal_id = ? AND arriving_terminal_id = ?
         AND departing_time >= ? AND departing_time <= ?`)
     .all(observation.departing_terminal_id, observation.arriving_terminal_id, windowStart, windowEnd) as Array<{
       departing_time: string;
-    }>;
+    }>).filter((slot) => sane(slot.departing_time));
   if (slots.length === 0) return { value: null, source: null };
 
   const nearest = slots.reduce((best, slot) =>

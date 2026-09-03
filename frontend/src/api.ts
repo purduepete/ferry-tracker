@@ -13,4 +13,8 @@ export const ferryApi = {
   terminalMates: (signal?: AbortSignal) => get<TerminalMateView[]>('/api/terminal-mates', signal),
   schedule: (departingId: number, arrivingId: number, signal?: AbortSignal) =>
     get<SailingView[]>(`/api/schedule?departingTerminalId=${departingId}&arrivingTerminalId=${arrivingId}&onlyRemaining=false`, signal),
+  historyDates: (departingId: number, arrivingId: number, signal?: AbortSignal) =>
+    get<string[]>(`/api/history/dates?departingTerminalId=${departingId}&arrivingTerminalId=${arrivingId}`, signal),
+  historySailings: (departingId: number, arrivingId: number, serviceDate: string, signal?: AbortSignal) =>
+    get<SailingView[]>(`/api/history/sailings?departingTerminalId=${departingId}&arrivingTerminalId=${arrivingId}&serviceDate=${serviceDate}`, signal),
 };

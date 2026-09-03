@@ -170,6 +170,14 @@ export interface SailingView {
   reservableSpaceCount: number | null;
   maxSpaceCount: number | null;
   spaceAvailable: boolean;
+  // WSDOT drops a departure from the space feed the moment it sails, so a past sailing's
+  // counts can only come from capture. Lead time says how stale that last reading was.
+  spaceSource: 'live' | 'recorded' | null;
+  spaceObservedAt: string | null;
+  spaceLeadSeconds: number | null;
+  // Only present once a boat has sailed and the rollup vouched for the leg.
+  actualDeparture: string | null;
+  departureDelayMinutes: number | null;
   raw: SourceRecord;
 }
 

@@ -2,7 +2,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import { App, capacityLevel, openSpacePercent, vesselRouteRank } from '../src/App';
+import { App, capacityLevel, departureDelayLabel, departureDelayMinutes, openSpacePercent, recordedSpaceLabel, serviceDayLabel, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/App';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
@@ -30,6 +30,7 @@ describe('Ferry data explorer', () => {
         { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
         { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
       ]);
+      if (url.includes('/api/history')) return json([]);
       scheduleCalls += 1;
       return json([{ vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
     });
@@ -55,8 +56,37 @@ describe('Ferry data explorer', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Refresh data' }));
     await waitFor(() => expect(scheduleCalls).toBeGreaterThan(callsBeforeRefresh));
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Raw JSON' }));
-    expect(screen.getByText('WSDOT response JSON')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+    expect(screen.queryByRole('tab', { name: 'Raw JSON' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the current view on screen while a manual refresh runs', async () => {
+    let terminalCalls = 0;
+    let releaseRefresh: () => void = () => {};
+    const refreshGate = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) {
+        terminalCalls += 1;
+        return terminalCalls > 1 ? refreshGate.then(() => json(terminals)) : json(terminals);
+      }
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([{ vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Tacoma' })).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('.view-loading-cover')).toBeNull());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh data' }));
+    expect(screen.getByRole('heading', { name: 'Tacoma' })).toBeInTheDocument();
+    expect(document.querySelector('.view-loading-cover')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Refresh data' })).toHaveClass('is-busy');
+
+    releaseRefresh();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh data' })).not.toHaveClass('is-busy'));
   });
 
   it('moves and selects tabs with arrow keys', async () => {
@@ -65,6 +95,7 @@ describe('Ferry data explorer', () => {
       if (url.includes('/api/terminals')) return json(terminals);
       if (url.includes('/api/vessels')) return json(vessels);
       if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
       return json([]);
     });
 
@@ -76,7 +107,7 @@ describe('Ferry data explorer', () => {
     expect(screen.getByRole('tab', { name: 'Terminals' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tabpanel', { name: 'Terminals' })).toBeInTheDocument();
     await user.keyboard('{End}');
-    expect(screen.getByRole('tab', { name: 'Raw JSON' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveFocus();
   });
 
   it('sorts persisted favorites alphabetically above other terminals', async () => {
@@ -94,6 +125,7 @@ describe('Ferry data explorer', () => {
         { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
         { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
       ]);
+      if (url.includes('/api/history')) return json([]);
       return json([]);
     });
 
@@ -130,6 +162,7 @@ describe('Ferry data explorer', () => {
         { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
         { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
       ]);
+      if (url.includes('/api/history')) return json([]);
       scheduleCalls += 1;
       if (scheduleCalls > 1) return changedRouteResponse;
       return json([{ vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
@@ -181,6 +214,7 @@ describe('Capacity pill', () => {
       if (url.includes('/api/terminals')) return json(terminals);
       if (url.includes('/api/vessels')) return json(vessels);
       if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
       return json([
         { vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 40, reservableSpaceCount: null, maxSpaceCount: 200, spaceAvailable: true, raw: {} },
         { vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T18:00:00.000Z', arrivingTime: '2026-09-01T18:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 200, reservableSpaceCount: null, maxSpaceCount: 200, spaceAvailable: true, raw: {} },
@@ -194,8 +228,236 @@ describe('Capacity pill', () => {
   });
 });
 
-describe('Associated vessel order', () => {
-  it('ranks the selected route ahead of its reverse, departures, then arrivals', () => {
+describe('Recorded vehicle space', () => {
+  const observedAt = '2026-09-01T17:57:00.000Z';
+  const at = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(observedAt));
+
+  it('says nothing for live or absent space', () => {
+    expect(recordedSpaceLabel({ spaceSource: 'live', spaceObservedAt: null, spaceLeadSeconds: null })).toBeNull();
+    expect(recordedSpaceLabel({ spaceSource: null, spaceObservedAt: null, spaceLeadSeconds: null })).toBeNull();
+    expect(recordedSpaceLabel({ spaceSource: 'recorded', spaceObservedAt: null, spaceLeadSeconds: 60 })).toBeNull();
+  });
+
+  it('reports lead time in seconds under 90 and minutes above it', () => {
+    expect(recordedSpaceLabel({ spaceSource: 'recorded', spaceObservedAt: observedAt, spaceLeadSeconds: 45 }))
+      .toBe(`Last recorded at ${at}, 45 sec before departure`);
+    expect(recordedSpaceLabel({ spaceSource: 'recorded', spaceObservedAt: observedAt, spaceLeadSeconds: 180 }))
+      .toBe(`Last recorded at ${at}, 3 min before departure`);
+    expect(recordedSpaceLabel({ spaceSource: 'recorded', spaceObservedAt: observedAt, spaceLeadSeconds: null }))
+      .toBe(`Last recorded at ${at}`);
+  });
+
+  it('marks a backfilled sailing and leaves a live one plain', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([
+        { vesselId: 1, vesselName: 'Wenatchee', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 9, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, spaceSource: 'recorded', spaceObservedAt: observedAt, spaceLeadSeconds: 180, raw: {} },
+        { vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T18:00:00.000Z', arrivingTime: '2026-09-01T18:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 40, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, spaceSource: 'live', spaceObservedAt: null, spaceLeadSeconds: null, raw: {} },
+      ]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    const marks = await screen.findAllByLabelText(`Last recorded at ${at}, 3 min before departure`);
+    expect(marks[0]).toHaveClass('recorded-mark');
+    expect(document.querySelectorAll('.space-count.is-recorded')).toHaveLength(1);
+    expect(await screen.findByText(/40 drive-up of 202 spaces/)).toBeInTheDocument();
+  });
+});
+
+describe('Departure delay', () => {
+  const left = '2026-09-01T17:06:00.000Z';
+  const at = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(left));
+
+  it('says nothing until the boat has actually left', () => {
+    expect(departureDelayLabel({ actualDeparture: null })).toBeNull();
+    expect(departureDelayMinutes({ actualDeparture: null, departureDelayMinutes: 6 })).toBeNull();
+  });
+
+  it('names the departure without grading it', () => {
+    expect(departureDelayLabel({ actualDeparture: left })).toBe(`Left ${at}`);
+  });
+
+  it('pills a delay of two whole minutes or more', () => {
+    expect(departureDelayMinutes({ actualDeparture: left, departureDelayMinutes: 6 })).toBe(6);
+    expect(departureDelayMinutes({ actualDeparture: left, departureDelayMinutes: 2.9 })).toBe(2);
+    expect(departureDelayMinutes({ actualDeparture: left, departureDelayMinutes: 1.9 })).toBeNull();
+    expect(departureDelayMinutes({ actualDeparture: left, departureDelayMinutes: null })).toBeNull();
+  });
+
+  it('never claims a boat left early', () => {
+    expect(departureDelayMinutes({ actualDeparture: left, departureDelayMinutes: -9 })).toBeNull();
+  });
+
+  it('renders the delay beside the sailing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([{ vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 40, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, spaceSource: 'live', spaceObservedAt: null, spaceLeadSeconds: null, actualDeparture: left, departureDelayMinutes: 6, raw: {} }]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    const pill = await screen.findByTitle('Left 6 minutes after the scheduled departure');
+    expect(pill).toHaveTextContent('6 min');
+    expect(pill.parentElement).toHaveClass('departure-delay');
+    expect(pill.parentElement?.textContent).toBe(`Left ${at}6 min`);
+  });
+
+  it('stays quiet about a sailing that left on time', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([{ vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 40, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, spaceSource: 'live', spaceObservedAt: null, spaceLeadSeconds: null, actualDeparture: left, departureDelayMinutes: 0.4, raw: {} }]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    expect(await screen.findByText(/40 drive-up/)).toBeInTheDocument();
+    expect(screen.queryByText(`Left ${at}`)).not.toBeInTheDocument();
+    expect(document.querySelector('.departure-delay')).toBeNull();
+  });
+});
+
+describe('Unreported vehicle space', () => {
+  it('drops the whole line when the boat reports no space', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([
+        { vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 40, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, spaceSource: 'live', spaceObservedAt: null, spaceLeadSeconds: null, raw: {} },
+        { vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-02T04:00:00.000Z', arrivingTime: '2026-09-02T04:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: null, reservableSpaceCount: null, maxSpaceCount: null, spaceAvailable: false, spaceSource: 'live', spaceObservedAt: null, spaceLeadSeconds: null, raw: {} },
+      ]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    expect(await screen.findByText(/40 drive-up/)).toBeInTheDocument();
+    expect(document.querySelectorAll('.sailing-list li')).toHaveLength(2);
+    expect(document.querySelectorAll('.sailing-list .space-count')).toHaveLength(1);
+  });
+});
+
+describe('Card navigation', () => {
+  const returning = {
+    ...vessels[0], id: 2, name: 'Wenatchee', departingTerminalId: 3, arrivingTerminalId: 7,
+    departingTerminalName: 'Bainbridge Island', arrivingTerminalName: 'Seattle',
+  };
+
+  function mockOverview() {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json([...vessels, returning]);
+      if (url.includes('/api/terminal-mates')) return json([
+        { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
+        { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
+      ]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+  }
+
+  it('opens the relationship view on the terminal that was clicked', async () => {
+    mockOverview();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Terminals' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Bainbridge Island' }));
+
+    expect(screen.getByRole('tab', { name: 'Relationship' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
+  });
+
+  it('opens the relationship view on the route the clicked vessel is running', async () => {
+    mockOverview();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Vessels' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Wenatchee' }));
+
+    expect(screen.getByRole('tab', { name: 'Relationship' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
+    expect(screen.getByRole('button', { name: 'Associated destination' })).toHaveTextContent('Seattle');
+  });
+});
+
+describe('Recorded day browser', () => {
+  function mockDay(dates: string[]) {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history/dates')) return json(dates);
+      if (url.includes('/api/history/sailings')) return json([{ vesselId: 1, vesselName: 'Yakima', departingTime: '2026-08-30T17:00:00.000Z', arrivingTime: null, departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 3, reservableSpaceCount: null, maxSpaceCount: 139, spaceAvailable: true, spaceSource: 'recorded', spaceObservedAt: '2026-08-30T16:58:00.000Z', spaceLeadSeconds: 120, actualDeparture: null, departureDelayMinutes: null, raw: {} }]);
+      return json([{ vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, spaceSource: 'live', spaceObservedAt: null, spaceLeadSeconds: null, actualDeparture: null, departureDelayMinutes: null, raw: {} }]);
+    });
+  }
+
+  it('names the day in the local calendar', () => {
+    const expected = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(2026, 7, 30));
+    expect(serviceDayLabel('2026-08-30')).toBe(expected);
+    expect(serviceDayLabel('not-a-date')).toBe('not-a-date');
+  });
+
+  it('swaps to recorded sailings when a past day is chosen', async () => {
+    mockDay(['2026-08-30']);
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    expect(await screen.findByText(/176 drive-up of 202 spaces/)).toBeInTheDocument();
+
+    await user.click(await screen.findByRole('button', { name: 'Day' }));
+    await user.click(screen.getByRole('option', { name: serviceDayLabel('2026-08-30') }));
+
+    expect(await screen.findByText(/3 drive-up of 139 spaces/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Day' }).querySelector('.recorded-mark')).toBeInTheDocument();
+    expect(document.querySelector('.vessel-stack.is-dimmed')).toBeInTheDocument();
+  });
+
+  it('offers only today when nothing was recorded', async () => {
+    mockDay([]);
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Day' })).toHaveTextContent('Today, live');
+  });
+});
+
+describe('Vessel lateness', () => {
+  const underway = { id: 18, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:56:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
+
+  it('measures the delay from the scheduled departure', () => {
+    expect(vesselDelayMinutes(underway)).toBe(11);
+    expect(vesselDelayMinutes({ leftDock: null, scheduledDeparture: '2026-09-01T23:45:00.000Z' })).toBeNull();
+    expect(vesselDelayMinutes({ leftDock: 'nonsense', scheduledDeparture: '2026-09-01T23:45:00.000Z' })).toBeNull();
+  });
+
+  it('pushes the estimate out by the minutes lost at the dock', () => {
+    expect(vesselEta(underway)).toBe('2026-09-02T00:40:00.000Z');
+  });
+
+  it('leaves the estimate alone for a boat barely behind its slot', () => {
+    expect(vesselEta({ ...underway, leftDock: '2026-09-01T23:46:50.000Z' })).toBeNull();
+  });
+
+  it('leaves the estimate alone when WSDOT publishes none', () => {
+    expect(vesselEta({ ...underway, eta: null })).toBeNull();
+  });
+});
+
+describe('Associated vessel order', () => {  it('ranks the selected route ahead of its reverse, departures, then arrivals', () => {
     const rank = (departingTerminalId: number, arrivingTerminalId: number) =>
       vesselRouteRank({ departingTerminalId, arrivingTerminalId }, 7, 3);
     expect(rank(7, 3)).toBe(0);

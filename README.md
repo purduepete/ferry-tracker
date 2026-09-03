@@ -58,6 +58,25 @@ Five loops run on independent timers, and a run that is still in flight is skipp
 
 A poll whose payload hash matches the previous one is recorded as `skipped_unchanged` and nothing is stored, so a high poll rate costs little. `CAPTURE_MIN_FREE_DISK_MB` (default 512) halts archiving before the disk fills. `CAPTURE_RETENTION_DAYS` is unset by default, which keeps everything; when it is set, the prune still refuses to delete anything the rollup has not yet processed. `CAPTURE_ALLOW_FIXTURE=true` lets capture run against fixtures for a smoke test.
 
+### Past sailings
+
+WSDOT drops a departure from the vehicle-space feed the moment it sails, so the two hours of past sailings the schedule shows would otherwise read `—`. When capture is enabled, `/api/schedule` fills those rows from the last reading taken before the boat left and marks them `spaceSource: "recorded"` with the capture time and how many seconds ahead of departure it landed. A short lead is close to what the boat actually left with; a long one means capture missed the final minutes. Live values always win, so an upcoming sailing is never overwritten. The UI mutes a recorded row and marks it with a history icon naming the capture time.
+
+A multi-destination sailing is stored against its departing terminal because WSDOT puts the real destinations in `ArrivalTerminalIDs`, so that row stands in when no exact destination was recorded.
+
+Each sailing also carries `actualDeparture` and `departureDelayMinutes` from `sailing_leg`, shown as a "Left 6 min late, 17:06" line and a **Left** column. A leg the rollup graded `low` or excluded never surfaces, since it would misreport lateness. Anything past 5 minutes is coloured as late.
+
+### Browsing a past day
+
+The **Day** picker lists up to 14 recorded service dates from `schedule_snapshot`, newest first. Picking one switches the schedule panel and the Sailings tab to two capture-only endpoints and stops calling WSDOT:
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /api/history/dates?departingTerminalId=&arrivingTerminalId=` | The recorded service dates for that route |
+| `GET /api/history/sailings?departingTerminalId=&arrivingTerminalId=&serviceDate=YYYY-MM-DD` | A full day of sailings, timetable plus recorded space and legs |
+
+Both return 404 when capture is off. The day is read by its stored `service_date` and the space and leg window is derived from the first and last sailing plus 2 hours, which keeps the query off timezone math. A sailing capture never saw still appears from the timetable with an empty vehicle space, so a partial day reads as a partial day. Vessel positions have no history, so the panel dims and says so.
+
 ### Analysis
 
 The `rollup` task rebuilds `sailing_leg` from the raw vessel observations. Each leg pairs a departure with the following dock arrival and carries a `confidence` of `high`, `medium` or `low`, plus an `exclusion_reason` when the departure itself is untrustworthy and a separate `load_exclusion_reason` when only the dwell is. Filter on those before averaging anything. Legs are derived, so dropping the table and rerunning the rollup reproduces it exactly.

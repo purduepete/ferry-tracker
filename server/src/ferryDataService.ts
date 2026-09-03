@@ -14,6 +14,7 @@ import {
   type VesselView,
 } from '@ferry-tracker/shared';
 import { z } from 'zod';
+import type { RecordedLeg, RecordedSpace, SailingHistory } from './history/sailingHistory.js';
 import type { WsdotClient } from './wsdotClient.js';
 
 const asRecord = (value: unknown): SourceRecord | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as SourceRecord : null;
@@ -28,8 +29,46 @@ export function isScheduleVisible(departingTime: string | null, now: number): bo
   return Number.isNaN(departure) || (departure >= now - TWO_HOURS_MS && departure <= now + TWELVE_HOURS_MS);
 }
 
+// Capture only stands in where the live feed gave nothing, so an upcoming sailing always wins.
+function backfill(
+  sailing: SailingView,
+  recorded: Map<string, RecordedSpace> | undefined,
+  legs: Map<string, RecordedLeg> | undefined,
+  departingId: number,
+  arrivingId: number,
+): SailingView {
+  if (sailing.departingTime === null) return sailing;
+  if (sailing.departingTerminalId !== null && sailing.departingTerminalId !== departingId) return sailing;
+  if (sailing.arrivingTerminalId !== null && sailing.arrivingTerminalId !== arrivingId) return sailing;
+
+  const leg = legs?.get(sailing.departingTime);
+  const withLeg: SailingView = leg === undefined ? sailing : {
+    ...sailing,
+    actualDeparture: leg.actualDeparture,
+    departureDelayMinutes: leg.departureDelayMinutes,
+  };
+
+  const match = withLeg.spaceAvailable ? undefined : recorded?.get(sailing.departingTime);
+  if (match === undefined) return withLeg;
+  return {
+    ...withLeg,
+    isCancelled: withLeg.isCancelled ?? match.isCancelled,
+    driveUpSpaceCount: match.driveUpSpaceCount,
+    reservableSpaceCount: match.reservableSpaceCount,
+    maxSpaceCount: match.maxSpaceCount,
+    spaceAvailable: true,
+    spaceSource: 'recorded',
+    spaceObservedAt: match.observedAt,
+    spaceLeadSeconds: match.leadSeconds,
+  };
+}
+
 export class FerryDataService {
-  constructor(private readonly client: WsdotClient, private readonly now: () => number = Date.now) {}
+  constructor(
+    private readonly client: WsdotClient,
+    private readonly now: () => number = Date.now,
+    private readonly history?: SailingHistory,
+  ) {}
 
   async terminals(): Promise<{ data: TerminalView[]; raw: unknown }> {
     const [basicsRaw, locationsRaw] = await Promise.all([this.client.getTerminalBasics(), this.client.getTerminalLocations()]);
@@ -125,8 +164,10 @@ export class FerryDataService {
 
   async schedule(departingId: number, arrivingId: number, _onlyRemaining: boolean): Promise<{ data: SailingView[]; raw: unknown }> {
     const now = this.now();
+    const windowStart = now - TWO_HOURS_MS;
+    const windowEnd = now + TWELVE_HOURS_MS;
     const [raw, spacesRaw] = await Promise.all([
-      this.client.getScheduleRange(departingId, arrivingId, now - TWO_HOURS_MS, now + TWELVE_HOURS_MS),
+      this.client.getScheduleRange(departingId, arrivingId, windowStart, windowEnd),
       this.client.getTerminalSailingSpaces(),
     ]);
     const spaces = z.array(terminalSailingSpaceSchema).parse(spacesRaw);
@@ -164,6 +205,11 @@ export class FerryDataService {
           reservableSpaceCount: destinationSpace?.DisplayReservableSpace ? destinationSpace.ReservableSpaceCount ?? null : null,
           maxSpaceCount: destinationSpace?.MaxSpaceCount ?? departureSpace?.MaxSpaceCount ?? null,
           spaceAvailable: destinationSpace !== undefined,
+          spaceSource: destinationSpace === undefined ? null : 'live',
+          spaceObservedAt: null,
+          spaceLeadSeconds: null,
+          actualDeparture: null,
+          departureDelayMinutes: null,
           raw: record,
         });
       }
@@ -171,9 +217,16 @@ export class FerryDataService {
     };
 
     visit(raw, { departingId, arrivingId });
+    const visible = sailings.filter((sailing) => isScheduleVisible(sailing.departingTime, now));
+    const fromIso = new Date(windowStart).toISOString();
+    const toIso = new Date(windowEnd).toISOString();
+    const recorded = visible.some((sailing) => !sailing.spaceAvailable)
+      ? this.history?.recordedSpaces(departingId, arrivingId, fromIso, toIso)
+      : undefined;
+    const legs = this.history?.recordedLegs(departingId, arrivingId, fromIso, toIso);
     return {
-      data: sailings
-        .filter((sailing) => isScheduleVisible(sailing.departingTime, now))
+      data: visible
+        .map((sailing) => backfill(sailing, recorded, legs, departingId, arrivingId))
         .sort((left, right) => (left.departingTime ?? '').localeCompare(right.departingTime ?? '')),
       raw: { schedule: raw, sailingSpace: spacesRaw },
     };

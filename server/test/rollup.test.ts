@@ -212,6 +212,38 @@ describe('leg state machine', () => {
     expect(leg.departure_delay_minutes).toBe(7);
   });
 
+  it('drops a feed slot later than the departure it would grade', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(3), scheduledDeparture: at(12) },
+      { minute: 40, atDock: 1 },
+    ]);
+
+    runLegRollup(db, options);
+    const [leg] = legs();
+
+    expect(leg.scheduled_departure).toBeNull();
+    expect(leg.departure_delay_minutes).toBeNull();
+  });
+
+  it('falls back to an earlier timetable slot when the feed slot is in the future', () => {
+    db.prepare(`INSERT INTO schedule_snapshot (
+      captured_at, service_date, departing_terminal_id, arriving_terminal_id, departing_time, arriving_time
+    ) VALUES (?, '2026-09-01', 7, 3, ?, ?)`).run(at(0), at(60), at(95));
+
+    observe([
+      { minute: 5, atDock: 1, departing: 7, arriving: 3 },
+      { minute: 65, atDock: 0, departing: 7, arriving: 3, leftDock: at(65), scheduledDeparture: at(120) },
+      { minute: 100, atDock: 1, departing: 3, arriving: 7 },
+    ]);
+
+    runLegRollup(db, options);
+    const [leg] = legs();
+
+    expect(leg.scheduled_departure_source).toBe('schedule_snapshot');
+    expect(leg.departure_delay_minutes).toBe(5);
+  });
+
   it('matches the timetable slot nearest the dock arrival, not the late departure', () => {
     db.prepare(`INSERT INTO schedule_snapshot (
       captured_at, service_date, departing_terminal_id, arriving_terminal_id, departing_time, arriving_time
