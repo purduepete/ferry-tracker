@@ -389,9 +389,9 @@ describe('Capacity pill', () => {
     });
 
     render(<ThemeProvider><App /></ThemeProvider>);
-    const pills = await screen.findAllByLabelText('20% of 200 vehicle spaces open');
+    const pills = await screen.findAllByLabelText('80% of 200 vehicle spaces taken');
     expect(pills[0]).toHaveClass('capacity-pill', 'tight');
-    expect(screen.queryByLabelText('100% of 200 vehicle spaces open')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('0% of 200 vehicle spaces taken')).not.toBeInTheDocument();
   });
 });
 
@@ -918,9 +918,9 @@ describe('Bainbridge disruption', () => {
     await screen.findByRole('heading', { name: 'Seattle' });
     await userEvent.click(screen.getByRole('tab', { name: 'Disruption' }));
 
-    const capacity = await screen.findByText('85% full');
+    const capacity = await screen.findByTitle('85% of 197 vehicle spaces taken');
     expect(capacity.closest('.field')?.querySelector('dt')).toHaveTextContent('Capacity');
-    expect(capacity.parentElement?.querySelector('.capacity-pill')).toHaveTextContent('15%');
+    expect(capacity).toHaveTextContent('85%');
   });
 
   it('leaves the capacity out when the inbound leg has no counts', async () => {
@@ -1072,7 +1072,7 @@ describe('Catching a ferry', () => {
     await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
     expect(document.querySelector('.countdown-headline')).toHaveClass('is-clear');
     expect(screen.getByText('176 drive-up / 202')).toBeInTheDocument();
-    expect(screen.getAllByTitle('87% of 202 vehicle spaces open').length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle('13% of 202 vehicle spaces taken').length).toBeGreaterThan(0);
     expect(document.querySelectorAll('.countdown-later .sailing-list li')).toHaveLength(1);
 
     await user.click(screen.getByRole('tab', { name: 'Settings' }));

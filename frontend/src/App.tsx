@@ -94,17 +94,19 @@ function latestTimestamp(current: string | null, ...values: string[]) {
   return [current, ...values].filter((value): value is string => value !== null).sort().at(-1) ?? null;
 }
 
-function CapacityPill({ percent, total }: { percent: number | null; total: number | null }) {
-  if (percent === null) return null;
-  const label = `${percent}% of ${total} vehicle spaces open`;
-  return <span className={`capacity-pill ${capacityLevel(percent)}`} aria-label={label} title={label}>{percent}%</span>;
+function CapacityPill({ openPercent, total }: { openPercent: number | null; total: number | null }) {
+  if (openPercent === null) return null;
+  // WSDOT reports space left; the pill reads how full the boat is, which is what people ask.
+  const full = 100 - openPercent;
+  const label = `${full}% of ${total} vehicle spaces taken`;
+  return <span className={`capacity-pill ${capacityLevel(openPercent)}`} aria-label={label} title={label}>{full}%</span>;
 }
 
 function CapacityMeter({ sailing }: { sailing: SailingView }) {
   const percent = openSpacePercent(sailing);
   // A wide-open sailing carries no decision value, so only a partial boat gets a pill.
   if (percent === 100) return null;
-  return <CapacityPill percent={percent} total={sailing.maxSpaceCount} />;
+  return <CapacityPill openPercent={percent} total={sailing.maxSpaceCount} />;
 }
 
 function getCurrentSailing(sailings: SailingView[]): SailingView | null {
@@ -623,9 +625,9 @@ export function App() {
                 <dl className="countdown-detail">
                   <Field label="Departure" value={fieldTime(nextCatch.departureAt)} />
                   <Field label="Vessel" value={nextCatch.vesselName && <VesselLink vesselId={nextCatch.vesselId} vesselName={nextCatch.vesselName} vessels={vessels} onOpen={openRoute} />} />
-                  <Field label="Space" value={nextCatch.spaceLabel && <>{nextCatch.spaceLabel} <CapacityPill percent={nextCatch.spacePercent} total={nextCatch.spaceTotal} /></>} />
+                  <Field label="Space" value={nextCatch.spaceLabel && <>{nextCatch.spaceLabel} <CapacityPill openPercent={nextCatch.spacePercent} total={nextCatch.spaceTotal} /></>} />
                 </dl>
-                {laterCatches.length > 0 && <div className="countdown-later"><span className="node-type">Then</span><ol className="sailing-list">{laterCatches.slice(0, 5).map((window) => <li key={window.departureAt}><strong>{clockTime(window.departureAt)}<span className={`capacity-pill ${catchPillClass(catchWindowLevel(window, settings))}`}>{`${window.minutesAway} min`}</span></strong><span>Leave by {clockTime(window.leaveByAt)}{window.spaceLabel ? ` · ${window.spaceLabel} ` : ''}<CapacityPill percent={window.spacePercent} total={window.spaceTotal} /></span></li>)}</ol></div>}
+                {laterCatches.length > 0 && <div className="countdown-later"><span className="node-type">Then</span><ol className="sailing-list">{laterCatches.slice(0, 5).map((window) => <li key={window.departureAt}><strong>{clockTime(window.departureAt)}<span className={`capacity-pill ${catchPillClass(catchWindowLevel(window, settings))}`}>{`${window.minutesAway} min`}</span></strong><span>Leave by {clockTime(window.leaveByAt)}{window.spaceLabel ? ` · ${window.spaceLabel} ` : ''}<CapacityPill openPercent={window.spacePercent} total={window.spaceTotal} /></span></li>)}</ol></div>}
               </> : <div className="empty">No sailing left today that you can still make.</div>}
           </div>}
 
@@ -642,7 +644,7 @@ export function App() {
                 <Field label="Vessel" value={<VesselLink vesselId={nextWave.vesselId} vesselName={nextWave.vesselName} vessels={vessels} onOpen={openRoute} />} />
                 <Field label="Lands" value={fieldTime(nextWave.landingAt)} />
                 <Field label="Disruption" value={nextWave.ongoing ? `${clockTime(nextWave.disruptionAt)} onward` : `${clockTime(nextWave.disruptionAt)} to ${clockTime(nextWave.clearsAt)}`} />
-                <Field label="Capacity" value={nextLoad && <>{`${nextLoad.percentFull}% full`} <CapacityPill percent={nextLoad.openPercent} total={nextLoad.totalSpace} /></>} />
+                <Field label="Capacity" value={nextLoad && <CapacityPill openPercent={nextLoad.openPercent} total={nextLoad.totalSpace} />} />
               </dl>
               {laterWaves.length > 0 && <div className="countdown-later"><span className="node-type">Behind it</span><ol className="sailing-list">{laterWaves.map((wave) => <li key={`${wave.vesselId}-${wave.disruptionAt}`}><strong>{clockTime(wave.disruptionAt)}<span className={`capacity-pill ${catchPillClass(disruptionLevel(wave.minutesAway, settings))}`}>{wave.active ? 'now' : `${wave.minutesAway} min`}</span></strong><span>{wave.vesselName} lands {clockTime(wave.landingAt)}</span></li>)}</ol></div>}
             </> : <div className="empty">No vessel is inbound to Bainbridge Island right now.</div>}
