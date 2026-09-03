@@ -1,5 +1,5 @@
 import { isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import { Anchor, ArrowLeftRight, ArrowRight, Car, Clock3, ExternalLink, History, MapPin, RefreshCw, Ship, Star, Waypoints, Wind } from 'lucide-react';
+import { Anchor, ArrowLeftRight, ArrowRight, Car, Clock3, ExternalLink, History, ListFilter, MapPin, RefreshCw, Ship, Star, Waypoints, Wind } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
 import { FilterSelect } from './components/FilterSelect';
@@ -18,6 +18,7 @@ const SKELETON_EXIT_MS = 520;
 const LIVE_DATE = 'live';
 const favoriteTerminalsKey = 'ferry-tracker-favorite-terminals';
 const lastRouteKey = 'ferry-tracker-last-route';
+const sailingsOnlyKey = 'ferry-tracker-sailings-only';
 
 function loadFavoriteTerminalIds() {
   try {
@@ -41,6 +42,14 @@ function loadLastRoute(): { terminalId: number | null; destinationId: number | n
     };
   } catch {
     return empty;
+  }
+}
+
+function loadSailingsOnly() {
+  try {
+    return localStorage.getItem(sailingsOnlyKey) === 'true';
+  } catch {
+    return false;
   }
 }
 
@@ -282,14 +291,14 @@ function SailingVessel({ sailing, vessels, onOpen }: { sailing: SailingView; ves
   return <button className="card-link" type="button" title={`Show ${sailing.vesselName}'s current route in the routes view`} onClick={() => onOpen(live.departingTerminalId, live.arrivingTerminalId)}>{sailing.vesselName}</button>;
 }
 
-function ViewPlaceholder({ label, tab }: { label: string; tab: Tab }) {
+function ViewPlaceholder({ label, tab, sailingsOnly }: { label: string; tab: Tab; sailingsOnly?: boolean }) {
   if (tab === 'terminals' || tab === 'vessels') {
     return <div className="view-placeholder" role="status" aria-label={label}><span className="sr-only">{label}</span><div className="data-grid placeholder-card-grid" aria-hidden="true">{Array.from({ length: 6 }, (_, index) => <div className="data-card placeholder-node" key={index}><i /><i /><i /><i /></div>)}</div></div>;
   }
   if (tab === 'schedule') {
     return <div className="view-placeholder" role="status" aria-label={label}><span className="sr-only">{label}</span><div className="wide-placeholder" aria-hidden="true"><i /><i /><i /><i /><i /></div></div>;
   }
-  return <div className="view-placeholder" role="status" aria-label={label}><span className="sr-only">{label}</span><div className="relationship-grid placeholder-grid" aria-hidden="true"><div className="relationship-node placeholder-node"><i /><i /><i /><i /></div><div className="relationship-link" /><div className="relationship-node placeholder-node"><i /><i /><i /><i /><i /></div><div className="relationship-link" /><div className="relationship-node placeholder-node"><i /><i /><i /><i /><i /></div></div></div>;
+  return <div className="view-placeholder" role="status" aria-label={label}><span className="sr-only">{label}</span><div className={`relationship-grid placeholder-grid${sailingsOnly ? ' is-sailings-only' : ''}`} aria-hidden="true"><div className="relationship-node placeholder-node"><i /><i /><i /><i /></div><div className="relationship-link" /><div className="relationship-node placeholder-node"><i /><i /><i /><i /><i /></div><div className="relationship-link" /><div className="relationship-node placeholder-node"><i /><i /><i /><i /><i /></div></div></div>;
 }
 
 export function App() {
@@ -315,6 +324,7 @@ export function App() {
   const [retainedUpdateSkeleton, setRetainedUpdateSkeleton] = useState(false);
   const [backgroundRefresh, setBackgroundRefresh] = useState(false);
   const [favoriteTerminalIds, setFavoriteTerminalIds] = useState<number[]>(loadFavoriteTerminalIds);
+  const [sailingsOnly, setSailingsOnly] = useState(loadSailingsOnly);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const overviewRequestId = useRef(0);
   const scheduleRequestId = useRef(0);
@@ -514,6 +524,12 @@ export function App() {
     try { localStorage.setItem(favoriteTerminalsKey, JSON.stringify(nextFavorites)); } catch { /* Favorites remain active for this tab. */ }
   };
 
+  const toggleSailingsOnly = () => {
+    const next = !sailingsOnly;
+    setSailingsOnly(next);
+    try { localStorage.setItem(sailingsOnlyKey, String(next)); } catch { /* The choice just resets on the next visit. */ }
+  };
+
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let nextIndex: number | null = null;
     if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
@@ -534,6 +550,7 @@ export function App() {
         <div className="header-actions">
           {lastRefreshAt && <span className="refresh-time" title={`Last refresh ${localTime(lastRefreshAt)}`}><Clock3 size={13} /><span className="refresh-time-label">Last refresh</span><time dateTime={lastRefreshAt}>{refreshTime(lastRefreshAt)}</time></span>}
           {terminalResponse && <span className={`source-badge ${terminalResponse.source}`}>{terminalResponse.source}</span>}
+          {tab === 'routes' && <button className={`icon-button sailings-only-button${sailingsOnly ? ' active' : ''}`} type="button" aria-pressed={sailingsOnly} aria-label="Sailings only" title={sailingsOnly ? 'Show the terminal and vessels again' : 'Show the sailings schedule only'} onClick={toggleSailingsOnly}><ListFilter size={18} /></button>}
           <button className={`icon-button${refreshing ? ' is-busy' : ''}`} type="button" title="Refresh data" aria-label="Refresh data" disabled={refreshing} onClick={refreshAll}><RefreshCw size={18} /></button>
           <ThemeMenu />
         </div>
@@ -541,13 +558,13 @@ export function App() {
       </header>
 
       <main>
-        <section className="selection-band" aria-labelledby="route-heading">
+        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}`} aria-labelledby="route-heading">
           <div className="route-title"><span className="eyebrow">Live route explorer</span><h1 id="route-heading">Live sailings and vessel positions</h1></div>
           <div className="selectors">
             <div className="selector-field"><span>Terminal</span><div className="selector-control-row"><FilterSelect ariaLabel="Terminal" value={selectedTerminalId} onChange={setSelectedTerminalId} disabled={loading && !backgroundRefresh} options={terminalOptions} /><button className={`favorite-button${selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? ' active' : ''}`} type="button" aria-label={selectedTerminalId === null ? 'Favorite selected origin' : favoriteTerminalIdSet.has(selectedTerminalId) ? `Remove ${selectedTerminal?.name ?? 'selected origin'} from favorites` : `Add ${selectedTerminal?.name ?? 'selected origin'} to favorites`} title={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? 'Remove from favorites' : 'Add to favorites'} disabled={selectedTerminalId === null || (loading && !backgroundRefresh)} aria-pressed={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId)} onClick={toggleFavoriteTerminal}><Star fill={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? 'currentColor' : 'none'} size={16} /></button></div></div>
             <button className="swap-button" type="button" aria-label="Reverse route" title={canSwapRoute ? 'Swap terminal and destination' : 'Reverse route unavailable'} disabled={!canSwapRoute} onClick={swapRoute}><ArrowLeftRight size={18} /></button>
-            <label><span>Associated destination</span><FilterSelect ariaLabel="Associated destination" value={effectiveDestinationId} onChange={setDestinationId} disabled={!destinationIds.length} placeholder="No live association" options={destinationIds.map((id) => ({ value: id, label: terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown' }))} /></label>
-            <label><span>Day</span><FilterSelect ariaLabel="Day" value={serviceDate} onChange={setServiceDate} disabled={!historyDates.length} options={dayOptions} /></label>
+            <label><span>Destination</span><FilterSelect ariaLabel="Destination" value={effectiveDestinationId} onChange={setDestinationId} disabled={!destinationIds.length} placeholder="No live association" options={destinationIds.map((id) => ({ value: id, label: terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown' }))} /></label>
+            <label className="day-field"><span>Day</span><FilterSelect ariaLabel="Day" value={serviceDate} onChange={setServiceDate} disabled={!historyDates.length} options={dayOptions} /></label>
           </div>
         </section>
 
@@ -557,13 +574,13 @@ export function App() {
         </nav>
 
         <section className="view" id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`} aria-live="polite" aria-busy={initialLoading || viewUpdating || backgroundRefresh}>
-          {(initialLoading || (initialDataVisible && initialSkeletonVisible)) && <div className={`initial-loading-cover${initialDataVisible ? ' is-exiting' : ''}`}><ViewPlaceholder label="Loading ferry data" tab={tab} /></div>}
+          {(initialLoading || (initialDataVisible && initialSkeletonVisible)) && <div className={`initial-loading-cover${initialDataVisible ? ' is-exiting' : ''}`}><ViewPlaceholder label="Loading ferry data" tab={tab} sailingsOnly={sailingsOnly} /></div>}
           {!initialDataVisible && !initialLoading && <div className="state">Ferry data is unavailable.</div>}
 
           {initialDataVisible && <div className={`view-content${viewUpdating ? ' is-updating' : ''}`}>
           {/* Keyed by tab so React remounts the panel and replays the enter animation on every switch. */}
           <div className="view-panel" key={tab}>
-          {tab === 'routes' && <div className="relationship-grid" style={vesselStackHeight ? { '--vessel-stack-height': `${vesselStackHeight}px` } as CSSProperties : undefined}>
+          {tab === 'routes' && <div className={`relationship-grid${sailingsOnly ? ' is-sailings-only' : ''}`} style={vesselStackHeight ? { '--vessel-stack-height': `${vesselStackHeight}px` } as CSSProperties : undefined}>
             <article className="relationship-node terminal-node"><span className="node-type">Terminal</span><h2>{selectedTerminal?.name ?? 'No terminal'}</h2><div className="field"><dt>City</dt><dd>{selectedTerminal?.city}{selectedTerminal?.latitude && selectedTerminal?.longitude ? <> <a href={`https://maps.google.com/?q=${selectedTerminal.latitude},${selectedTerminal.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Coordinates" value={selectedTerminal ? `${selectedTerminal.latitude}, ${selectedTerminal.longitude}` : null} /></article>
             <div className="relationship-link"><span>{associatedVessels.length} associated</span><ArrowRight /></div>
             <div className={`vessel-stack${recordedDay ? ' is-dimmed' : ''}`} ref={vesselStackRef}>{recordedDay && <p className="vessel-live-note">Live positions only.</p>}{associatedVessels.length ? associatedVessels.map((vessel) => <article className="relationship-node vessel-node" key={vessel.id}><span className="node-type">Vessel</span><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.name}</h2><p>{vessel.departingTerminalName ?? '—'} <ArrowRight size={14} /> {vessel.arrivingTerminalName ?? '—'}</p><Field label="Class" value={vessel.vesselClass} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Speed" value={vessel.speed === null ? null : `${vessel.speed} knots`} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></article>) : <div className="empty">No vessel currently references this terminal.</div>}</div>
@@ -583,7 +600,7 @@ export function App() {
 
           </div>
 
-          {(viewUpdating || retainedUpdateSkeleton) && <div className={`view-loading-cover${viewUpdating ? '' : ' is-exiting'}`}><ViewPlaceholder label="Loading updated ferry data" tab={tab} /></div>}
+          {(viewUpdating || retainedUpdateSkeleton) && <div className={`view-loading-cover${viewUpdating ? '' : ' is-exiting'}`}><ViewPlaceholder label="Loading updated ferry data" tab={tab} sailingsOnly={sailingsOnly} /></div>}
           </div>}
         </section>
       </main>

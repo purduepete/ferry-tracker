@@ -49,7 +49,7 @@ describe('Ferry data explorer', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Reverse route' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
-    expect(screen.getByRole('button', { name: 'Associated destination' })).toHaveTextContent('Seattle');
+    expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
     await waitFor(() => expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-busy', 'false'));
 
     const callsBeforeRefresh = scheduleCalls;
@@ -223,7 +223,7 @@ describe('Remembered route', () => {
     render(<ThemeProvider><App /></ThemeProvider>);
     expect(await screen.findByRole('heading', { name: 'Bainbridge Island' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island');
-    expect(screen.getByRole('button', { name: 'Associated destination' })).toHaveTextContent('Seattle');
+    expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
   });
 
   it('stores the route whenever the selection changes', async () => {
@@ -244,7 +244,7 @@ describe('Remembered route', () => {
 
     render(<ThemeProvider><App /></ThemeProvider>);
     expect(await screen.findByRole('heading', { name: 'Seattle' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Associated destination' })).toHaveTextContent('Bainbridge Island');
+    expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Bainbridge Island');
   });
 
   it('ignores a corrupt stored route', async () => {
@@ -253,6 +253,66 @@ describe('Remembered route', () => {
 
     render(<ThemeProvider><App /></ThemeProvider>);
     expect(await screen.findByRole('heading', { name: 'Seattle' })).toBeInTheDocument();
+  });
+});
+
+describe('Sailings only', () => {
+  function mockRoute() {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([
+        { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
+      ]);
+      return json([]);
+    });
+  }
+
+  it('collapses the routes grid to the schedule and stores the choice', async () => {
+    mockRoute();
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    const toggle = screen.getByRole('button', { name: 'Sailings only' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(document.querySelector('.relationship-grid')).not.toHaveClass('is-sailings-only');
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(document.querySelector('.relationship-grid')).toHaveClass('is-sailings-only');
+    expect(document.querySelector('.selection-band')).toHaveClass('is-sailings-only');
+    expect(localStorage.getItem('ferry-tracker-sailings-only')).toBe('true');
+
+    await user.click(toggle);
+    expect(document.querySelector('.relationship-grid')).not.toHaveClass('is-sailings-only');
+    expect(document.querySelector('.selection-band')).not.toHaveClass('is-sailings-only');
+    expect(localStorage.getItem('ferry-tracker-sailings-only')).toBe('false');
+  });
+
+  it('reopens collapsed when the choice was stored', async () => {
+    localStorage.setItem('ferry-tracker-sailings-only', 'true');
+    mockRoute();
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    expect(screen.getByRole('button', { name: 'Sailings only' })).toHaveAttribute('aria-pressed', 'true');
+    expect(document.querySelector('.relationship-grid')).toHaveClass('is-sailings-only');
+  });
+
+  it('leaves the other tabs alone', async () => {
+    localStorage.setItem('ferry-tracker-sailings-only', 'true');
+    mockRoute();
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await user.click(screen.getByRole('tab', { name: 'Terminals' }));
+    expect(screen.queryByRole('button', { name: 'Sailings only' })).not.toBeInTheDocument();
+    expect(document.querySelector('.selection-band')).not.toHaveClass('is-sailings-only');
   });
 });
 
@@ -462,7 +522,7 @@ describe('Card navigation', () => {
 
     expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
-    expect(screen.getByRole('button', { name: 'Associated destination' })).toHaveTextContent('Seattle');
+    expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
   });
 
   it('opens the routes view from a vessel in the sailings table', async () => {
@@ -486,7 +546,7 @@ describe('Card navigation', () => {
 
     expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
-    expect(screen.getByRole('button', { name: 'Associated destination' })).toHaveTextContent('Seattle');
+    expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
   });
 });
 

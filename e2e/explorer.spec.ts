@@ -30,7 +30,7 @@ test('shows the terminal to ferry to schedule routes view without external netwo
 
   await page.getByRole('button', { name: 'Reverse route' }).click();
   await expect(page.getByRole('button', { name: 'Terminal' })).toContainText('Bainbridge Island');
-  await expect(page.getByRole('button', { name: 'Associated destination' })).toContainText('Seattle');
+  await expect(page.getByRole('button', { name: 'Destination' })).toContainText('Seattle');
   await expect(page.getByRole('status', { name: 'Loading updated ferry data' })).toBeAttached();
   await expect(page.locator('.view-loading-cover')).toBeVisible();
   await expect(page.getByText('176 drive-up / 202')).toBeAttached();
@@ -113,8 +113,41 @@ test('reopens on the terminal and destination chosen before the reload', async (
 
   await page.reload();
   await expect(page.getByRole('button', { name: 'Terminal' })).toContainText('Bainbridge Island');
-  await expect(page.getByRole('button', { name: 'Associated destination' })).toContainText('Seattle');
+  await expect(page.getByRole('button', { name: 'Destination' })).toContainText('Seattle');
   await expect(page.locator('.schedule-node h2')).toHaveText('Bainbridge Island to Seattle');
+});
+
+test('collapses the routes view to the sailings schedule on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const toggle = page.getByRole('button', { name: 'Sailings only' });
+  await expect(page.locator('.terminal-node')).toBeVisible();
+
+  await toggle.click();
+  await expect(page.locator('.schedule-node')).toBeVisible();
+  await expect(page.locator('.terminal-node')).toBeHidden();
+  await expect(page.locator('.vessel-stack')).toBeHidden();
+  await expect(page.locator('.relationship-link').first()).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Terminal' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Destination' })).toBeVisible();
+  // "Bainbridge Island" is the longest terminal name, so it decides whether the compact row clips.
+  await page.getByRole('button', { name: 'Terminal' }).click();
+  await page.getByRole('option', { name: 'Bainbridge Island' }).click();
+  await expect(page.locator('.selectors .filter-select-trigger span').first()).toHaveText('Bainbridge Island');
+  const clipped = await page.locator('.selectors .filter-select-trigger span').evaluateAll((spans) => spans.filter((span) => span.scrollWidth > span.clientWidth + 1).map((span) => span.textContent ?? ''));
+  expect(clipped).toEqual([]);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Sailings only' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.terminal-node')).toBeHidden();
+
+  // The toggle is a narrow-screen affordance, so a desktop width shows every card again.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.locator('.terminal-node')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sailings only' })).toBeHidden();
 });
 
 for (const width of [390, 767, 768, 1024, 1440]) {
