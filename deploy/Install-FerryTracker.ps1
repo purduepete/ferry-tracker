@@ -189,19 +189,43 @@ foreach ($dir in @($DataDir, (Join-Path $DataDir 'raw'), (Join-Path $DataDir 'ba
 
 Write-Step 'Install and build'
 
-Invoke-Checked -FilePath $npmCmd -Arguments @('ci') -WorkingDirectory $InstallRoot -What 'npm ci'
-Write-Ok 'dependencies installed'
-
-Invoke-Checked -FilePath $npmCmd -Arguments @('run', 'build') -WorkingDirectory $InstallRoot -What 'npm run build'
-foreach ($artifact in @('shared\dist', 'server\dist\index.js', 'frontend\dist\index.html')) {
-    if (-not (Test-Path -LiteralPath (Join-Path $InstallRoot $artifact))) { throw "Build finished but $artifact is missing." }
+# npm ci unlinks node_modules first, and the running server holds better-sqlite3's native
+# .node open, so on a re-run the install dies with EPERM unless the task is stopped first.
+$serverWasRunning = [bool](Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)
+if ($serverWasRunning) {
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $freed = $false
+    foreach ($attempt in 1..20) {
+        Start-Sleep -Seconds 1
+        if (-not (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) { $freed = $true; break }
+    }
+    if ($freed) { Write-Ok ("stopped '{0}' so its native modules can be replaced" -f $TaskName) }
+    else { Write-Warn ("'{0}' was asked to stop but port {1} is still held. npm ci may fail on a locked file." -f $TaskName, $Port) }
 }
-Write-Ok 'shared, server, and frontend built'
 
-if ($SkipTests) { Write-Ok 'tests skipped by request' }
-else {
-    Invoke-Checked -FilePath $npmCmd -Arguments @('test') -WorkingDirectory $InstallRoot -What 'npm test'
-    Write-Ok 'test suite passed'
+try {
+    Invoke-Checked -FilePath $npmCmd -Arguments @('ci') -WorkingDirectory $InstallRoot -What 'npm ci'
+    Write-Ok 'dependencies installed'
+
+    Invoke-Checked -FilePath $npmCmd -Arguments @('run', 'build') -WorkingDirectory $InstallRoot -What 'npm run build'
+    foreach ($artifact in @('shared\dist', 'server\dist\index.js', 'frontend\dist\index.html')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $InstallRoot $artifact))) { throw "Build finished but $artifact is missing." }
+    }
+    Write-Ok 'shared, server, and frontend built'
+
+    if ($SkipTests) { Write-Ok 'tests skipped by request' }
+    else {
+        Invoke-Checked -FilePath $npmCmd -Arguments @('test') -WorkingDirectory $InstallRoot -What 'npm test'
+        Write-Ok 'test suite passed'
+    }
+}
+catch {
+    # Leaving the box offline because a build broke is worse than serving the previous version.
+    if ($serverWasRunning) {
+        Write-Warn ("build failed, restarting '{0}' on the previous build" -f $TaskName)
+        Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    }
+    throw
 }
 
 # --- 5. Host settings --------------------------------------------------------
