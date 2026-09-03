@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
-import { capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchWindowLevel, catchWindows, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionWaves, loadSettings, normalizeSettings, openSpacePercent, recordedSpaceLabel, sailingArrival, sailingTimeMinutes, serviceDayLabel, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
+import { capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchWindowLevel, catchWindows, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, loadSettings, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, reorderFavoriteTerminals, sailingArrival, sailingTimeMinutes, serviceDayLabel, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
@@ -131,7 +131,7 @@ describe('Ferry data explorer', () => {
     expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('sorts persisted favorites alphabetically above other terminals', async () => {
+  it('lists persisted favorites first in the saved order and manages them from Settings', async () => {
     const favoriteTerminals = [
       terminals[0],
       terminals[1],
@@ -155,19 +155,32 @@ describe('Ferry data explorer', () => {
     const terminalTrigger = await screen.findByRole('button', { name: 'Origin' });
     await user.click(terminalTrigger);
     expect(screen.getAllByRole('option').map((option) => option.getAttribute('aria-label') ?? option.textContent?.trim())).toEqual([
-      'Anacortes',
       'Seattle',
+      'Anacortes',
       'Bainbridge Island',
     ]);
+    await user.keyboard('{Escape}');
 
-    await user.click(screen.getByRole('option', { name: 'Bainbridge Island' }));
+    await user.click(screen.getByRole('tab', { name: 'Settings' }));
+    await user.click(await screen.findByRole('button', { name: /Favorite terminals/ }));
     await user.click(screen.getByRole('button', { name: 'Add Bainbridge Island to favorites' }));
     expect(JSON.parse(localStorage.getItem('ferry-tracker-favorite-terminals') ?? '[]')).toEqual([7, 1, 999, 3]);
-    await user.click(terminalTrigger);
+
+    // The stale 999 sits between Anacortes and Bainbridge Island, so the move has to skip it.
+    screen.getByRole('button', { name: 'Reorder Bainbridge Island' }).focus();
+    await user.keyboard('{ArrowUp}');
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-favorite-terminals') ?? '[]')).toEqual([7, 3, 999, 1]);
+    await user.keyboard('{ArrowUp}');
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-favorite-terminals') ?? '[]')).toEqual([3, 7, 999, 1]);
+    await user.keyboard('{ArrowUp}');
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-favorite-terminals') ?? '[]')).toEqual([3, 7, 999, 1]);
+
+    await user.click(screen.getByRole('tab', { name: 'Routes' }));
+    await user.click(screen.getByRole('button', { name: 'Origin' }));
     expect(screen.getAllByRole('option').map((option) => option.textContent?.trim())).toEqual([
-      'Anacortes',
       'Bainbridge Island',
       'Seattle',
+      'Anacortes',
     ]);
   });
 
@@ -305,13 +318,11 @@ describe('Sailings only', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(document.querySelector('.relationship-grid')).toHaveClass('is-sailings-only');
     expect(document.querySelector('.selection-band')).toHaveClass('is-sailings-only');
-    expect(document.querySelector('.tabs')).toHaveClass('is-sailings-only');
     expect(localStorage.getItem('ferry-tracker-sailings-only')).toBe('true');
 
     await user.click(toggle);
     expect(document.querySelector('.relationship-grid')).not.toHaveClass('is-sailings-only');
     expect(document.querySelector('.selection-band')).not.toHaveClass('is-sailings-only');
-    expect(document.querySelector('.tabs')).not.toHaveClass('is-sailings-only');
     expect(localStorage.getItem('ferry-tracker-sailings-only')).toBe('false');
   });
 
@@ -336,7 +347,6 @@ describe('Sailings only', () => {
     await user.click(screen.getByRole('tab', { name: 'Terminals' }));
     expect(screen.queryByRole('button', { name: 'Sailings only' })).not.toBeInTheDocument();
     expect(document.querySelector('.selection-band')).not.toHaveClass('is-sailings-only');
-    expect(document.querySelector('.tabs')).not.toHaveClass('is-sailings-only');
   });
 });
 
@@ -704,6 +714,50 @@ describe('Associated vessel order', () => {  it('ranks the selected route ahead 
   });
 });
 
+describe('Favorite terminal order', () => {
+  const catalog = [
+    { id: 7, name: 'Seattle' },
+    { id: 3, name: 'Bainbridge Island' },
+    { id: 1, name: 'Anacortes' },
+  ];
+
+  it('keeps favorites in the saved order and sorts the rest alphabetically', () => {
+    expect(orderTerminals(catalog, [7, 3]).map(({ terminal, favorite }) => [terminal.name, favorite])).toEqual([
+      ['Seattle', true],
+      ['Bainbridge Island', true],
+      ['Anacortes', false],
+    ]);
+  });
+
+  it('drops favorites for terminals WSDOT no longer publishes', () => {
+    expect(orderTerminals(catalog, [999, 3]).map(({ terminal }) => terminal.name)).toEqual([
+      'Bainbridge Island',
+      'Anacortes',
+      'Seattle',
+    ]);
+  });
+
+  it('adds a new favorite at the end and removes it again', () => {
+    expect(toggleFavoriteTerminalId([7], 3)).toEqual([7, 3]);
+    expect(toggleFavoriteTerminalId([7, 3], 7)).toEqual([3]);
+  });
+
+  it('swaps a favorite with its visible neighbour, skipping unpublished ones', () => {
+    expect(reorderFavoriteTerminals([7, 999, 3], [7, 3], 3, 7)).toEqual([3, 999, 7]);
+    expect(reorderFavoriteTerminals([7, 3], [7, 3], 7, 3)).toEqual([3, 7]);
+  });
+
+  it('drops a favorite onto a target further down the list', () => {
+    expect(reorderFavoriteTerminals([7, 3, 1], [7, 3, 1], 7, 1)).toEqual([3, 1, 7]);
+    expect(reorderFavoriteTerminals([7, 3, 1], [7, 3, 1], 1, 7)).toEqual([1, 7, 3]);
+  });
+
+  it('leaves the order alone when the drop goes nowhere', () => {
+    expect(reorderFavoriteTerminals([7, 3], [7, 3], 7, 7)).toEqual([7, 3]);
+    expect(reorderFavoriteTerminals([7, 3], [7, 3], 999, 7)).toEqual([7, 3]);
+  });
+});
+
 describe('Bainbridge disruption', () => {
   const now = Date.parse('2026-09-01T17:00:00.000Z');
   const inbound = {
@@ -719,14 +773,60 @@ describe('Bainbridge disruption', () => {
     expect(disruptionLevel(15)).toBe('clear');
   });
 
-  it('lands the wave ten minutes after the boat docks', () => {
+  it('lands the wave ten minutes after the boat docks and holds it for fifteen', () => {
     expect(disruptionWaves([inbound], now)).toEqual([{
       vesselId: 1,
       vesselName: 'Tacoma',
       landingAt: '2026-09-01T17:20:00.000Z',
       disruptionAt: '2026-09-01T17:30:00.000Z',
+      clearsAt: '2026-09-01T17:45:00.000Z',
       minutesAway: 30,
+      minutesLeft: 45,
+      active: false,
+      ongoing: false,
     }]);
+  });
+
+  it('keeps a window that is already open and counts down to the end of it', () => {
+    const started = disruptionWaves([inbound], Date.parse('2026-09-01T17:36:00.000Z'))[0];
+    expect(started).toMatchObject({ active: true, minutesAway: -6, minutesLeft: 9 });
+  });
+
+  it('drops the wave once the traffic has cleared', () => {
+    expect(disruptionWaves([inbound], Date.parse('2026-09-01T17:45:00.000Z'))).toEqual([]);
+  });
+
+  it('stretches the window by the configured duration', () => {
+    const settings = { ...DEFAULT_SETTINGS, disruptionDurationMinutes: 45 };
+    expect(disruptionWaves([inbound], now, settings)[0].clearsAt).toBe('2026-09-01T18:15:00.000Z');
+    expect(disruptionWaves([inbound], Date.parse('2026-09-01T17:45:00.000Z'), settings)).toHaveLength(1);
+  });
+
+  it('calls the traffic ongoing when the next boat lands inside the window', () => {
+    const close = { ...inbound, id: 2, name: 'Wenatchee', eta: '2026-09-01T17:32:00.000Z' };
+    const apart = { ...inbound, id: 2, name: 'Wenatchee', eta: '2026-09-01T17:50:00.000Z' };
+    expect(disruptionWaves([close, inbound], now).map((wave) => wave.ongoing)).toEqual([true, false]);
+    expect(disruptionWaves([apart, inbound], now).map((wave) => wave.ongoing)).toEqual([false, false]);
+  });
+
+  describe('the boat that most recently docked', () => {
+    const leg = { vesselId: 4, vesselName: 'Chimacum', actualArrival: '2026-09-01T16:45:00.000Z' };
+
+    it('takes its landing from the observed arrival, since a docked boat leaves the vessel feed', () => {
+      expect(disruptionWaves([], now, DEFAULT_SETTINGS, [leg])[0]).toMatchObject({
+        vesselId: 4, vesselName: 'Chimacum', disruptionAt: '2026-09-01T16:55:00.000Z', active: true, minutesLeft: 10,
+      });
+    });
+
+    it('ignores a leg that has not arrived or has already cleared', () => {
+      expect(disruptionWaves([], now, DEFAULT_SETTINGS, [{ ...leg, actualArrival: null }])).toEqual([]);
+      expect(disruptionWaves([], now, DEFAULT_SETTINGS, [{ ...leg, actualArrival: '2026-09-01T16:30:00.000Z' }])).toEqual([]);
+    });
+
+    it('does not double up when the vessel feed still reads the same landing as underway', () => {
+      const stale = { ...inbound, id: 4, name: 'Chimacum', eta: '2026-09-01T16:56:00.000Z' };
+      expect(disruptionWaves([stale], now, DEFAULT_SETTINGS, [leg])).toHaveLength(1);
+    });
   });
 
   it('pushes the wave out by the delay the boat is already carrying', () => {
@@ -738,12 +838,40 @@ describe('Bainbridge disruption', () => {
     expect(disruptionWaves([{ ...inbound, atDock: true }], now)).toEqual([]);
     expect(disruptionWaves([{ ...inbound, arrivingTerminalId: 7 }], now)).toEqual([]);
     expect(disruptionWaves([{ ...inbound, eta: null }], now)).toEqual([]);
-    expect(disruptionWaves([inbound], Date.parse('2026-09-01T17:30:00.000Z'))).toEqual([]);
+    expect(disruptionWaves([inbound], Date.parse('2026-09-01T17:46:00.000Z'))).toEqual([]);
   });
 
   it('orders several inbound boats by when their traffic arrives', () => {
     const later = { ...inbound, id: 2, name: 'Wenatchee', eta: '2026-09-01T18:20:00.000Z' };
     expect(disruptionWaves([later, inbound], now).map((wave) => wave.vesselName)).toEqual(['Tacoma', 'Wenatchee']);
+  });
+
+  describe('how full the arriving boat was', () => {
+    const leg = {
+      vesselId: 1, departingTime: '2026-09-01T16:45:00.000Z', spaceAvailable: true,
+      driveUpSpaceCount: 29, reservableSpaceCount: null, maxSpaceCount: 197,
+      spaceObservedAt: '2026-09-01T16:44:33.000Z',
+    };
+
+    it('reads the leg the boat is on right now', () => {
+      expect(disruptionLoad([leg], 1, '2026-09-01T17:20:00.000Z')).toEqual({
+        percentFull: 85, openPercent: 15, openCount: 29, totalSpace: 197,
+        observedAt: '2026-09-01T16:44:33.000Z',
+      });
+    });
+
+    it('takes the latest leg that had already sailed by the landing', () => {
+      const earlier = { ...leg, departingTime: '2026-09-01T15:50:00.000Z', driveUpSpaceCount: 180 };
+      const next = { ...leg, departingTime: '2026-09-01T17:40:00.000Z', driveUpSpaceCount: 197 };
+      expect(disruptionLoad([next, leg, earlier], 1, '2026-09-01T17:20:00.000Z')?.percentFull).toBe(85);
+    });
+
+    it('gives nothing when the counts are missing or the vessel does not match', () => {
+      expect(disruptionLoad([leg], 2, '2026-09-01T17:20:00.000Z')).toBeNull();
+      expect(disruptionLoad([{ ...leg, maxSpaceCount: null }], 1, '2026-09-01T17:20:00.000Z')).toBeNull();
+      expect(disruptionLoad([{ ...leg, spaceAvailable: false }], 1, '2026-09-01T17:20:00.000Z')).toBeNull();
+      expect(disruptionLoad([], 1, '2026-09-01T17:20:00.000Z')).toBeNull();
+    });
   });
 
   it('shows the countdown and the boats behind it', async () => {
@@ -769,6 +897,49 @@ describe('Bainbridge disruption', () => {
     expect(document.querySelector('.countdown-headline')).toHaveClass('is-clear');
     expect(screen.getByText('Tacoma')).toBeInTheDocument();
     expect(document.querySelectorAll('.countdown-later .sailing-list li')).toHaveLength(1);
+  });
+
+  it('shows how full the arriving boat was', async () => {
+    const soon = new Date(Date.now() + 20.5 * 60000).toISOString();
+    const sailed = new Date(Date.now() - 15 * 60000).toISOString();
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json([{ ...vessels[0], eta: soon, leftDock: null }]);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      if (url.includes('departingTerminalId=7&arrivingTerminalId=3')) {
+        return json([{ vesselId: 1, vesselName: 'Tacoma', departingTime: sailed, arrivingTime: null, departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 29, reservableSpaceCount: null, maxSpaceCount: 197, spaceAvailable: true, spaceSource: 'recorded', spaceObservedAt: sailed, raw: {} }]);
+      }
+      return json([]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Disruption' }));
+
+    const capacity = await screen.findByText('85% full');
+    expect(capacity.closest('.field')?.querySelector('dt')).toHaveTextContent('Capacity');
+    expect(capacity.parentElement?.querySelector('.capacity-pill')).toHaveTextContent('15%');
+  });
+
+  it('leaves the capacity out when the inbound leg has no counts', async () => {
+    const soon = new Date(Date.now() + 20.5 * 60000).toISOString();
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json([{ ...vessels[0], eta: soon, leftDock: null }]);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Disruption' }));
+
+    const capacity = await screen.findByText('Capacity');
+    expect(capacity.closest('.field')?.querySelector('dd')).toHaveTextContent('—');
   });
 
   it('says so when nothing is inbound', async () => {
@@ -928,6 +1099,36 @@ describe('Catching a ferry', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Catch' }));
 
     expect(await screen.findByText('No sailing left today that you can still make.')).toBeInTheDocument();
+  });
+});
+
+describe('Routeless tabs', () => {
+  it('flags the selection band on Catch, Disruption and Settings so the phone layout can drop it', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    expect(document.querySelector('.selection-band')).not.toHaveClass('is-routeless');
+
+    await user.click(screen.getByRole('tab', { name: 'Catch' }));
+    expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
+
+    await user.click(screen.getByRole('tab', { name: 'Disruption' }));
+    expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
+
+    await user.click(screen.getByRole('tab', { name: 'Settings' }));
+    expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
+
+    await user.click(screen.getByRole('tab', { name: 'Sailings' }));
+    expect(document.querySelector('.selection-band')).not.toHaveClass('is-routeless');
   });
 });
 

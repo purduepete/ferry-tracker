@@ -1,8 +1,8 @@
 import { isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import { Anchor, ArrowLeftRight, ArrowRight, Car, Clock3, ExternalLink, History, ListFilter, MapPin, RefreshCw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind } from 'lucide-react';
+import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, Clock3, ExternalLink, GripVertical, History, ListFilter, MapPin, RefreshCw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { BAINBRIDGE_TERMINAL_ID, capacityLevel, catchPillClass, catchWindowLevel, catchWindows, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionWaves, fieldTime, LATE_MINUTES, loadSettings, localTime, normalizeSettings, openSpacePercent, recordedSpaceLabel, refreshTime, sailingArrival, sailingTimeMinutes, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type FerrySettings } from './format';
+import { BAINBRIDGE_TERMINAL_ID, capacityLevel, catchPillClass, catchWindowLevel, catchWindows, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, LATE_MINUTES, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshTime, reorderFavoriteTerminals, sailingArrival, sailingTimeMinutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type FerrySettings } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -21,19 +21,8 @@ const COUNTDOWN_TICK_MS = 15_000;
 const MINIMUM_SKELETON_MS = 500;
 const SKELETON_EXIT_MS = 520;
 const LIVE_DATE = 'live';
-const favoriteTerminalsKey = 'ferry-tracker-favorite-terminals';
 const lastRouteKey = 'ferry-tracker-last-route';
 const sailingsOnlyKey = 'ferry-tracker-sailings-only';
-
-function loadFavoriteTerminalIds() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(favoriteTerminalsKey) ?? '[]');
-    if (!Array.isArray(stored)) return [];
-    return [...new Set(stored.filter((value): value is number => Number.isInteger(value)))];
-  } catch {
-    return [];
-  }
-}
 
 function loadLastRoute(): { terminalId: number | null; destinationId: number | null } {
   const empty = { terminalId: null, destinationId: null };
@@ -202,6 +191,7 @@ export function App() {
   const [mateResponse, setMateResponse] = useState<ApiEnvelope<TerminalMateView[]> | null>(null);
   const [scheduleResponse, setScheduleResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
   const [catchResponse, setCatchResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
+  const [inboundResponse, setInboundResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
   const [catchLoading, setCatchLoading] = useState(false);
   const [catchError, setCatchError] = useState<string | null>(null);
   const [restoredRoute] = useState(loadLastRoute);
@@ -222,12 +212,15 @@ export function App() {
   const [retainedUpdateSkeleton, setRetainedUpdateSkeleton] = useState(false);
   const [backgroundRefresh, setBackgroundRefresh] = useState(false);
   const [favoriteTerminalIds, setFavoriteTerminalIds] = useState<number[]>(loadFavoriteTerminalIds);
+  const [draggedFavoriteId, setDraggedFavoriteId] = useState<number | null>(null);
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [sailingsOnly, setSailingsOnly] = useState(loadSailingsOnly);
   const [settings, setSettings] = useState<FerrySettings>(loadSettings);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const overviewRequestId = useRef(0);
   const scheduleRequestId = useRef(0);
   const vesselStackRef = useRef<HTMLDivElement>(null);
+  const favoriteListRef = useRef<HTMLUListElement>(null);
   const [vesselStackHeight, setVesselStackHeight] = useState(0);
 
   const loadOverview = () => {
@@ -265,10 +258,9 @@ export function App() {
   }, []);
 
   const terminals = terminalResponse?.data ?? [];
-  const favoriteTerminalIdSet = new Set(favoriteTerminalIds);
-  const terminalOptions = terminals
-    .map((terminal) => ({ value: terminal.id, label: terminal.name, favorite: favoriteTerminalIdSet.has(terminal.id) }))
-    .sort((left, right) => Number(right.favorite) - Number(left.favorite) || left.label.localeCompare(right.label));
+  const orderedTerminals = orderTerminals(terminals, favoriteTerminalIds);
+  const favoriteOrder = orderedTerminals.filter((entry) => entry.favorite).map((entry) => entry.terminal.id);
+  const terminalOptions = orderedTerminals.map(({ terminal, favorite }) => ({ value: terminal.id, label: terminal.name, favorite }));
   const vessels = vesselResponse?.data ?? [];
   const selectedTerminal = terminals.find((terminal) => terminal.id === selectedTerminalId) ?? null;
   const destinationIds = [...new Set((mateResponse?.data ?? [])
@@ -373,8 +365,9 @@ export function App() {
   const destination = terminals.find((terminal) => terminal.id === effectiveDestinationId) ?? null;
   const currentSailing = scheduleResponse?.data ? getCurrentSailing(scheduleResponse.data) : null;
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
-  const waves = disruptionWaves(vessels, countdownNow, settings.disruptionLeadMinutes);
+  const waves = disruptionWaves(vessels, countdownNow, settings, inboundResponse?.data ?? []);
   const [nextWave, ...laterWaves] = waves;
+  const nextLoad = nextWave ? disruptionLoad(inboundResponse?.data ?? [], nextWave.vesselId, nextWave.landingAt) : null;
   const catches = catchWindows(catchResponse?.data ?? [], countdownNow, settings.catchPadMinutes);
   const [nextCatch, ...laterCatches] = catches;
 
@@ -431,6 +424,24 @@ export function App() {
     };
   }, [refreshVersion, tab]);
 
+  // Disruption needs the Seattle to Bainbridge leg, which carries how full the arriving boat was.
+  useEffect(() => {
+    if (tab !== 'disruption') return;
+    const controller = new AbortController();
+    let active = true;
+    ferryApi.schedule(SEATTLE_TERMINAL_ID, BAINBRIDGE_TERMINAL_ID, controller.signal)
+      .then((schedule) => {
+        if (!active) return;
+        setInboundResponse(schedule);
+        setLastRefreshAt((current) => latestTimestamp(current, schedule.fetchedAt));
+      })
+      .catch(() => { /* The card just leaves the capacity out. */ });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [refreshVersion, tab]);
+
   useEffect(() => {
     if (viewUpdating) {
       setRetainedUpdateSkeleton(true);
@@ -464,14 +475,49 @@ export function App() {
     setTab('routes');
   };
 
-  const toggleFavoriteTerminal = () => {
-    if (selectedTerminalId === null) return;
-    const nextFavorites = favoriteTerminalIds.includes(selectedTerminalId)
-      ? favoriteTerminalIds.filter((id) => id !== selectedTerminalId)
-      : [...favoriteTerminalIds, selectedTerminalId];
+  const toggleFavoriteTerminal = (terminalId: number) => {
+    const nextFavorites = toggleFavoriteTerminalId(favoriteTerminalIds, terminalId);
     setFavoriteTerminalIds(nextFavorites);
-    try { localStorage.setItem(favoriteTerminalsKey, JSON.stringify(nextFavorites)); } catch { /* Favorites remain active for this tab. */ }
+    saveFavoriteTerminalIds(nextFavorites);
   };
+
+  const reorderFavoriteTerminal = (terminalId: number, targetId: number) => {
+    const nextFavorites = reorderFavoriteTerminals(favoriteTerminalIds, favoriteOrder, terminalId, targetId);
+    setFavoriteTerminalIds(nextFavorites);
+    saveFavoriteTerminalIds(nextFavorites);
+  };
+
+  const nudgeFavoriteTerminal = (terminalId: number, direction: -1 | 1) => {
+    const target = favoriteOrder[favoriteOrder.indexOf(terminalId) + direction];
+    if (target !== undefined) reorderFavoriteTerminal(terminalId, target);
+  };
+
+  // The dragged row swaps into place as the pointer passes each favorite, so it follows the grip.
+  const dragFavoriteTerminal = (clientY: number, terminalId: number) => {
+    for (const row of favoriteListRef.current?.querySelectorAll<HTMLElement>('li.is-favorite') ?? []) {
+      const box = row.getBoundingClientRect();
+      if (clientY < box.top || clientY > box.bottom) continue;
+      const overId = Number(row.dataset.terminalId);
+      if (overId !== terminalId) reorderFavoriteTerminal(terminalId, overId);
+      return;
+    }
+  };
+
+  // Reordering moves the grip's own DOM node, which drops its pointer capture, so the window
+  // has to see the rest of the drag.
+  useEffect(() => {
+    if (draggedFavoriteId === null) return;
+    const move = (event: PointerEvent) => dragFavoriteTerminal(event.clientY, draggedFavoriteId);
+    const stop = () => setDraggedFavoriteId(null);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+  });
 
   const toggleSailingsOnly = () => {
     const next = !sailingsOnly;
@@ -507,10 +553,11 @@ export function App() {
       </header>
 
       <main>
-        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}`} aria-labelledby="route-heading">
+        {/* Catch and Disruption are pinned to Bainbridge and Settings has no route at all. */}
+        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}${tab === 'catch' || tab === 'disruption' || tab === 'settings' ? ' is-routeless' : ''}`} aria-labelledby="route-heading">
           <div className="route-title"><span className="eyebrow">Route explorer</span><h1 id="route-heading">Sailings and vessel positions</h1></div>
           <div className="selectors">
-            <div className="selector-field"><span>Origin</span><div className="selector-control-row"><FilterSelect ariaLabel="Origin" value={selectedTerminalId} onChange={setSelectedTerminalId} disabled={loading && !backgroundRefresh} options={terminalOptions} /><button className={`favorite-button${selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? ' active' : ''}`} type="button" aria-label={selectedTerminalId === null ? 'Add to favorites' : favoriteTerminalIdSet.has(selectedTerminalId) ? `Remove ${selectedTerminal?.name ?? 'this terminal'} from favorites` : `Add ${selectedTerminal?.name ?? 'this terminal'} to favorites`} title={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? 'Remove from favorites' : 'Add to favorites'} disabled={selectedTerminalId === null || (loading && !backgroundRefresh)} aria-pressed={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId)} onClick={toggleFavoriteTerminal}><Star fill={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? 'currentColor' : 'none'} size={16} /></button></div></div>
+            <label><span>Origin</span><FilterSelect ariaLabel="Origin" value={selectedTerminalId} onChange={setSelectedTerminalId} disabled={loading && !backgroundRefresh} options={terminalOptions} /></label>
             <button className="swap-button" type="button" aria-label="Reverse route" title={canSwapRoute ? 'Swap origin and destination' : 'Reverse route unavailable'} disabled={!canSwapRoute} onClick={swapRoute}><ArrowLeftRight size={18} /></button>
             <label><span>Destination</span><FilterSelect ariaLabel="Destination" value={effectiveDestinationId} onChange={setDestinationId} disabled={!destinationIds.length} placeholder="No live association" options={destinationIds.map((id) => ({ value: id, label: terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown' }))} /></label>
             <label className="day-field"><span>Day</span><FilterSelect ariaLabel="Day" value={serviceDate} onChange={setServiceDate} disabled={!historyDates.length} options={dayOptions} /></label>
@@ -518,8 +565,8 @@ export function App() {
         </section>
 
         {error && <div className="error-banner" role="alert">{error}</div>}
-        <nav className={`tabs${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}`} role="tablist" aria-label="Data views">
-          {tabs.map(({ id, label, icon: Icon }, index) => <button ref={(element) => { tabRefs.current[index] = element; }} id={`tab-${id}`} aria-controls={`panel-${id}`} aria-selected={tab === id} role="tab" tabIndex={tab === id ? 0 : -1} key={id} type="button" className={tab === id ? 'active' : ''} onClick={() => setTab(id)} onKeyDown={(event) => handleTabKeyDown(event, index)}><Icon size={16} />{label}</button>)}
+        <nav className="tabs" role="tablist" aria-label="Data views">
+          {tabs.map(({ id, label, icon: Icon }, index) => <button ref={(element) => { tabRefs.current[index] = element; }} id={`tab-${id}`} aria-controls={`panel-${id}`} aria-selected={tab === id} role="tab" tabIndex={tab === id ? 0 : -1} key={id} type="button" className={tab === id ? 'active' : ''} onClick={() => setTab(id)} onKeyDown={(event) => handleTabKeyDown(event, index)}><Icon size={16} /><span className="tab-label">{label}</span></button>)}
         </nav>
 
         <section className="view" id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`} aria-live="polite" aria-busy={initialLoading || viewUpdating || backgroundRefresh}>
@@ -569,24 +616,60 @@ export function App() {
             <div className="schedule-heading"><span className="node-type">Next disruption</span><h2>Bainbridge Island offload</h2></div>
             {nextWave ? <>
               <div className={`countdown-headline is-${disruptionLevel(nextWave.minutesAway, settings)}`}>
-                <strong className="countdown-value">{nextWave.minutesAway < 1 ? 'under 1 min' : `${nextWave.minutesAway} min`}</strong>
-                <span className="countdown-at">Traffic from {clockTime(nextWave.disruptionAt)}</span>
+                <strong className="countdown-value">{nextWave.active
+                  ? (nextWave.ongoing ? 'Ongoing' : `${nextWave.minutesLeft} min left`)
+                  : nextWave.minutesAway < 1 ? 'under 1 min' : `${nextWave.minutesAway} min`}</strong>
+                <span className="countdown-at">Traffic {nextWave.active ? 'since' : 'from'} {clockTime(nextWave.disruptionAt)}</span>
               </div>
               <dl className="countdown-detail">
                 <Field label="Vessel" value={nextWave.vesselName} />
                 <Field label="Lands" value={fieldTime(nextWave.landingAt)} />
                 <Field label="Lead" value={`${settings.disruptionLeadMinutes} min after landing`} />
+                <Field label="Clears" value={nextWave.ongoing ? 'Ongoing' : fieldTime(nextWave.clearsAt)} />
+                <Field label="Capacity" value={nextLoad && <>{`${nextLoad.percentFull}% full`} <CapacityPill percent={nextLoad.openPercent} total={nextLoad.totalSpace} /></>} />
               </dl>
-              {laterWaves.length > 0 && <div className="countdown-later"><span className="node-type">Behind it</span><ol className="sailing-list">{laterWaves.map((wave) => <li key={`${wave.vesselId}-${wave.disruptionAt}`}><strong>{clockTime(wave.disruptionAt)}<span className={`capacity-pill ${catchPillClass(disruptionLevel(wave.minutesAway, settings))}`}>{wave.minutesAway} min</span></strong><span>{wave.vesselName} lands {clockTime(wave.landingAt)}</span></li>)}</ol></div>}
+              {laterWaves.length > 0 && <div className="countdown-later"><span className="node-type">Behind it</span><ol className="sailing-list">{laterWaves.map((wave) => <li key={`${wave.vesselId}-${wave.disruptionAt}`}><strong>{clockTime(wave.disruptionAt)}<span className={`capacity-pill ${catchPillClass(disruptionLevel(wave.minutesAway, settings))}`}>{wave.active ? 'now' : `${wave.minutesAway} min`}</span></strong><span>{wave.vesselName} lands {clockTime(wave.landingAt)}</span></li>)}</ol></div>}
             </> : <div className="empty">No vessel is inbound to Bainbridge Island right now.</div>}
           </div>}
 
           {tab === 'settings' && <div className="countdown-card settings-card">
             <div className="schedule-heading"><h2>Settings</h2></div>
             <div className="settings-section">
+              <button className="settings-disclosure" type="button" aria-expanded={favoritesOpen} onClick={() => setFavoritesOpen(!favoritesOpen)}>
+                <ChevronDown className={favoritesOpen ? 'open' : ''} size={14} />
+                <span className="node-type">Favorite terminals</span>
+                <span className="settings-disclosure-count">{favoriteOrder.length} starred</span>
+              </button>
+              {favoritesOpen && <>
+              <p className="settings-note">Starred terminals lead the Origin list. Drag a handle to change their order.</p>
+              <ul className="favorite-list" ref={favoriteListRef}>
+                {orderedTerminals.map(({ terminal, favorite }) => <li
+                  key={terminal.id}
+                  data-terminal-id={terminal.id}
+                  className={`${favorite ? 'is-favorite' : ''}${draggedFavoriteId === terminal.id ? ' is-dragging' : ''}`}
+                >
+                  {favorite ? <button
+                    className="favorite-grip"
+                    type="button"
+                    aria-label={`Reorder ${terminal.name}`}
+                    title="Drag to reorder, or use the arrow keys"
+                    onPointerDown={(event) => { event.preventDefault(); event.currentTarget.focus(); setDraggedFavoriteId(terminal.id); }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                      event.preventDefault();
+                      nudgeFavoriteTerminal(terminal.id, event.key === 'ArrowUp' ? -1 : 1);
+                    }}
+                  ><GripVertical size={14} /></button> : <span className="favorite-grip is-placeholder" />}
+                  <span className="favorite-name">{terminal.name}</span>
+                  <button className={`favorite-star${favorite ? ' active' : ''}`} type="button" aria-pressed={favorite} aria-label={favorite ? `Remove ${terminal.name} from favorites` : `Add ${terminal.name} to favorites`} title={favorite ? 'Remove from favorites' : 'Add to favorites'} onClick={() => toggleFavoriteTerminal(terminal.id)}><Star fill={favorite ? 'currentColor' : 'none'} size={15} /></button>
+                </li>)}
+              </ul>
+              </>}
+            </div>
+            <div className="settings-section">
               <span className="node-type">Catch</span>
               <div className="settings-grid is-single">
-                <SettingField label="Padding" ariaLabel="Catch padding" hint="Time to reach the terminal and wait" setting="catchPadMinutes" unit="min" settings={settings} onChange={changeSetting} />
+                <SettingField label="Padding" ariaLabel="Catch padding" hint="Time to commute to the terminal and queue" setting="catchPadMinutes" unit="min" settings={settings} onChange={changeSetting} />
               </div>
               <div className="settings-subgroup">
                 <span className="settings-subhead">Time left to leave</span>
@@ -607,6 +690,7 @@ export function App() {
               <span className="node-type">Disruption</span>
               <div className="settings-grid">
                 <SettingField label="Lead" ariaLabel="Disruption lead" hint="Offload to traffic on the road" setting="disruptionLeadMinutes" unit="min" settings={settings} onChange={changeSetting} />
+                <SettingField label="Lasts" ariaLabel="Disruption duration" hint="How long the traffic disrupts for" setting="disruptionDurationMinutes" unit="min" settings={settings} onChange={changeSetting} />
                 <SettingField label="Turns yellow below" ariaLabel="Disruption yellow under" hint="Minutes until traffic hits" setting="disruptionSoonMinutes" unit="min" settings={settings} onChange={changeSetting} />
                 <SettingField label="Turns red below" ariaLabel="Disruption red under" hint="Minutes until traffic hits" setting="disruptionImminentMinutes" unit="min" settings={settings} onChange={changeSetting} />
               </div>

@@ -86,22 +86,30 @@ test('persists a selected theme and exposes semantic keyboard tabs', async ({ pa
   await expect(page.getByRole('tabpanel', { name: 'Catch' })).toBeVisible();
 });
 
-test('persists favorite terminals and sorts them first', async ({ page }) => {
+test('sets favorite terminals and their order from Settings', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Origin' }).click();
-  await page.getByRole('option', { name: 'Seattle' }).click();
-  await page.getByRole('button', { name: 'Add Seattle to favorites' }).click();
-  await expect(page.getByRole('button', { name: 'Remove Seattle from favorites' })).toHaveAttribute('aria-pressed', 'true');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-favorite-terminals'))).toContain('7');
+  await page.getByRole('tab', { name: 'Settings' }).click();    await page.getByRole('button', { name: /Favorite terminals/ }).click();  await page.getByRole('button', { name: 'Add Seattle to favorites' }).click();
+  await page.getByRole('button', { name: 'Add Bainbridge Island to favorites' }).click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-favorite-terminals'))).toBe('[7,3]');
 
-  await page.getByRole('button', { name: 'Origin' }).click();
-  await expect(page.getByRole('option').first()).toHaveAccessibleName('Seattle');
-  await page.keyboard.press('Escape');
+  const grip = page.getByRole('button', { name: 'Reorder Bainbridge Island' });
+  const from = (await grip.boundingBox())!;
+  const target = (await page.getByRole('button', { name: 'Reorder Seattle' }).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, target.y + target.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-favorite-terminals'))).toBe('[3,7]');
+
+  // The same move without a pointer, because the grip has to work from the keyboard too.
+  await page.getByRole('button', { name: 'Reorder Seattle' }).focus();
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-favorite-terminals'))).toBe('[7,3]');
+
   await page.reload();
   await page.getByRole('button', { name: 'Origin' }).click();
   await expect(page.getByRole('option').first()).toHaveAccessibleName('Seattle');
-  await page.getByRole('option', { name: 'Seattle' }).click();
-  await expect(page.getByRole('button', { name: 'Remove Seattle from favorites' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('option').nth(1)).toHaveAccessibleName('Bainbridge Island');
 });
 
 test('reopens on the terminal and destination chosen before the reload', async ({ page }) => {
@@ -139,15 +147,22 @@ test('collapses the routes view to the sailings schedule on a phone', async ({ p
   expect(clipped).toEqual([]);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  // The band pins under the navbar so the route can change from anywhere in the schedule.
-  await page.mouse.wheel(0, 1200);
-  await expect.poll(() => page.evaluate(() => Math.round(document.querySelector('.selection-band')!.getBoundingClientRect().top - document.querySelector('.app-header')!.getBoundingClientRect().height))).toBe(0);
+  // The band never slides under the navbar, so the route can change from anywhere in the schedule.
+  // Assert the relationship rather than an exact offset: the fixture schedule is sometimes short
+  // enough that there is nothing to scroll, and the band then sits at its natural spot.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => {
+    const band = document.querySelector('.selection-band')!.getBoundingClientRect();
+    const header = document.querySelector('.app-header')!.getBoundingClientRect();
+    return band.top >= header.bottom - 2 && band.bottom <= window.innerHeight;
+  })).toBe(true);
   await expect(page.getByRole('button', { name: 'Origin' })).toBeInViewport();
   await expect(page.getByRole('button', { name: 'Destination' })).toBeInViewport();
   await expect(page.getByRole('heading', { name: 'Sailings and vessel positions' })).toBeAttached();
-  // The title and the tab bar go off screen rather than away, so their IDREFs still resolve.
-  await expect.poll(() => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().height)).toBeLessThan(2);
-  await page.mouse.wheel(0, -1200);
+  // The title goes off screen rather than away, so its IDREF still resolves. The tab bar stays.
+  await expect.poll(() => page.evaluate(() => document.querySelector('.route-title')!.getBoundingClientRect().height)).toBeLessThan(2);
+  await expect.poll(() => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().height)).toBeGreaterThan(40);
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   await page.reload();
   await expect(page.getByRole('button', { name: 'Sailings only' })).toHaveAttribute('aria-pressed', 'true');
@@ -159,6 +174,57 @@ test('collapses the routes view to the sailings schedule on a phone', async ({ p
   await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sailings only' })).toBeHidden();
   await expect.poll(() => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().height)).toBeGreaterThan(40);
+});
+
+test('drops the tab labels and the route selectors on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  // The label is clipped rather than removed, so the tab keeps the accessible name its panel points at.
+  const catchTab = page.getByRole('tab', { name: 'Catch' });
+  await expect(catchTab.locator('svg')).toBeVisible();
+  await expect.poll(() => catchTab.locator('.tab-label').evaluate((element) => element.getBoundingClientRect().width)).toBeLessThan(2);
+
+  const tabsLeadTheBand = () => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().bottom <= document.querySelector('.selection-band')!.getBoundingClientRect().top);
+  await expect.poll(tabsLeadTheBand).toBe(true);
+
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
+  await catchTab.click();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Destination' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
+  await expect(page.getByRole('tabpanel', { name: 'Catch' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.getByRole('tab', { name: 'Disruption' }).click();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
+
+  await page.getByRole('tab', { name: 'Routes' }).click();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
+
+  // Every phone tab that shows the selectors shows the compact ones, not only sailings-only Routes.
+  const compactSelectors = () => page.evaluate(() => {
+    const trigger = document.querySelector('.selectors .filter-select-trigger')!.getBoundingClientRect().height;
+    const label = document.querySelector('.selectors label > span')!.getBoundingClientRect().height;
+    const title = document.querySelector('.route-title')!.getBoundingClientRect().height;
+    return { trigger: Math.round(trigger), labelShown: label > 1, titleShown: title > 1 };
+  });
+  expect(await compactSelectors()).toEqual({ trigger: 36, labelShown: false, titleShown: false });
+  await page.getByRole('tab', { name: 'Sailings' }).click();
+  await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
+  expect(await compactSelectors()).toEqual({ trigger: 36, labelShown: false, titleShown: false });
+
+  // Settings has no route, so the whole band goes.
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
+
+  // Desktop keeps both the words and the selectors, and the band leads again.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole('tab', { name: 'Catch' }).click();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
+  await expect.poll(() => catchTab.locator('.tab-label').evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(20);
+  await expect.poll(tabsLeadTheBand).toBe(false);
 });
 
 for (const width of [390, 767, 768, 1024, 1440]) {

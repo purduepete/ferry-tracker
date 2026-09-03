@@ -70,6 +70,8 @@ export const BAINBRIDGE_TERMINAL_ID = 3;
 export const SEATTLE_TERMINAL_ID = 7;
 // Offloaded traffic takes about this long to clear the dock and reach the road.
 export const DISRUPTION_LEAD_MINUTES = 10;
+// And about this long to drain off it again.
+export const DISRUPTION_DURATION_MINUTES = 15;
 // Drive to the terminal, then sit in the holding lane before they load.
 export const CATCH_TRAVEL_MINUTES = 15;
 export const CATCH_BUFFER_MINUTES = 15;
@@ -79,6 +81,7 @@ export const THRESHOLD_MINUTE_CHOICES = [0, 2, 3, 5, 7, 10, 12, 15, 20, 25, 30, 
 export const SPACE_SOON_PERCENT_CHOICES = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
 export const SPACE_IMMINENT_PERCENT_CHOICES = [5, 10, 15, 20, 25, 30, 35];
 export const DISRUPTION_LEAD_CHOICES = [0, 5, 10, 15, 20, 25, 30];
+export const DISRUPTION_DURATION_CHOICES = [5, 10, 15, 20, 25, 30, 45, 60];
 
 export interface FerrySettings {
   catchPadMinutes: number;
@@ -87,6 +90,7 @@ export interface FerrySettings {
   spaceSoonPercent: number;
   spaceImminentPercent: number;
   disruptionLeadMinutes: number;
+  disruptionDurationMinutes: number;
   disruptionSoonMinutes: number;
   disruptionImminentMinutes: number;
 }
@@ -98,6 +102,7 @@ export const DEFAULT_SETTINGS: FerrySettings = {
   spaceSoonPercent: 50,
   spaceImminentPercent: 25,
   disruptionLeadMinutes: DISRUPTION_LEAD_MINUTES,
+  disruptionDurationMinutes: DISRUPTION_DURATION_MINUTES,
   disruptionSoonMinutes: 15,
   disruptionImminentMinutes: 5,
 };
@@ -109,6 +114,7 @@ export const SETTING_CHOICES: Record<keyof FerrySettings, number[]> = {
   spaceSoonPercent: SPACE_SOON_PERCENT_CHOICES,
   spaceImminentPercent: SPACE_IMMINENT_PERCENT_CHOICES,
   disruptionLeadMinutes: DISRUPTION_LEAD_CHOICES,
+  disruptionDurationMinutes: DISRUPTION_DURATION_CHOICES,
   disruptionSoonMinutes: THRESHOLD_MINUTE_CHOICES,
   disruptionImminentMinutes: THRESHOLD_MINUTE_CHOICES,
 };
@@ -148,12 +154,73 @@ export function saveSettings(settings: FerrySettings) {
   } catch { /* The settings just fall back to the defaults on the next visit. */ }
 }
 
+export const favoriteTerminalsKey = 'ferry-tracker-favorite-terminals';
+
+// The stored order is the order Settings shows them in, so duplicates and non-integers are dropped.
+export function loadFavoriteTerminalIds(): number[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(favoriteTerminalsKey) ?? '[]');
+    if (!Array.isArray(stored)) return [];
+    return [...new Set(stored.filter((value): value is number => Number.isInteger(value)))];
+  } catch {
+    return [];
+  }
+}
+
+export function saveFavoriteTerminalIds(ids: number[]) {
+  try {
+    localStorage.setItem(favoriteTerminalsKey, JSON.stringify(ids));
+  } catch { /* Favorites remain active for this tab. */ }
+}
+
+export interface TerminalOrderEntry<T> {
+  terminal: T;
+  favorite: boolean;
+}
+
+// Favorites lead in the order chosen on Settings; the rest stay alphabetical.
+export function orderTerminals<T extends { id: number; name: string }>(terminals: T[], favoriteIds: number[]): Array<TerminalOrderEntry<T>> {
+  const favorites = favoriteIds
+    .map((id) => terminals.find((terminal) => terminal.id === id))
+    .filter((terminal): terminal is T => terminal !== undefined)
+    .map((terminal) => ({ terminal, favorite: true }));
+  const rest = terminals
+    .filter((terminal) => !favoriteIds.includes(terminal.id))
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((terminal) => ({ terminal, favorite: false }));
+  return [...favorites, ...rest];
+}
+
+// Moves the dragged favorite to where the target sits. Favorites for terminals WSDOT has stopped
+// publishing are invisible, so only the visible ids are rewritten and their slots stay put.
+export function reorderFavoriteTerminals(favoriteIds: number[], visibleIds: number[], id: number, targetId: number): number[] {
+  const from = visibleIds.indexOf(id);
+  const to = visibleIds.indexOf(targetId);
+  if (from === -1 || to === -1 || from === to) return favoriteIds;
+  const moved = [...visibleIds];
+  moved.splice(to, 0, ...moved.splice(from, 1));
+  const next = [...favoriteIds];
+  let taken = 0;
+  for (const [index, value] of favoriteIds.entries()) {
+    if (visibleIds.includes(value)) next[index] = moved[taken++];
+  }
+  return next;
+}
+
+export function toggleFavoriteTerminalId(favoriteIds: number[], id: number): number[] {
+  return favoriteIds.includes(id) ? favoriteIds.filter((value) => value !== id) : [...favoriteIds, id];
+}
+
 export interface DisruptionWave {
   vesselId: number;
   vesselName: string;
   landingAt: string;
   disruptionAt: string;
+  clearsAt: string;
   minutesAway: number;
+  minutesLeft: number;
+  active: boolean;
+  ongoing: boolean;
 }
 
 export function disruptionLevel(minutesAway: number, settings: FerrySettings = DEFAULT_SETTINGS) {
@@ -162,29 +229,56 @@ export function disruptionLevel(minutesAway: number, settings: FerrySettings = D
     : 'clear';
 }
 
-// Only boats still underway count: one already at the dock has offloaded or is offloading,
-// so its wave is no longer something to wait for.
+// A boat can still read as underway for a tick after it ties up, so an observed arrival
+// this close to a live ETA is the same landing seen twice.
+const DISRUPTION_MERGE_MINUTES = 30;
+
+function disruptionWave(vesselId: number, vesselName: string, landing: number, now: number, settings: FerrySettings): DisruptionWave[] {
+  const disruption = landing + settings.disruptionLeadMinutes * 60000;
+  const clears = disruption + settings.disruptionDurationMinutes * 60000;
+  if (clears <= now) return [];
+  return [{
+    vesselId,
+    vesselName,
+    landingAt: new Date(landing).toISOString(),
+    disruptionAt: new Date(disruption).toISOString(),
+    clearsAt: new Date(clears).toISOString(),
+    minutesAway: Math.floor((disruption - now) / 60000),
+    minutesLeft: Math.max(0, Math.ceil((clears - now) / 60000)),
+    active: disruption <= now,
+    ongoing: false,
+  }];
+}
+
+// A wave lives from the offload reaching the road until the duration runs out, so a window
+// already open still counts. Docked boats leave the vessel feed, so the boat that most
+// recently landed comes from the observed arrival on its inbound leg instead.
 export function disruptionWaves(
   vessels: Array<Pick<VesselView, 'id' | 'name' | 'arrivingTerminalId' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'>>,
   now: number,
-  leadMinutes: number = DEFAULT_SETTINGS.disruptionLeadMinutes,
+  settings: FerrySettings = DEFAULT_SETTINGS,
+  landed: Array<Pick<SailingView, 'vesselId' | 'vesselName' | 'actualArrival'>> = [],
 ): DisruptionWave[] {
-  return vessels
-    .flatMap((vessel) => {
-      if (vessel.arrivingTerminalId !== BAINBRIDGE_TERMINAL_ID || vessel.atDock !== false || !vessel.eta) return [];
-      const landing = Date.parse(vesselEta(vessel) ?? vessel.eta);
-      if (Number.isNaN(landing)) return [];
-      const disruption = landing + leadMinutes * 60000;
-      if (disruption <= now) return [];
-      return [{
-        vesselId: vessel.id,
-        vesselName: vessel.name,
-        landingAt: new Date(landing).toISOString(),
-        disruptionAt: new Date(disruption).toISOString(),
-        minutesAway: Math.floor((disruption - now) / 60000),
-      }];
-    })
-    .sort((left, right) => left.disruptionAt.localeCompare(right.disruptionAt));
+  const observed = landed.flatMap((leg) => {
+    if (leg.vesselId === null || !leg.actualArrival) return [];
+    const landing = Date.parse(leg.actualArrival);
+    if (Number.isNaN(landing)) return [];
+    return disruptionWave(leg.vesselId, leg.vesselName ?? 'Ferry', landing, now, settings);
+  });
+  const underway = vessels.flatMap((vessel) => {
+    if (vessel.arrivingTerminalId !== BAINBRIDGE_TERMINAL_ID || vessel.atDock !== false || !vessel.eta) return [];
+    const landing = Date.parse(vesselEta(vessel) ?? vessel.eta);
+    if (Number.isNaN(landing)) return [];
+    const duplicate = observed.some((seen) => seen.vesselId === vessel.id
+      && Math.abs(Date.parse(seen.landingAt) - landing) < DISRUPTION_MERGE_MINUTES * 60000);
+    return duplicate ? [] : disruptionWave(vessel.id, vessel.name, landing, now, settings);
+  });
+  const waves = [...observed, ...underway].sort((left, right) => left.disruptionAt.localeCompare(right.disruptionAt));
+  // Traffic never lets up when the boat behind arrives before this one's window closes.
+  for (const [index, wave] of waves.entries()) {
+    wave.ongoing = waves[index + 1] !== undefined && waves[index + 1].disruptionAt <= wave.clearsAt;
+  }
+  return waves;
 }
 
 // WSDOT publishes a scheduled arrival on almost no route, so the observed dock arrival is
@@ -321,6 +415,38 @@ export function openSpacePercent(sailing: Pick<SailingView, 'spaceAvailable' | '
 
 export function capacityLevel(percent: number) {
   return percent <= 10 ? 'full' : percent <= 30 ? 'tight' : 'open';
+}
+
+export interface DisruptionLoad {
+  percentFull: number;
+  openPercent: number;
+  openCount: number;
+  totalSpace: number;
+  observedAt: string | null;
+}
+
+// How full the boat was on the way in. WSDOT drops a sailing from the space feed the moment it
+// leaves, so the counts here are capture's last reading before departure.
+export function disruptionLoad(
+  sailings: Array<Pick<SailingView, 'vesselId' | 'departingTime' | 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount' | 'spaceObservedAt'>>,
+  vesselId: number,
+  landingAt: string,
+): DisruptionLoad | null {
+  const leg = sailings
+    .filter((sailing) => sailing.vesselId === vesselId && sailing.departingTime !== null && sailing.departingTime < landingAt)
+    .sort((left, right) => (left.departingTime ?? '').localeCompare(right.departingTime ?? ''))
+    .at(-1);
+  if (!leg?.maxSpaceCount) return null;
+  const openPercent = openSpacePercent(leg);
+  const openCount = openSpaceCount(leg);
+  if (openPercent === null || openCount === null) return null;
+  return {
+    percentFull: 100 - openPercent,
+    openPercent,
+    openCount,
+    totalSpace: leg.maxSpaceCount,
+    observedAt: leg.spaceObservedAt,
+  };
 }
 
 // 0 sails the selected route, 1 sails it in reverse, 2 leaves the origin for elsewhere, 3 only arrives.

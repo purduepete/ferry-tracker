@@ -19,7 +19,7 @@ applyTo: ["frontend/**/*.{tsx,css,html}", "e2e/**/*.ts"]
 
 - Reuse existing components and classes before adding a new visual abstraction.
 - Use `FilterSelect` for terminal-style selectors. Keep its custom listbox appearance, keyboard controls, focus behavior, selected checkmark, and themed scrollbar.
-- Persist favorite terminal IDs in `ferry-tracker-favorite-terminals`. In the primary terminal selector, show favorites first and sort favorites alphabetically; use the adjacent star button for toggling and non-interactive stars as option markers.
+- Persist favorite terminal IDs in `ferry-tracker-favorite-terminals`, where array order is the display order. Set and reorder favorites on the Settings tab; the primary terminal selector shows favorites first in that saved order, then the rest alphabetically, and marks favorites with a non-interactive star.
 - Use Lucide icons for familiar actions. Navbar actions are borderless, full-height icon buttons with an accessible name and tooltip.
 - Use icon-only buttons for route reversal, refresh, theme, and similar familiar commands. Give each one stable dimensions so state changes do not move nearby content.
 - Keep the custom thin scrollbar on the page and dropdowns. Extend the existing theme scrollbar tokens when another scrollable surface needs styling.

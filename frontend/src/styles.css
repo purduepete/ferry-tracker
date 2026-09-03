@@ -122,9 +122,8 @@ main { max-width: 1440px; margin: 0 auto; padding: 0 24px calc(48px + var(--safe
 h1 { margin: 3px 0 0; font-size: 26px; font-weight: 650; line-height: 1.15; letter-spacing: 0; }
 h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 .selectors { display: grid; grid-template-columns: minmax(220px, 300px) 36px minmax(220px, 300px) minmax(150px, 200px); align-items: end; gap: 10px; }
-.selectors label, .selector-field { min-width: 0; display: grid; gap: 6px; }
-.selectors label > span, .selector-field > span { color: var(--muted); font-size: 12px; }
-.selector-control-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 6px; }
+.selectors label { min-width: 0; display: grid; gap: 6px; }
+.selectors label > span { color: var(--muted); font-size: 12px; }
 .filter-select { min-width: 0; position: relative; }
 .filter-select-trigger { width: 100%; height: 40px; padding: 0 11px 0 12px; border: 1px solid var(--line); border-radius: 0; background: var(--surface); color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 520; text-align: left; transition: color .2s ease, background-color .2s ease, border-color .2s ease; }
 .filter-select-trigger:hover:not(:disabled), .filter-select-trigger[aria-expanded='true'] { background: var(--surface-2); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
@@ -140,10 +139,6 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 .filter-select-option.highlighted { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 68%, transparent); }
 .option-check { width: 16px; flex: 0 0 16px; display: grid; place-items: center; }
 .option-favorite { width: 16px; flex: 0 0 16px; margin-left: auto; display: grid; place-items: center; color: var(--warning); }
-.favorite-button { width: 40px; height: 40px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); display: grid; place-items: center; transition: color .2s ease, background-color .2s ease, border-color .2s ease; }
-.favorite-button:hover:not(:disabled) { color: var(--warning); background: var(--surface-2); border-color: color-mix(in srgb, var(--warning) 55%, var(--line)); }
-.favorite-button.active { color: var(--warning); background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 55%, var(--line)); }
-.favorite-button:disabled { opacity: .5; cursor: not-allowed; }
 .swap-button { width: 36px; height: 40px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; transition: color .2s ease, background-color .2s ease; }
 .swap-button:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
 .swap-button:disabled { opacity: .35; cursor: not-allowed; }
@@ -260,6 +255,25 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .setting-field { display: grid; gap: 4px; align-content: start; }
 .setting-label { font-size: 13px; font-weight: 600; }
 .setting-hint { color: var(--muted); font-size: 11px; }
+.settings-note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.settings-disclosure { display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; border: 0; background: transparent; color: var(--muted); font: inherit; text-align: left; cursor: pointer; }
+.settings-disclosure:hover { color: var(--text); }
+.settings-disclosure svg { flex: 0 0 auto; transform: rotate(-90deg); transition: transform .2s ease; }
+.settings-disclosure svg.open { transform: rotate(0deg); }
+.settings-disclosure-count { margin-left: auto; font-size: 11px; }
+.favorite-list { list-style: none; margin-top: 10px; padding: 0; max-width: 420px; border: 1px solid var(--line); }
+.favorite-list li { display: flex; align-items: center; gap: 8px; padding-right: 4px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.favorite-list li:last-child { border-bottom: 0; }
+.favorite-list li.is-favorite { background: var(--surface-2); }
+.favorite-list li.is-dragging { opacity: .45; }
+.favorite-name { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.favorite-grip { width: 30px; height: 34px; flex: 0 0 30px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: grab; touch-action: none; transition: color .2s ease; }
+.favorite-grip:hover { color: var(--text); }
+.favorite-grip:active { cursor: grabbing; }
+.favorite-grip.is-placeholder { cursor: default; }
+.favorite-star { width: 34px; height: 34px; flex: 0 0 34px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .2s ease; }
+.favorite-star:hover { color: var(--warning); }
+.favorite-star.active { color: var(--warning); }
 .settings-footer { padding: 14px 16px; }
 .reset-settings { padding: 8px 14px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
 .reset-settings:hover { border-color: var(--accent); color: var(--accent); }
@@ -296,36 +310,38 @@ tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transp
   .header-inner { padding: 0 14px; }
   .brand div span { display: none; }
   main { padding: 0 14px calc(36px + var(--safe-area-bottom)); }
-  .selectors { grid-template-columns: 1fr; }
-  .swap-button { justify-self: center; height: 28px; transform: rotate(90deg); }
   /* Sailings only means live data, so the Day picker goes and the two route selects share a row. */
   .selection-band.is-sailings-only .day-field { display: none; }
-  /* Pinned so the route can be changed from anywhere in a long schedule. */
-  .selection-band.is-sailings-only { position: sticky; top: var(--navbar-height); padding: 10px 0; }
-  /* Off screen instead of display:none, so the h1 and the tab buttons still answer their IDREFs. */
-  .selection-band.is-sailings-only .route-title, .tabs.is-sailings-only { position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
-  .selection-band.is-sailings-only .selectors { grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); align-items: center; gap: 6px; }
-  .selection-band.is-sailings-only .selectors label > span, .selection-band.is-sailings-only .selector-field > span { display: none; }
-  /* The star would squeeze "Bainbridge Island" into an ellipsis, and the route is already chosen by now. */
-  .selection-band.is-sailings-only .favorite-button { display: none; }
-  .selection-band.is-sailings-only .selector-control-row { grid-template-columns: minmax(0, 1fr); }
-  .selection-band.is-sailings-only .swap-button { width: 32px; height: 36px; transform: none; }
-  .selection-band.is-sailings-only .filter-select-trigger { height: 36px; padding: 0 8px; gap: 4px; }
+  /* Every tab gets the compact band, pinned so the route can be changed from anywhere in a long list. */
+  .selection-band { position: sticky; top: var(--navbar-height); padding: 10px 0; }
+  /* Off screen instead of display:none, so the h1 still answers its IDREF. */
+  .route-title { position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+  .selectors { grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); align-items: center; gap: 6px; }
+  .selectors label > span { display: none; }
+  .swap-button { width: 32px; height: 36px; justify-self: center; transform: none; }
+  .filter-select-trigger { height: 36px; padding: 0 8px; gap: 4px; }
+  /* Day has no room on the route row, so it takes the one below. */
+  .day-field { grid-column: 1 / -1; }
   .theme-popover { position: fixed; top: calc(var(--navbar-height) + 8px); right: max(12px, var(--safe-area-right)); left: max(12px, var(--safe-area-left)); width: auto; }
-  .tabs button { padding: 0 12px; }
+  /* The tab bar leads on a phone, above the selectors, and stays put in every mode. */
+  main { display: flex; flex-direction: column; }
+  .tabs { order: -1; margin-bottom: 16px; }
+  /* Phone tabs are the icon alone. The label is only clipped, never removed, because each panel's
+     aria-labelledby points back at its tab button for its accessible name. */
+  .tabs button { flex: 1 1 0; min-width: 0; padding: 0; justify-content: center; }
+  .tab-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+  /* With the title clipped and the selectors gone, the band would be an empty rule. */
+  .selection-band.is-routeless { display: none; }
 }
 
 @media (max-width: 639px) {
   h1 { font-size: 23px; }
   .refresh-time-label { display: none; }
-  .tabs button { min-width: 44px; padding: 0 10px; font-size: 12px; }
   .data-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 420px) {
   .source-badge { display: none; }
-  .tabs button { flex: 1 1 0; min-width: 0; padding: 0 5px; font-size: 10px; justify-content: center; white-space: nowrap; }
-  .tabs button svg { display: none; }
 }
 
 @media (min-width: 1440px) {
