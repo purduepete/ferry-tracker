@@ -1,5 +1,6 @@
 import {
   parseWsdotDate,
+  spaceCount,
   terminalSailingSpaceSchema,
   terminalMateSchema,
   terminalBasicSchema,
@@ -153,9 +154,9 @@ export class FerryDataService {
             vesselId: departure.VesselID,
             vesselName: departure.VesselName,
             isCancelled: departure.IsCancelled,
-            driveUpSpaceCount: space.DisplayDriveUpSpace ? space.DriveUpSpaceCount ?? null : null,
-            reservableSpaceCount: space.DisplayReservableSpace ? space.ReservableSpaceCount ?? null : null,
-            maxSpaceCount: space.MaxSpaceCount ?? departure.MaxSpaceCount ?? null,
+            driveUpSpaceCount: space.DisplayDriveUpSpace ? spaceCount(space.DriveUpSpaceCount) : null,
+            reservableSpaceCount: space.DisplayReservableSpace ? spaceCount(space.ReservableSpaceCount) : null,
+            maxSpaceCount: spaceCount(space.MaxSpaceCount ?? departure.MaxSpaceCount),
           })),
       ))
       .sort((left, right) => left.departure.localeCompare(right.departure));
@@ -201,9 +202,9 @@ export class FerryDataService {
           departingTerminalId: nextContext.departingId,
           arrivingTerminalId: nextContext.arrivingId,
           isCancelled: departureSpace?.IsCancelled ?? null,
-          driveUpSpaceCount: destinationSpace?.DisplayDriveUpSpace ? destinationSpace.DriveUpSpaceCount ?? null : null,
-          reservableSpaceCount: destinationSpace?.DisplayReservableSpace ? destinationSpace.ReservableSpaceCount ?? null : null,
-          maxSpaceCount: destinationSpace?.MaxSpaceCount ?? departureSpace?.MaxSpaceCount ?? null,
+          driveUpSpaceCount: destinationSpace?.DisplayDriveUpSpace ? spaceCount(destinationSpace.DriveUpSpaceCount) : null,
+          reservableSpaceCount: destinationSpace?.DisplayReservableSpace ? spaceCount(destinationSpace.ReservableSpaceCount) : null,
+          maxSpaceCount: spaceCount(destinationSpace?.MaxSpaceCount ?? departureSpace?.MaxSpaceCount),
           spaceAvailable: destinationSpace !== undefined,
           spaceSource: destinationSpace === undefined ? null : 'live',
           spaceObservedAt: null,

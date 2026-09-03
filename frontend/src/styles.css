@@ -232,6 +232,11 @@ th { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: upp
 tbody tr:hover { background: color-mix(in srgb, var(--surface) 92%, var(--accent-soft)); }
 tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transparent); border-left: 3px solid var(--accent); }
 
+@media (min-width: 768px) and (max-width: 1439px) {
+  .header-inner { padding: 0 40px; }
+  main { padding: 0 40px calc(48px + var(--safe-area-bottom)); }
+}
+
 @media (max-width: 1023px) {
   .relationship-grid { grid-template-columns: 1fr; }
   /* Rotating the whole connector spun a full-width rule into a column taller than the row. */

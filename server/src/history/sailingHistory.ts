@@ -1,5 +1,5 @@
 import type { SailingView } from '@ferry-tracker/shared';
-import { pacificParts } from '@ferry-tracker/shared';
+import { pacificParts, spaceCount } from '@ferry-tracker/shared';
 import type { Db } from '../db/database.js';
 
 export const MAX_HISTORY_DAYS = 14;
@@ -199,9 +199,9 @@ function toRecordedSpace(row: ObservationRow): RecordedSpace {
     vesselId: row.vessel_id,
     vesselName: row.vessel_name,
     isCancelled: row.is_cancelled === 1,
-    driveUpSpaceCount: row.drive_up_space_count,
-    reservableSpaceCount: row.reservable_space_count,
-    maxSpaceCount: row.max_space_count,
+    driveUpSpaceCount: spaceCount(row.drive_up_space_count),
+    reservableSpaceCount: spaceCount(row.reservable_space_count),
+    maxSpaceCount: spaceCount(row.max_space_count),
     observedAt: row.captured_at,
     leadSeconds: Number.isNaN(departedAt) || Number.isNaN(observedAt) ? 0 : Math.round((departedAt - observedAt) / 1000),
   };

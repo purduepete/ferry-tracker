@@ -209,3 +209,9 @@ export function parseWsdotDate(value: unknown): string | null {
   const parsed = new Date(value);
   return Number.isNaN(parsed.valueOf()) ? null : parsed.toISOString();
 }
+
+// WSDOT oversells a boat and then publishes the overage as a negative count.
+export function spaceCount(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  return Math.max(0, value);
+}
