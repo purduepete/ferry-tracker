@@ -1,14 +1,14 @@
 import { isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import { Anchor, ArrowLeftRight, ArrowRight, Clock3, ExternalLink, History, MapPin, RefreshCw, Route, Ship, Star, Wind } from 'lucide-react';
+import { Anchor, ArrowLeftRight, ArrowRight, Car, Clock3, ExternalLink, History, MapPin, RefreshCw, Ship, Star, Waypoints, Wind } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
-type Tab = 'relationship' | 'terminals' | 'vessels' | 'schedule';
+type Tab = 'routes' | 'terminals' | 'vessels' | 'schedule';
 
-const tabs: Array<{ id: Tab; label: string; icon: typeof Route }> = [
-  { id: 'relationship', label: 'Relationship', icon: Route },
+const tabs: Array<{ id: Tab; label: string; icon: typeof Waypoints }> = [
+  { id: 'routes', label: 'Routes', icon: Waypoints },
   { id: 'terminals', label: 'Terminals', icon: MapPin },
   { id: 'vessels', label: 'Vessels', icon: Ship },
   { id: 'schedule', label: 'Sailings', icon: Clock3 },
@@ -279,7 +279,7 @@ function SailingVessel({ sailing, vessels, onOpen }: { sailing: SailingView; ves
   if (!sailing.vesselName) return <span className="null">null</span>;
   const live = vessels.find((vessel) => vessel.id === sailing.vesselId);
   if (!live || live.departingTerminalId === null) return <>{sailing.vesselName}</>;
-  return <button className="card-link" type="button" title={`Show ${sailing.vesselName}'s current route in the relationship view`} onClick={() => onOpen(live.departingTerminalId, live.arrivingTerminalId)}>{sailing.vesselName}</button>;
+  return <button className="card-link" type="button" title={`Show ${sailing.vesselName}'s current route in the routes view`} onClick={() => onOpen(live.departingTerminalId, live.arrivingTerminalId)}>{sailing.vesselName}</button>;
 }
 
 function ViewPlaceholder({ label, tab }: { label: string; tab: Tab }) {
@@ -302,7 +302,7 @@ export function App() {
   const [destinationId, setDestinationId] = useState<number | null>(restoredRoute.destinationId);
   const [serviceDate, setServiceDate] = useState<string>(LIVE_DATE);
   const [historyDates, setHistoryDates] = useState<string[]>([]);
-  const [tab, setTab] = useState<Tab>('relationship');
+  const [tab, setTab] = useState<Tab>('routes');
   const [loading, setLoading] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -465,7 +465,7 @@ export function App() {
   const currentSailing = scheduleResponse?.data ? getCurrentSailing(scheduleResponse.data) : null;
   // A manual refresh replaces the same data in place, so it must not raise the loading cover.
   const refreshing = loading || scheduleLoading;
-  const viewUpdating = !backgroundRefresh && (loading || (scheduleLoading && (tab === 'relationship' || tab === 'schedule')));
+  const viewUpdating = !backgroundRefresh && (loading || (scheduleLoading && (tab === 'routes' || tab === 'schedule')));
   const initialLoading = !initialDataVisible && (loading || hasOverview);
 
   useEffect(() => {
@@ -498,11 +498,11 @@ export function App() {
     setRefreshVersion((current) => current + 1);
   };
 
-  const openRelationship = (terminalId: number | null, destination: number | null) => {
+  const openRoute = (terminalId: number | null, destination: number | null) => {
     if (terminalId === null) return;
     setSelectedTerminalId(terminalId);
     setDestinationId(destination);
-    setTab('relationship');
+    setTab('routes');
   };
 
   const toggleFavoriteTerminal = () => {
@@ -561,7 +561,9 @@ export function App() {
           {!initialDataVisible && !initialLoading && <div className="state">Ferry data is unavailable.</div>}
 
           {initialDataVisible && <div className={`view-content${viewUpdating ? ' is-updating' : ''}`}>
-          {tab === 'relationship' && <div className="relationship-grid" style={vesselStackHeight ? { '--vessel-stack-height': `${vesselStackHeight}px` } as CSSProperties : undefined}>
+          {/* Keyed by tab so React remounts the panel and replays the enter animation on every switch. */}
+          <div className="view-panel" key={tab}>
+          {tab === 'routes' && <div className="relationship-grid" style={vesselStackHeight ? { '--vessel-stack-height': `${vesselStackHeight}px` } as CSSProperties : undefined}>
             <article className="relationship-node terminal-node"><span className="node-type">Terminal</span><h2>{selectedTerminal?.name ?? 'No terminal'}</h2><div className="field"><dt>City</dt><dd>{selectedTerminal?.city}{selectedTerminal?.latitude && selectedTerminal?.longitude ? <> <a href={`https://maps.google.com/?q=${selectedTerminal.latitude},${selectedTerminal.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Coordinates" value={selectedTerminal ? `${selectedTerminal.latitude}, ${selectedTerminal.longitude}` : null} /></article>
             <div className="relationship-link"><span>{associatedVessels.length} associated</span><ArrowRight /></div>
             <div className={`vessel-stack${recordedDay ? ' is-dimmed' : ''}`} ref={vesselStackRef}>{recordedDay && <p className="vessel-live-note">Live positions only.</p>}{associatedVessels.length ? associatedVessels.map((vessel) => <article className="relationship-node vessel-node" key={vessel.id}><span className="node-type">Vessel</span><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.name}</h2><p>{vessel.departingTerminalName} <ArrowRight size={14} /> {vessel.arrivingTerminalName}</p><Field label="Class" value={vessel.vesselClass} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Speed" value={vessel.speed === null ? null : `${vessel.speed} knots`} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></article>) : <div className="empty">No vessel currently references this terminal.</div>}</div>
@@ -569,15 +571,17 @@ export function App() {
             <article className="relationship-node schedule-node">
               <span className="node-type">Sailings schedule</span>
               <h2>{selectedTerminal?.name ?? '—'} to {destination?.name ?? '—'}</h2>
-              {scheduleResponse?.data.length ? <ol className="sailing-list">{scheduleResponse.data.map((sailing, index) => <li key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><strong>{localTime(sailing.departingTime)}</strong><span>{sailing.vesselName ?? 'Vessel unassigned'}</span>{sailing.spaceAvailable && <span className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`} title={recordedSpaceLabel(sailing) ?? undefined}>{compactVehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></span>}<DepartureDelay sailing={sailing} /></li>)}</ol> : scheduleLoading ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div> : <div className="empty">No sailings in this 14-hour window.</div>}
+              {scheduleResponse?.data.length ? <ol className="sailing-list">{scheduleResponse.data.map((sailing, index) => <li key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><strong>{localTime(sailing.departingTime)}</strong><span>{sailing.vesselName ?? 'Vessel unassigned'}</span>{sailing.spaceAvailable && <span className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`} title={recordedSpaceLabel(sailing) ?? undefined}><Car className="space-icon" size={13} role="img" aria-label="Vehicle space" />{compactVehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></span>}<DepartureDelay sailing={sailing} /></li>)}</ol> : scheduleLoading ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div> : <div className="empty">No sailings in this 14-hour window.</div>}
             </article>
           </div>}
 
-          {tab === 'terminals' && <div className="data-grid">{terminals.map((terminal) => <article className="data-card" key={terminal.id}><h2><button className="card-link" type="button" title={`Show ${terminal.name} in the relationship view`} onClick={() => openRelationship(terminal.id, null)}>{terminal.name}</button></h2><dl><div className="field"><dt>City</dt><dd>{terminal.city}{terminal.latitude && terminal.longitude ? <> <a href={`https://maps.google.com/?q=${terminal.latitude},${terminal.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Latitude" value={terminal.latitude} /><Field label="Longitude" value={terminal.longitude} /></dl></article>)}</div>}
+          {tab === 'terminals' && <div className="data-grid">{terminals.map((terminal) => <article className="data-card" key={terminal.id}><h2><button className="card-link" type="button" title={`Show ${terminal.name} in the routes view`} onClick={() => openRoute(terminal.id, null)}>{terminal.name}</button></h2><dl><div className="field"><dt>City</dt><dd>{terminal.city}{terminal.latitude && terminal.longitude ? <> <a href={`https://maps.google.com/?q=${terminal.latitude},${terminal.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Latitude" value={terminal.latitude} /><Field label="Longitude" value={terminal.longitude} /></dl></article>)}</div>}
 
-          {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className="data-card" key={vessel.id}><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.departingTerminalId === null ? vessel.name : <button className="card-link" type="button" title={`Show ${vessel.name}'s route in the relationship view`} onClick={() => openRelationship(vessel.departingTerminalId, vessel.arrivingTerminalId)}>{vessel.name}</button>}</h2><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></dl></article>)}</div>}
+          {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className="data-card" key={vessel.id}><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.departingTerminalId === null ? vessel.name : <button className="card-link" type="button" title={`Show ${vessel.name}'s route in the routes view`} onClick={() => openRoute(vessel.departingTerminalId, vessel.arrivingTerminalId)}>{vessel.name}</button>}</h2><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></dl></article>)}</div>}
 
-          {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings schedule</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Sailing time</th><th>Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => <tr key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><td>{localTime(sailing.departingTime)}</td><td>{departureDelayMinutes(sailing) === null ? '—' : <DepartureDelay sailing={sailing} />}</td><td><SailingArrival sailing={sailing} vessels={vessels} /></td><td><SailingTime sailing={sailing} vessels={vessels} /></td><td><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRelationship} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}>{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></td></tr>)}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
+          {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings schedule</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Sailing time</th><th>Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => <tr key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><td>{localTime(sailing.departingTime)}</td><td>{departureDelayMinutes(sailing) === null ? '—' : <DepartureDelay sailing={sailing} />}</td><td><SailingArrival sailing={sailing} vessels={vessels} /></td><td><SailingTime sailing={sailing} vessels={vessels} /></td><td><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRoute} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}>{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></td></tr>)}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
+
+          </div>
 
           {(viewUpdating || retainedUpdateSkeleton) && <div className={`view-loading-cover${viewUpdating ? '' : ' is-exiting'}`}><ViewPlaceholder label="Loading updated ferry data" tab={tab} /></div>}
           </div>}

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('shows the terminal to ferry to schedule relationship without external network', async ({ page }) => {
+test('shows the terminal to ferry to schedule routes view without external network', async ({ page }) => {
   let sailingSpaceRequests = 0;
   let scheduleRequests = 0;
   let releaseChangedRoute!: () => void;
@@ -79,8 +79,8 @@ test('persists a selected theme and exposes semantic keyboard tabs', async ({ pa
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
-  const relationship = page.getByRole('tab', { name: 'Relationship' });
-  await relationship.focus();
+  const routes = page.getByRole('tab', { name: 'Routes' });
+  await routes.focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: 'Terminals' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('tabpanel', { name: 'Terminals' })).toBeVisible();

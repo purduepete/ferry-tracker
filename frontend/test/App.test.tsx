@@ -101,8 +101,8 @@ describe('Ferry data explorer', () => {
 
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
-    const relationship = await screen.findByRole('tab', { name: 'Relationship' });
-    relationship.focus();
+    const routes = await screen.findByRole('tab', { name: 'Routes' });
+    routes.focus();
     await user.keyboard('{ArrowRight}');
     expect(screen.getByRole('tab', { name: 'Terminals' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tabpanel', { name: 'Terminals' })).toBeInTheDocument();
@@ -422,7 +422,7 @@ describe('Card navigation', () => {
     });
   }
 
-  it('opens the relationship view on the terminal that was clicked', async () => {
+  it('opens the routes view on the terminal that was clicked', async () => {
     mockOverview();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
@@ -430,11 +430,11 @@ describe('Card navigation', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Terminals' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Bainbridge Island' }));
 
-    expect(screen.getByRole('tab', { name: 'Relationship' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
   });
 
-  it('opens the relationship view on the route the clicked vessel is running', async () => {
+  it('opens the routes view on the route the clicked vessel is running', async () => {
     mockOverview();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
@@ -442,12 +442,12 @@ describe('Card navigation', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Vessels' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Wenatchee' }));
 
-    expect(screen.getByRole('tab', { name: 'Relationship' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
     expect(screen.getByRole('button', { name: 'Associated destination' })).toHaveTextContent('Seattle');
   });
 
-  it('opens the relationship view from a vessel in the sailings table', async () => {
+  it('opens the routes view from a vessel in the sailings table', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url.includes('/api/terminals')) return json(terminals);
@@ -466,7 +466,7 @@ describe('Card navigation', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Wenatchee' }));
 
-    expect(screen.getByRole('tab', { name: 'Relationship' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
     expect(screen.getByRole('button', { name: 'Associated destination' })).toHaveTextContent('Seattle');
   });
