@@ -2,7 +2,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import { App, capacityLevel, departureDelayLabel, departureDelayMinutes, openSpacePercent, recordedSpaceLabel, sailingArrival, sailingTimeMinutes, serviceDayLabel, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/App';
+import { App } from '../src/App';
+import { capacityLevel, departureDelayLabel, departureDelayMinutes, openSpacePercent, recordedSpaceLabel, sailingArrival, sailingTimeMinutes, serviceDayLabel, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
