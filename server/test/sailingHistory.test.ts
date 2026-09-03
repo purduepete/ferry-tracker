@@ -67,6 +67,7 @@ function read(arrivingId = BAINBRIDGE): Map<string, RecordedSpace> {
 interface LegInput {
   scheduledDeparture?: string | null;
   departedAt: string;
+  dockArrivalAt?: string | null;
   delayMinutes?: number | null;
   confidence?: string;
   exclusionReason?: string | null;
@@ -76,9 +77,9 @@ interface LegInput {
 function logLeg(inputs: LegInput[]): void {
   const insert = db.prepare(`INSERT INTO sailing_leg (
     vessel_id, vessel_name, departing_terminal_id, arriving_terminal_id, scheduled_departure,
-    departed_at, departure_delay_minutes, complete, confidence, exclusion_reason,
+    departed_at, dock_arrival_at, departure_delay_minutes, complete, confidence, exclusion_reason,
     service_date, weekday, hour_local
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, '2026-09-01', 2, 11)`);
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, '2026-09-01', 2, 11)`);
 
   inputs.forEach((input, index) => insert.run(
     input.vesselId ?? index + 1,
@@ -87,6 +88,7 @@ function logLeg(inputs: LegInput[]): void {
     BAINBRIDGE,
     input.scheduledDeparture === undefined ? DEPARTURE : input.scheduledDeparture,
     input.departedAt,
+    input.dockArrivalAt ?? null,
     input.delayMinutes === undefined ? 6 : input.delayMinutes,
     input.confidence ?? 'high',
     input.exclusionReason ?? null,
@@ -114,8 +116,17 @@ describe('recorded sailing legs', () => {
     expect(readLegs().get(DEPARTURE)).toEqual({
       scheduledDeparture: DEPARTURE,
       actualDeparture: '2026-09-01T18:06:00.000Z',
+      actualArrival: null,
       departureDelayMinutes: 6,
     });
+  });
+
+  // WSDOT publishes arriving_time on almost no route, so the observed dock arrival is the
+  // only arrival the Sailings table can show.
+  it('returns the observed dock arrival once the crossing finished', () => {
+    logLeg([{ departedAt: '2026-09-01T18:06:00.000Z', dockArrivalAt: '2026-09-01T18:41:00.000Z' }]);
+
+    expect(readLegs().get(DEPARTURE)?.actualArrival).toBe('2026-09-01T18:41:00.000Z');
   });
 
   it('skips a leg the rollup graded down or excluded', () => {

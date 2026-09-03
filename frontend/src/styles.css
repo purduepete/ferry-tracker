@@ -201,6 +201,7 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 .sailing-list .space-count.is-recorded, td.is-recorded { color: var(--muted); }
 .recorded-mark { vertical-align: -2px; margin-left: 2px; color: var(--muted); }
 .departure-delay { font-size: 12px; color: var(--muted); }
+.estimated-time { color: var(--muted); font-style: italic; }
 .field-note { display: block; margin-top: 3px; font-size: 11px; line-height: 1.5; font-weight: 400; color: var(--muted); }
 .vessel-stack.is-dimmed > article { opacity: 0.55; }
 .vessel-live-note { margin: 0 0 8px; font-size: 0.82rem; color: var(--muted); }
@@ -225,7 +226,7 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .schedule-card .table-wrap { border: 0; border-top: 1px solid var(--line); }
 .schedule-heading { padding: 14px 16px; }
 .schedule-heading h2 { margin-bottom: 0; }
-table { width: 100%; border-collapse: collapse; min-width: 760px; }
+table { width: 100%; border-collapse: collapse; min-width: 860px; }
 th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; }
 td small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
 th { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; background: var(--surface-2); }

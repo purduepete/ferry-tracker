@@ -19,6 +19,7 @@ export interface RecordedSpace {
 export interface RecordedLeg {
   scheduledDeparture: string;
   actualDeparture: string;
+  actualArrival: string | null;
   departureDelayMinutes: number | null;
 }
 
@@ -44,6 +45,7 @@ interface ObservationRow {
 interface LegRow {
   scheduled_departure: string | null;
   departed_at: string;
+  dock_arrival_at: string | null;
   departure_delay_minutes: number | null;
 }
 
@@ -102,7 +104,7 @@ const LAST_OBSERVATION_SQL = `
 // surface. A negative delay is one of those: a ferry never leaves early, so the leg was
 // paired with the wrong slot and the true one is unknowable after the fact.
 const LEG_SQL = `
-  SELECT scheduled_departure, departed_at, departure_delay_minutes
+  SELECT scheduled_departure, departed_at, dock_arrival_at, departure_delay_minutes
   FROM sailing_leg
   WHERE departing_terminal_id = ?
     AND arriving_terminal_id = ?
@@ -152,6 +154,7 @@ export class DatabaseSailingHistory implements SailingHistory {
         spaceObservedAt: space?.observedAt ?? null,
         spaceLeadSeconds: space?.leadSeconds ?? null,
         actualDeparture: leg?.actualDeparture ?? null,
+        actualArrival: leg?.actualArrival ?? null,
         departureDelayMinutes: leg?.departureDelayMinutes ?? null,
         raw: { ...row },
       };
@@ -166,6 +169,7 @@ export class DatabaseSailingHistory implements SailingHistory {
       legs.set(row.scheduled_departure, {
         scheduledDeparture: row.scheduled_departure,
         actualDeparture: row.departed_at,
+        actualArrival: row.dock_arrival_at,
         departureDelayMinutes: row.departure_delay_minutes,
       });
     }

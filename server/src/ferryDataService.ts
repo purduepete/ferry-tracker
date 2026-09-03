@@ -46,6 +46,7 @@ function backfill(
   const withLeg: SailingView = leg === undefined ? sailing : {
     ...sailing,
     actualDeparture: leg.actualDeparture,
+    actualArrival: leg.actualArrival,
     departureDelayMinutes: leg.departureDelayMinutes,
   };
 
@@ -210,6 +211,7 @@ export class FerryDataService {
           spaceObservedAt: null,
           spaceLeadSeconds: null,
           actualDeparture: null,
+          actualArrival: null,
           departureDelayMinutes: null,
           raw: record,
         });

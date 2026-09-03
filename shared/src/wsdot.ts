@@ -175,8 +175,10 @@ export interface SailingView {
   spaceSource: 'live' | 'recorded' | null;
   spaceObservedAt: string | null;
   spaceLeadSeconds: number | null;
-  // Only present once a boat has sailed and the rollup vouched for the leg.
+  // Only present once a boat has sailed and the rollup vouched for the leg. WSDOT almost
+  // never publishes arrivingTime, so the observed dock arrival is the usual source.
   actualDeparture: string | null;
+  actualArrival: string | null;
   departureDelayMinutes: number | null;
   raw: SourceRecord;
 }

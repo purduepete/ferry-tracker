@@ -122,6 +122,50 @@ function VesselEta({ vessel }: { vessel: VesselView }) {
   return <>{fieldTime(vessel.eta)}<span className="delay-pill" title={`WSDOT's estimate plus the ${vesselDelayMinutes(vessel)} min departure delay`}>{clockTime(adjusted)}</span></>;
 }
 
+// WSDOT publishes a scheduled arrival on almost no route, so the observed dock arrival is
+// the usual answer and the live ETA covers the one crossing still in progress.
+export function sailingArrival(
+  sailing: Pick<SailingView, 'actualArrival' | 'arrivingTime' | 'vesselId' | 'departingTime'>,
+  vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'>>,
+): { at: string; estimated: boolean } | null {
+  if (sailing.actualArrival) return { at: sailing.actualArrival, estimated: false };
+  if (sailing.arrivingTime) return { at: sailing.arrivingTime, estimated: false };
+  // Matched on the scheduled departure so a boat that runs the route twice cannot lend its
+  // ETA to the wrong row.
+  const underway = vessels.find((vessel) =>
+    vessel.id === sailing.vesselId && vessel.atDock === false && vessel.scheduledDeparture === sailing.departingTime);
+  if (!underway?.eta) return null;
+  return { at: vesselEta(underway) ?? underway.eta, estimated: true };
+}
+
+function SailingArrival({ sailing, vessels }: { sailing: SailingView; vessels: VesselView[] }) {
+  const arrival = sailingArrival(sailing, vessels);
+  if (arrival === null) return <>—</>;
+  if (!arrival.estimated) return <>{localTime(arrival.at)}</>;
+  return <span className="estimated-time" title="Estimated from the vessel's live ETA">{localTime(arrival.at)}</span>;
+}
+
+// Measured against the actual departure when there is one, so the crossing never absorbs
+// time the boat spent late at the dock.
+export function sailingTimeMinutes(
+  sailing: Pick<SailingView, 'actualArrival' | 'arrivingTime' | 'vesselId' | 'departingTime' | 'actualDeparture'>,
+  vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'>>,
+): { minutes: number; estimated: boolean } | null {
+  const arrival = sailingArrival(sailing, vessels);
+  const departure = sailing.actualDeparture ?? sailing.departingTime;
+  if (arrival === null || departure === null) return null;
+  const minutes = (Date.parse(arrival.at) - Date.parse(departure)) / 60000;
+  if (Number.isNaN(minutes) || minutes <= 0) return null;
+  return { minutes: Math.round(minutes), estimated: arrival.estimated };
+}
+
+function SailingTime({ sailing, vessels }: { sailing: SailingView; vessels: VesselView[] }) {
+  const crossing = sailingTimeMinutes(sailing, vessels);
+  if (crossing === null) return <>—</>;
+  if (!crossing.estimated) return <>{crossing.minutes} min</>;
+  return <span className="estimated-time" title="Estimated from the vessel's live ETA">{crossing.minutes} min</span>;
+}
+
 function latestTimestamp(current: string | null, ...values: string[]) {
   return [current, ...values].filter((value): value is string => value !== null).sort().at(-1) ?? null;
 }
@@ -501,7 +545,7 @@ export function App() {
 
           {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className="data-card" key={vessel.id}><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.departingTerminalId === null ? vessel.name : <button className="card-link" type="button" title={`Show ${vessel.name}'s route in the relationship view`} onClick={() => openRelationship(vessel.departingTerminalId, vessel.arrivingTerminalId)}>{vessel.name}</button>}</h2><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></dl></article>)}</div>}
 
-          {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings schedule</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => <tr key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><td>{localTime(sailing.departingTime)}</td><td>{departureDelayMinutes(sailing) === null ? '—' : <DepartureDelay sailing={sailing} />}</td><td>{localTime(sailing.arrivingTime)}</td><td><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRelationship} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}>{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></td></tr>)}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
+          {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings schedule</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Sailing time</th><th>Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => <tr key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><td>{localTime(sailing.departingTime)}</td><td>{departureDelayMinutes(sailing) === null ? '—' : <DepartureDelay sailing={sailing} />}</td><td><SailingArrival sailing={sailing} vessels={vessels} /></td><td><SailingTime sailing={sailing} vessels={vessels} /></td><td><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRelationship} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}>{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></td></tr>)}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
 
           {(viewUpdating || retainedUpdateSkeleton) && <div className={`view-loading-cover${viewUpdating ? '' : ' is-exiting'}`}><ViewPlaceholder label="Loading updated ferry data" tab={tab} /></div>}
           </div>}

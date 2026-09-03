@@ -2,7 +2,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import { App, capacityLevel, departureDelayLabel, departureDelayMinutes, openSpacePercent, recordedSpaceLabel, serviceDayLabel, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/App';
+import { App, capacityLevel, departureDelayLabel, departureDelayMinutes, openSpacePercent, recordedSpaceLabel, sailingArrival, sailingTimeMinutes, serviceDayLabel, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/App';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
@@ -478,6 +478,57 @@ describe('Vessel lateness', () => {
 
   it('leaves the estimate alone when WSDOT publishes none', () => {
     expect(vesselEta({ ...underway, eta: null })).toBeNull();
+  });
+});
+
+describe('Sailing arrival', () => {
+  const sailing = { actualArrival: null, arrivingTime: null, vesselId: 18, departingTime: '2026-09-01T23:45:00.000Z' };
+  const boat = { id: 18, atDock: false, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:46:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
+
+  it('prefers the observed dock arrival over the published schedule', () => {
+    expect(sailingArrival({ ...sailing, actualArrival: '2026-09-02T00:21:00.000Z', arrivingTime: '2026-09-02T00:20:00.000Z' }, []))
+      .toEqual({ at: '2026-09-02T00:21:00.000Z', estimated: false });
+  });
+
+  it('falls back to the published schedule when nothing was observed', () => {
+    expect(sailingArrival({ ...sailing, arrivingTime: '2026-09-02T00:20:00.000Z' }, [])).toEqual({ at: '2026-09-02T00:20:00.000Z', estimated: false });
+  });
+
+  it('estimates from the live ETA of the boat making the crossing', () => {
+    expect(sailingArrival(sailing, [boat])).toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true });
+  });
+
+  it('adds the departure delay back onto the live ETA', () => {
+    expect(sailingArrival(sailing, [{ ...boat, leftDock: '2026-09-01T23:56:00.000Z' }])).toEqual({ at: '2026-09-02T00:40:00.000Z', estimated: true });
+  });
+
+  it('gives no arrival for a boat still at the dock or on another slot', () => {
+    expect(sailingArrival(sailing, [{ ...boat, atDock: true }])).toBeNull();
+    expect(sailingArrival(sailing, [{ ...boat, scheduledDeparture: '2026-09-02T00:45:00.000Z' }])).toBeNull();
+    expect(sailingArrival(sailing, [{ ...boat, eta: null }])).toBeNull();
+  });
+});
+
+describe('Sailing time', () => {
+  const sailing = { actualArrival: null, arrivingTime: null, actualDeparture: null, vesselId: 18, departingTime: '2026-09-01T23:45:00.000Z' };
+
+  it('measures from the actual departure to the observed arrival', () => {
+    expect(sailingTimeMinutes({ ...sailing, actualDeparture: '2026-09-01T23:56:00.000Z', actualArrival: '2026-09-02T00:31:00.000Z' }, []))
+      .toEqual({ minutes: 35, estimated: false });
+  });
+
+  it('falls back to the scheduled departure when the boat has not sailed', () => {
+    expect(sailingTimeMinutes({ ...sailing, arrivingTime: '2026-09-02T00:20:00.000Z' }, [])).toEqual({ minutes: 35, estimated: false });
+  });
+
+  it('marks a crossing built on the live ETA as estimated', () => {
+    const boat = { id: 18, atDock: false, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:46:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
+    expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true });
+  });
+
+  it('gives nothing when either end is missing or the pair is out of order', () => {
+    expect(sailingTimeMinutes(sailing, [])).toBeNull();
+    expect(sailingTimeMinutes({ ...sailing, actualArrival: '2026-09-01T23:40:00.000Z' }, [])).toBeNull();
   });
 });
 
