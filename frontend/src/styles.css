@@ -79,14 +79,16 @@
 *::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 *::-webkit-scrollbar-corner { background: var(--scrollbar-track); }
 html { background: var(--bg); scroll-behavior: smooth; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--bg); color: var(--text); font-weight: 400; }
+/* 100vh on iOS is the toolbar-hidden height, which scrolls a short page by the toolbar. */
+body { margin: 0; min-width: 320px; min-height: 100vh; min-height: 100dvh; background: var(--bg); color: var(--text); font-weight: 400; -webkit-user-select: none; user-select: none; }
+input, textarea, [contenteditable='true'] { -webkit-user-select: text; user-select: text; }
 button, input { font: inherit; }
 button { color: inherit; }
 button { cursor: pointer; }
 code, pre { font-family: 'Cascadia Code', 'Consolas', monospace; }
 button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.app-shell { min-height: 100vh; background: var(--bg); }
+.app-shell { min-height: 100vh; min-height: 100dvh; background: var(--bg); }
 .app-header { min-height: var(--navbar-height); padding: var(--safe-area-top) var(--safe-area-right) 0 var(--safe-area-left); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 30; }
 .header-inner { width: min(100%, 1440px); height: 64px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; }
 .brand { display: flex; gap: 10px; align-items: center; color: var(--accent); padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
