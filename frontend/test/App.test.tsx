@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
-import { capacityLevel, departureDelayLabel, departureDelayMinutes, openSpacePercent, recordedSpaceLabel, sailingArrival, sailingTimeMinutes, serviceDayLabel, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
+import { capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchWindowLevel, catchWindows, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionWaves, loadSettings, normalizeSettings, openSpacePercent, recordedSpaceLabel, sailingArrival, sailingTimeMinutes, serviceDayLabel, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
@@ -49,7 +49,7 @@ describe('Ferry data explorer', () => {
     expect(document.querySelector('time[datetime="2026-09-01T16:00:00.000Z"]')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Reverse route' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
     expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
     await waitFor(() => expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-busy', 'false'));
 
@@ -105,10 +105,30 @@ describe('Ferry data explorer', () => {
     const routes = await screen.findByRole('tab', { name: 'Routes' });
     routes.focus();
     await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('tab', { name: 'Terminals' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tabpanel', { name: 'Terminals' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Catch' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Catch' })).toBeInTheDocument();
     await user.keyboard('{End}');
-    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Settings' })).toHaveFocus();
+  });
+
+  it('returns to the routes tab from the brand', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('tab', { name: 'Routes' });
+    await user.click(screen.getByRole('tab', { name: 'Vessels' }));
+    expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(screen.getByRole('button', { name: /Ferry Tracker/ }));
+    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('sorts persisted favorites alphabetically above other terminals', async () => {
@@ -132,7 +152,7 @@ describe('Ferry data explorer', () => {
 
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
-    const terminalTrigger = await screen.findByRole('button', { name: 'Terminal' });
+    const terminalTrigger = await screen.findByRole('button', { name: 'Origin' });
     await user.click(terminalTrigger);
     expect(screen.getAllByRole('option').map((option) => option.getAttribute('aria-label') ?? option.textContent?.trim())).toEqual([
       'Anacortes',
@@ -223,7 +243,7 @@ describe('Remembered route', () => {
 
     render(<ThemeProvider><App /></ThemeProvider>);
     expect(await screen.findByRole('heading', { name: 'Bainbridge Island' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island');
+    expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island');
     expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
   });
 
@@ -513,7 +533,7 @@ describe('Card navigation', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Bainbridge Island' }));
 
     expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
   });
 
   it('opens the routes view on the route the clicked vessel is running', async () => {
@@ -525,7 +545,7 @@ describe('Card navigation', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Wenatchee' }));
 
     expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
     expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
   });
 
@@ -549,7 +569,7 @@ describe('Card navigation', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Wenatchee' }));
 
     expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveTextContent('Bainbridge Island'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
     expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
   });
 });
@@ -681,5 +701,297 @@ describe('Associated vessel order', () => {  it('ranks the selected route ahead 
   it('falls back to departures first when no destination is chosen', () => {
     expect(vesselRouteRank({ departingTerminalId: 7, arrivingTerminalId: 3 }, 7, null)).toBe(2);
     expect(vesselRouteRank({ departingTerminalId: 3, arrivingTerminalId: 7 }, 7, null)).toBe(3);
+  });
+});
+
+describe('Bainbridge disruption', () => {
+  const now = Date.parse('2026-09-01T17:00:00.000Z');
+  const inbound = {
+    id: 1, name: 'Tacoma', arrivingTerminalId: 3, atDock: false,
+    eta: '2026-09-01T17:20:00.000Z', leftDock: null, scheduledDeparture: null,
+  };
+
+  it('colors the countdown at each threshold', () => {
+    expect(disruptionLevel(0)).toBe('imminent');
+    expect(disruptionLevel(4)).toBe('imminent');
+    expect(disruptionLevel(5)).toBe('soon');
+    expect(disruptionLevel(14)).toBe('soon');
+    expect(disruptionLevel(15)).toBe('clear');
+  });
+
+  it('lands the wave ten minutes after the boat docks', () => {
+    expect(disruptionWaves([inbound], now)).toEqual([{
+      vesselId: 1,
+      vesselName: 'Tacoma',
+      landingAt: '2026-09-01T17:20:00.000Z',
+      disruptionAt: '2026-09-01T17:30:00.000Z',
+      minutesAway: 30,
+    }]);
+  });
+
+  it('pushes the wave out by the delay the boat is already carrying', () => {
+    const late = { ...inbound, leftDock: '2026-09-01T16:56:00.000Z', scheduledDeparture: '2026-09-01T16:45:00.000Z' };
+    expect(disruptionWaves([late], now)[0]).toMatchObject({ landingAt: '2026-09-01T17:31:00.000Z', disruptionAt: '2026-09-01T17:41:00.000Z', minutesAway: 41 });
+  });
+
+  it('ignores boats that are docked, bound elsewhere, or already past', () => {
+    expect(disruptionWaves([{ ...inbound, atDock: true }], now)).toEqual([]);
+    expect(disruptionWaves([{ ...inbound, arrivingTerminalId: 7 }], now)).toEqual([]);
+    expect(disruptionWaves([{ ...inbound, eta: null }], now)).toEqual([]);
+    expect(disruptionWaves([inbound], Date.parse('2026-09-01T17:30:00.000Z'))).toEqual([]);
+  });
+
+  it('orders several inbound boats by when their traffic arrives', () => {
+    const later = { ...inbound, id: 2, name: 'Wenatchee', eta: '2026-09-01T18:20:00.000Z' };
+    expect(disruptionWaves([later, inbound], now).map((wave) => wave.vesselName)).toEqual(['Tacoma', 'Wenatchee']);
+  });
+
+  it('shows the countdown and the boats behind it', async () => {
+    // Relative to the real clock so the countdown does not need fake timers, which would
+    // deadlock userEvent.
+    const soon = new Date(Date.now() + 20.5 * 60000).toISOString();
+    const later = { ...vessels[0], id: 2, name: 'Wenatchee', eta: new Date(Date.now() + 80 * 60000).toISOString(), leftDock: null };
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json([{ ...vessels[0], eta: soon, leftDock: null }, later]);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Disruption' }));
+
+    expect(screen.getByRole('tabpanel', { name: 'Disruption' })).toBeInTheDocument();
+    expect(document.querySelector('.countdown-value')).toHaveTextContent('30 min');
+    expect(document.querySelector('.countdown-headline')).toHaveClass('is-clear');
+    expect(screen.getByText('Tacoma')).toBeInTheDocument();
+    expect(document.querySelectorAll('.countdown-later .sailing-list li')).toHaveLength(1);
+  });
+
+  it('says so when nothing is inbound', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json([{ ...vessels[0], arrivingTerminalId: 7, eta: null }]);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Disruption' }));
+
+    expect(screen.getByText('No vessel is inbound to Bainbridge Island right now.')).toBeInTheDocument();
+  });
+});
+
+describe('Catching a ferry', () => {
+  const now = Date.parse('2026-09-01T17:00:00.000Z');
+  const sailing = {
+    departingTime: '2026-09-01T18:00:00.000Z', actualDeparture: null, vesselName: 'Tacoma', isCancelled: false,
+    spaceAvailable: true, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202,
+  };
+
+  it('colors the countdown at each threshold', () => {
+    expect(catchLevel(0)).toBe('imminent');
+    expect(catchLevel(4)).toBe('imminent');
+    expect(catchLevel(5)).toBe('soon');
+    expect(catchLevel(9)).toBe('soon');
+    expect(catchLevel(10)).toBe('clear');
+  });
+
+  it('takes the worse of time left and space left', () => {
+    expect(catchWindowLevel({ minutesAway: 60, spacePercent: 50 })).toBe('clear');
+    expect(catchWindowLevel({ minutesAway: 60, spacePercent: 49 })).toBe('soon');
+    expect(catchWindowLevel({ minutesAway: 60, spacePercent: 24 })).toBe('imminent');
+    expect(catchWindowLevel({ minutesAway: 3, spacePercent: 100 })).toBe('imminent');
+    expect(catchWindowLevel({ minutesAway: 7, spacePercent: 20 })).toBe('imminent');
+    expect(catchWindowLevel({ minutesAway: 60, spacePercent: null })).toBe('clear');
+  });
+
+  it('pads the default half hour off the departure', () => {
+    expect(CATCH_DEFAULT_PAD_MINUTES).toBe(30);
+    expect(catchWindows([sailing], now)).toEqual([{
+      departureAt: '2026-09-01T18:00:00.000Z',
+      leaveByAt: '2026-09-01T17:30:00.000Z',
+      minutesAway: 30,
+      vesselName: 'Tacoma',
+      spaceLabel: '176 drive-up / 202',
+      spacePercent: 87,
+      spaceTotal: 202,
+    }]);
+  });
+
+  it('honors a chosen pad', () => {
+    expect(catchWindows([sailing], now, 45)[0]).toMatchObject({ leaveByAt: '2026-09-01T17:15:00.000Z', minutesAway: 15 });
+    expect(catchWindows([sailing], now, 0)[0]).toMatchObject({ leaveByAt: '2026-09-01T18:00:00.000Z', minutesAway: 60 });
+    expect(catchWindows([sailing], now, 75)[0]).toMatchObject({ leaveByAt: '2026-09-01T16:45:00.000Z', minutesAway: -15 });
+  });
+
+  it('keeps a boat that has not sailed, and drops cancelled ones', () => {
+    expect(catchWindows([sailing], Date.parse('2026-09-01T17:45:00.000Z'))[0]).toMatchObject({ minutesAway: -15 });
+    expect(catchWindows([sailing], Date.parse('2026-09-01T18:00:00.000Z'))).toEqual([]);
+    expect(catchWindows([{ ...sailing, isCancelled: true }], now)).toEqual([]);
+    expect(catchWindows([{ ...sailing, departingTime: null }], now)).toEqual([]);
+  });
+
+  it('drops a boat you are over a quarter hour late for, or that has no room left', () => {
+    expect(catchWindows([sailing], Date.parse('2026-09-01T17:46:00.000Z'))).toEqual([]);
+    expect(catchWindows([{ ...sailing, driveUpSpaceCount: 0, reservableSpaceCount: 0 }], now)).toEqual([]);
+    expect(catchWindows([{ ...sailing, driveUpSpaceCount: 1, reservableSpaceCount: null }], now)).toHaveLength(1);
+  });
+
+  it('credits a boat the feed says is running late', () => {
+    expect(catchWindows([{ ...sailing, actualDeparture: '2026-09-01T18:09:00.000Z' }], now)[0])
+      .toMatchObject({ leaveByAt: '2026-09-01T17:39:00.000Z', minutesAway: 39 });
+  });
+
+  it('leaves the space label off a boat with no published count', () => {
+    expect(catchWindows([{ ...sailing, spaceAvailable: false }], now)[0]).toMatchObject({ spaceLabel: null, spacePercent: null });
+  });
+
+  it('opens on the default pad rather than reading an absent key as zero', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Settings' }));
+
+    expect(await screen.findByRole('button', { name: 'Catch padding' })).toHaveTextContent('30 min');
+  });
+
+  it('counts down to the next Bainbridge departure and remembers a changed pad', async () => {
+    const departure = (mins: number) => ({
+      vesselId: 1, vesselName: 'Tacoma', departingTime: new Date(Date.now() + mins * 60000).toISOString(), arrivingTime: null,
+      departingTerminalId: 3, arrivingTerminalId: 7, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null,
+      maxSpaceCount: 202, spaceAvailable: true, actualDeparture: null, departureDelayMinutes: null, raw: {},
+    });
+    let catchRoute = '';
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      if (url.includes('departingTerminalId=3&arrivingTerminalId=7')) {
+        catchRoute = url;
+        return json([departure(50.5), departure(110.5)]);
+      }
+      return json([]);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await user.click(screen.getByRole('tab', { name: 'Catch' }));
+
+    // Pinned to Bainbridge even though the selectors sit on Seattle.
+    await waitFor(() => expect(catchRoute).toContain('departingTerminalId=3&arrivingTerminalId=7'));
+    await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
+    expect(document.querySelector('.countdown-headline')).toHaveClass('is-clear');
+    expect(screen.getByText('176 drive-up / 202')).toBeInTheDocument();
+    expect(screen.getAllByTitle('87% of 202 vehicle spaces open').length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('.countdown-later .sailing-list li')).toHaveLength(1);
+
+    await user.click(screen.getByRole('tab', { name: 'Settings' }));
+    await user.click(await screen.findByRole('button', { name: 'Catch padding' }));
+    await user.click(screen.getByRole('option', { name: '45 min' }));
+    await user.click(screen.getByRole('tab', { name: 'Catch' }));
+    expect(document.querySelector('.countdown-value')).toHaveTextContent('5 min');
+    expect(document.querySelector('.countdown-headline')).toHaveClass('is-soon');
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-settings') ?? '{}').catchPadMinutes).toBe(45);
+  });
+
+  it('says so when nothing is catchable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Catch' }));
+
+    expect(await screen.findByText('No sailing left today that you can still make.')).toBeInTheDocument();
+  });
+});
+
+describe('Settings', () => {
+  it('keeps a stored value, rejects junk, and never lets red be looser than yellow', () => {
+    expect(normalizeSettings({ spaceSoonPercent: 25, spaceImminentPercent: 50 })).toMatchObject({ spaceSoonPercent: 25, spaceImminentPercent: 25 });
+    expect(normalizeSettings({ catchSoonMinutes: 3, catchImminentMinutes: 10 })).toMatchObject({ catchSoonMinutes: 3, catchImminentMinutes: 3 });
+    expect(normalizeSettings({ catchPadMinutes: 7 })).toMatchObject({ catchPadMinutes: DEFAULT_SETTINGS.catchPadMinutes });
+    expect(normalizeSettings({ catchPadMinutes: '45' })).toMatchObject({ catchPadMinutes: DEFAULT_SETTINGS.catchPadMinutes });
+    expect(normalizeSettings(null)).toEqual(DEFAULT_SETTINGS);
+    expect(normalizeSettings({ disruptionLeadMinutes: 20 })).toMatchObject({ disruptionLeadMinutes: 20 });
+  });
+
+  it('carries the pad over from the key it used to live in', () => {
+    localStorage.setItem('ferry-tracker-catch-pad', '45');
+    expect(loadSettings().catchPadMinutes).toBe(45);
+    localStorage.setItem('ferry-tracker-settings', JSON.stringify({ ...DEFAULT_SETTINGS, catchPadMinutes: 20 }));
+    expect(loadSettings().catchPadMinutes).toBe(20);
+  });
+
+  it('changes the pad and the space threshold, and persists both', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await user.click(screen.getByRole('tab', { name: 'Settings' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Catch padding' }));
+    await user.click(screen.getByRole('option', { name: '45 min' }));
+    await user.click(screen.getByRole('button', { name: 'Space yellow under' }));
+    await user.click(screen.getByRole('option', { name: '45%' }));
+
+    const stored = JSON.parse(localStorage.getItem('ferry-tracker-settings') ?? '{}');
+    expect(stored).toMatchObject({ catchPadMinutes: 45, spaceSoonPercent: 45 });
+  });
+
+  it('resets every value back to the defaults', async () => {
+    localStorage.setItem('ferry-tracker-settings', JSON.stringify({ ...DEFAULT_SETTINGS, catchPadMinutes: 60, disruptionLeadMinutes: 25 }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await user.click(screen.getByRole('tab', { name: 'Settings' }));
+    expect(await screen.findByRole('button', { name: 'Catch padding' })).toHaveTextContent('60 min');
+
+    await user.click(screen.getByRole('button', { name: 'Reset to defaults' }));
+
+    expect(screen.getByRole('button', { name: 'Catch padding' })).toHaveTextContent('30 min');
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-settings') ?? '{}')).toEqual(DEFAULT_SETTINGS);
   });
 });

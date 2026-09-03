@@ -1,19 +1,23 @@
 import { isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import { Anchor, ArrowLeftRight, ArrowRight, Car, Clock3, ExternalLink, History, ListFilter, MapPin, RefreshCw, Ship, Star, Waypoints, Wind } from 'lucide-react';
+import { Anchor, ArrowLeftRight, ArrowRight, Car, Clock3, ExternalLink, History, ListFilter, MapPin, RefreshCw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { capacityLevel, clockTime, compactVehicleSpace, departureDelayLabel, departureDelayMinutes, fieldTime, LATE_MINUTES, localTime, openSpacePercent, recordedSpaceLabel, refreshTime, sailingArrival, sailingTimeMinutes, serviceDayLabel, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank } from './format';
+import { BAINBRIDGE_TERMINAL_ID, capacityLevel, catchPillClass, catchWindowLevel, catchWindows, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionWaves, fieldTime, LATE_MINUTES, loadSettings, localTime, normalizeSettings, openSpacePercent, recordedSpaceLabel, refreshTime, sailingArrival, sailingTimeMinutes, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type FerrySettings } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
-type Tab = 'routes' | 'terminals' | 'vessels' | 'schedule';
+type Tab = 'routes' | 'terminals' | 'vessels' | 'schedule' | 'catch' | 'disruption' | 'settings';
 
 const tabs: Array<{ id: Tab; label: string; icon: typeof Waypoints }> = [
   { id: 'routes', label: 'Routes', icon: Waypoints },
-  { id: 'terminals', label: 'Terminals', icon: MapPin },
-  { id: 'vessels', label: 'Vessels', icon: Ship },
+  { id: 'catch', label: 'Catch', icon: Timer },
+  { id: 'disruption', label: 'Disruption', icon: TrafficCone },
   { id: 'schedule', label: 'Sailings', icon: Clock3 },
+  { id: 'vessels', label: 'Vessels', icon: Ship },
+  { id: 'terminals', label: 'Terminals', icon: MapPin },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
+const COUNTDOWN_TICK_MS = 15_000;
 const MINIMUM_SKELETON_MS = 500;
 const SKELETON_EXIT_MS = 520;
 const LIVE_DATE = 'live';
@@ -100,12 +104,17 @@ function latestTimestamp(current: string | null, ...values: string[]) {
   return [current, ...values].filter((value): value is string => value !== null).sort().at(-1) ?? null;
 }
 
+function CapacityPill({ percent, total }: { percent: number | null; total: number | null }) {
+  if (percent === null) return null;
+  const label = `${percent}% of ${total} vehicle spaces open`;
+  return <span className={`capacity-pill ${capacityLevel(percent)}`} aria-label={label} title={label}>{percent}%</span>;
+}
+
 function CapacityMeter({ sailing }: { sailing: SailingView }) {
   const percent = openSpacePercent(sailing);
   // A wide-open sailing carries no decision value, so only a partial boat gets a pill.
-  if (percent === null || percent === 100) return null;
-  const label = `${percent}% of ${sailing.maxSpaceCount} vehicle spaces open`;
-  return <span className={`capacity-pill ${capacityLevel(percent)}`} aria-label={label} title={label}>{percent}%</span>;
+  if (percent === 100) return null;
+  return <CapacityPill percent={percent} total={sailing.maxSpaceCount} />;
 }
 
 function getCurrentSailing(sailings: SailingView[]): SailingView | null {
@@ -147,6 +156,29 @@ function Field({ label, value }: { label: string; value: unknown }) {
   return <div className="field"><dt>{label}</dt><dd>{empty ? '—' : isValidElement(value) ? value : String(value)}</dd></div>;
 }
 
+function SettingField({ label, ariaLabel, hint, setting, unit, settings, onChange }: {
+  label: string;
+  ariaLabel: string;
+  hint: string;
+  setting: keyof FerrySettings;
+  unit: string;
+  settings: FerrySettings;
+  onChange: (setting: keyof FerrySettings, value: number) => void;
+}) {
+  return (
+    <label className="setting-field">
+      <span className="setting-label">{label}</span>
+      <FilterSelect
+        ariaLabel={ariaLabel}
+        value={settings[setting]}
+        onChange={(value) => onChange(setting, value)}
+        options={SETTING_CHOICES[setting].map((value) => ({ value, label: unit === '%' ? `${value}%` : `${value} min` }))}
+      />
+      <span className="setting-hint">{hint}</span>
+    </label>
+  );
+}
+
 function SailingVessel({ sailing, vessels, onOpen }: { sailing: SailingView; vessels: VesselView[]; onOpen: (terminalId: number | null, destination: number | null) => void }) {
   if (!sailing.vesselName) return <span className="null">null</span>;
   const live = vessels.find((vessel) => vessel.id === sailing.vesselId);
@@ -158,7 +190,7 @@ function ViewPlaceholder({ label, tab, sailingsOnly }: { label: string; tab: Tab
   if (tab === 'terminals' || tab === 'vessels') {
     return <div className="view-placeholder" role="status" aria-label={label}><span className="sr-only">{label}</span><div className="data-grid placeholder-card-grid" aria-hidden="true">{Array.from({ length: 6 }, (_, index) => <div className="data-card placeholder-node" key={index}><i /><i /><i /><i /></div>)}</div></div>;
   }
-  if (tab === 'schedule') {
+  if (tab === 'schedule' || tab === 'catch' || tab === 'disruption' || tab === 'settings') {
     return <div className="view-placeholder" role="status" aria-label={label}><span className="sr-only">{label}</span><div className="wide-placeholder" aria-hidden="true"><i /><i /><i /><i /><i /></div></div>;
   }
   return <div className="view-placeholder" role="status" aria-label={label}><span className="sr-only">{label}</span><div className={`relationship-grid placeholder-grid${sailingsOnly ? ' is-sailings-only' : ''}`} aria-hidden="true"><div className="relationship-node placeholder-node"><i /><i /><i /><i /></div><div className="relationship-link" /><div className="relationship-node placeholder-node"><i /><i /><i /><i /><i /></div><div className="relationship-link" /><div className="relationship-node placeholder-node"><i /><i /><i /><i /><i /></div></div></div>;
@@ -169,6 +201,9 @@ export function App() {
   const [vesselResponse, setVesselResponse] = useState<ApiEnvelope<VesselView[]> | null>(null);
   const [mateResponse, setMateResponse] = useState<ApiEnvelope<TerminalMateView[]> | null>(null);
   const [scheduleResponse, setScheduleResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
+  const [catchResponse, setCatchResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
+  const [catchLoading, setCatchLoading] = useState(false);
+  const [catchError, setCatchError] = useState<string | null>(null);
   const [restoredRoute] = useState(loadLastRoute);
   const [selectedTerminalId, setSelectedTerminalId] = useState<number | null>(restoredRoute.terminalId);
   const [destinationId, setDestinationId] = useState<number | null>(restoredRoute.destinationId);
@@ -188,6 +223,7 @@ export function App() {
   const [backgroundRefresh, setBackgroundRefresh] = useState(false);
   const [favoriteTerminalIds, setFavoriteTerminalIds] = useState<number[]>(loadFavoriteTerminalIds);
   const [sailingsOnly, setSailingsOnly] = useState(loadSailingsOnly);
+  const [settings, setSettings] = useState<FerrySettings>(loadSettings);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const overviewRequestId = useRef(0);
   const scheduleRequestId = useRef(0);
@@ -336,6 +372,22 @@ export function App() {
 
   const destination = terminals.find((terminal) => terminal.id === effectiveDestinationId) ?? null;
   const currentSailing = scheduleResponse?.data ? getCurrentSailing(scheduleResponse.data) : null;
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
+  const waves = disruptionWaves(vessels, countdownNow, settings.disruptionLeadMinutes);
+  const [nextWave, ...laterWaves] = waves;
+  const catches = catchWindows(catchResponse?.data ?? [], countdownNow, settings.catchPadMinutes);
+  const [nextCatch, ...laterCatches] = catches;
+
+  const changeSetting = (key: keyof FerrySettings, value: number) => {
+    const next = normalizeSettings({ ...settings, [key]: value });
+    setSettings(next);
+    saveSettings(next);
+  };
+
+  const resetSettings = () => {
+    setSettings(DEFAULT_SETTINGS);
+    saveSettings(DEFAULT_SETTINGS);
+  };
   // A manual refresh replaces the same data in place, so it must not raise the loading cover.
   const refreshing = loading || scheduleLoading;
   const viewUpdating = !backgroundRefresh && (loading || (scheduleLoading && (tab === 'routes' || tab === 'schedule')));
@@ -344,6 +396,40 @@ export function App() {
   useEffect(() => {
     if (backgroundRefresh && !refreshing) setBackgroundRefresh(false);
   }, [backgroundRefresh, refreshing]);
+
+  // The countdown only has to stay honest while it is on screen.
+  useEffect(() => {
+    if (tab !== 'catch' && tab !== 'disruption') return;
+    setCountdownNow(Date.now());
+    const timer = window.setInterval(() => setCountdownNow(Date.now()), COUNTDOWN_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [tab]);
+
+  // The Catch tab is pinned to Bainbridge, so it needs its own schedule rather than the
+  // route the selectors happen to be showing.
+  useEffect(() => {
+    if (tab !== 'catch') return;
+    const controller = new AbortController();
+    let active = true;
+    setCatchLoading(true);
+    ferryApi.schedule(BAINBRIDGE_TERMINAL_ID, SEATTLE_TERMINAL_ID, controller.signal)
+      .then((schedule) => {
+        if (!active) return;
+        setCatchResponse(schedule);
+        setCatchError(null);
+        setLastRefreshAt((current) => latestTimestamp(current, schedule.fetchedAt));
+      })
+      .catch((cause: unknown) => {
+        if (active) setCatchError(cause instanceof Error ? cause.message : 'Unable to load the Bainbridge schedule.');
+      })
+      .finally(() => {
+        if (active) setCatchLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [refreshVersion, tab]);
 
   useEffect(() => {
     if (viewUpdating) {
@@ -409,7 +495,7 @@ export function App() {
     <div className="app-shell">
       <header className="app-header">
         <div className="header-inner">
-        <div className="brand"><span className="brand-mark"><Anchor size={22} /></span><div><strong>Ferry Tracker</strong><span>WSDOT data explorer</span></div></div>
+        <button className="brand" type="button" title="Go to Routes" onClick={() => setTab('routes')}><span className="brand-mark"><Anchor size={22} /></span><div><strong>Ferry Tracker</strong><span>WSDOT data explorer</span></div></button>
         <div className="header-actions">
           {lastRefreshAt && <span className="refresh-time" title={`Last refresh ${localTime(lastRefreshAt)}`}><Clock3 size={13} /><span className="refresh-time-label">Last refresh</span><time dateTime={lastRefreshAt}>{refreshTime(lastRefreshAt)}</time></span>}
           {terminalResponse && <span className={`source-badge ${terminalResponse.source}`}>{terminalResponse.source}</span>}
@@ -422,10 +508,10 @@ export function App() {
 
       <main>
         <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}`} aria-labelledby="route-heading">
-          <div className="route-title"><span className="eyebrow">Live route explorer</span><h1 id="route-heading">Live sailings and vessel positions</h1></div>
+          <div className="route-title"><span className="eyebrow">Route explorer</span><h1 id="route-heading">Sailings and vessel positions</h1></div>
           <div className="selectors">
-            <div className="selector-field"><span>Terminal</span><div className="selector-control-row"><FilterSelect ariaLabel="Terminal" value={selectedTerminalId} onChange={setSelectedTerminalId} disabled={loading && !backgroundRefresh} options={terminalOptions} /><button className={`favorite-button${selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? ' active' : ''}`} type="button" aria-label={selectedTerminalId === null ? 'Favorite selected origin' : favoriteTerminalIdSet.has(selectedTerminalId) ? `Remove ${selectedTerminal?.name ?? 'selected origin'} from favorites` : `Add ${selectedTerminal?.name ?? 'selected origin'} to favorites`} title={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? 'Remove from favorites' : 'Add to favorites'} disabled={selectedTerminalId === null || (loading && !backgroundRefresh)} aria-pressed={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId)} onClick={toggleFavoriteTerminal}><Star fill={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? 'currentColor' : 'none'} size={16} /></button></div></div>
-            <button className="swap-button" type="button" aria-label="Reverse route" title={canSwapRoute ? 'Swap terminal and destination' : 'Reverse route unavailable'} disabled={!canSwapRoute} onClick={swapRoute}><ArrowLeftRight size={18} /></button>
+            <div className="selector-field"><span>Origin</span><div className="selector-control-row"><FilterSelect ariaLabel="Origin" value={selectedTerminalId} onChange={setSelectedTerminalId} disabled={loading && !backgroundRefresh} options={terminalOptions} /><button className={`favorite-button${selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? ' active' : ''}`} type="button" aria-label={selectedTerminalId === null ? 'Add to favorites' : favoriteTerminalIdSet.has(selectedTerminalId) ? `Remove ${selectedTerminal?.name ?? 'this terminal'} from favorites` : `Add ${selectedTerminal?.name ?? 'this terminal'} to favorites`} title={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? 'Remove from favorites' : 'Add to favorites'} disabled={selectedTerminalId === null || (loading && !backgroundRefresh)} aria-pressed={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId)} onClick={toggleFavoriteTerminal}><Star fill={selectedTerminalId !== null && favoriteTerminalIdSet.has(selectedTerminalId) ? 'currentColor' : 'none'} size={16} /></button></div></div>
+            <button className="swap-button" type="button" aria-label="Reverse route" title={canSwapRoute ? 'Swap origin and destination' : 'Reverse route unavailable'} disabled={!canSwapRoute} onClick={swapRoute}><ArrowLeftRight size={18} /></button>
             <label><span>Destination</span><FilterSelect ariaLabel="Destination" value={effectiveDestinationId} onChange={setDestinationId} disabled={!destinationIds.length} placeholder="No live association" options={destinationIds.map((id) => ({ value: id, label: terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown' }))} /></label>
             <label className="day-field"><span>Day</span><FilterSelect ariaLabel="Day" value={serviceDate} onChange={setServiceDate} disabled={!historyDates.length} options={dayOptions} /></label>
           </div>
@@ -460,6 +546,75 @@ export function App() {
           {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className="data-card" key={vessel.id}><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.departingTerminalId === null ? vessel.name : <button className="card-link" type="button" title={`Show ${vessel.name}'s route in the routes view`} onClick={() => openRoute(vessel.departingTerminalId, vessel.arrivingTerminalId)}>{vessel.name}</button>}</h2><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></dl></article>)}</div>}
 
           {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings schedule</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Sailing time</th><th>Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => <tr key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><td>{localTime(sailing.departingTime)}</td><td>{departureDelayMinutes(sailing) === null ? '—' : <DepartureDelay sailing={sailing} />}</td><td><SailingArrival sailing={sailing} vessels={vessels} /></td><td><SailingTime sailing={sailing} vessels={vessels} /></td><td><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRoute} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}>{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></td></tr>)}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
+
+          {tab === 'catch' && <div className="countdown-card">
+            <div className="schedule-heading"><span className="node-type">Leave by</span><h2>Bainbridge Island to Seattle</h2></div>
+            {catchLoading && !catchResponse ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div>
+              : catchError ? <div className="empty">{catchError}</div>
+              : nextCatch ? <>
+                <div className={`countdown-headline is-${catchWindowLevel(nextCatch, settings)}`}>
+                  <strong className="countdown-value">{`${nextCatch.minutesAway} min`}</strong>
+                  <span className="countdown-at">Leave by {clockTime(nextCatch.leaveByAt)} for the {clockTime(nextCatch.departureAt)} sailing</span>
+                </div>
+                <dl className="countdown-detail">
+                  <Field label="Departure" value={fieldTime(nextCatch.departureAt)} />
+                  <Field label="Vessel" value={nextCatch.vesselName} />
+                  <Field label="Space" value={nextCatch.spaceLabel && <>{nextCatch.spaceLabel} <CapacityPill percent={nextCatch.spacePercent} total={nextCatch.spaceTotal} /></>} />
+                </dl>
+                {laterCatches.length > 0 && <div className="countdown-later"><span className="node-type">Then</span><ol className="sailing-list">{laterCatches.slice(0, 5).map((window) => <li key={window.departureAt}><strong>{clockTime(window.departureAt)}<span className={`capacity-pill ${catchPillClass(catchWindowLevel(window, settings))}`}>{`${window.minutesAway} min`}</span></strong><span>Leave by {clockTime(window.leaveByAt)}{window.spaceLabel ? ` · ${window.spaceLabel} ` : ''}<CapacityPill percent={window.spacePercent} total={window.spaceTotal} /></span></li>)}</ol></div>}
+              </> : <div className="empty">No sailing left today that you can still make.</div>}
+          </div>}
+
+          {tab === 'disruption' && <div className="countdown-card">
+            <div className="schedule-heading"><span className="node-type">Next disruption</span><h2>Bainbridge Island offload</h2></div>
+            {nextWave ? <>
+              <div className={`countdown-headline is-${disruptionLevel(nextWave.minutesAway, settings)}`}>
+                <strong className="countdown-value">{nextWave.minutesAway < 1 ? 'under 1 min' : `${nextWave.minutesAway} min`}</strong>
+                <span className="countdown-at">Traffic from {clockTime(nextWave.disruptionAt)}</span>
+              </div>
+              <dl className="countdown-detail">
+                <Field label="Vessel" value={nextWave.vesselName} />
+                <Field label="Lands" value={fieldTime(nextWave.landingAt)} />
+                <Field label="Lead" value={`${settings.disruptionLeadMinutes} min after landing`} />
+              </dl>
+              {laterWaves.length > 0 && <div className="countdown-later"><span className="node-type">Behind it</span><ol className="sailing-list">{laterWaves.map((wave) => <li key={`${wave.vesselId}-${wave.disruptionAt}`}><strong>{clockTime(wave.disruptionAt)}<span className={`capacity-pill ${catchPillClass(disruptionLevel(wave.minutesAway, settings))}`}>{wave.minutesAway} min</span></strong><span>{wave.vesselName} lands {clockTime(wave.landingAt)}</span></li>)}</ol></div>}
+            </> : <div className="empty">No vessel is inbound to Bainbridge Island right now.</div>}
+          </div>}
+
+          {tab === 'settings' && <div className="countdown-card settings-card">
+            <div className="schedule-heading"><h2>Settings</h2></div>
+            <div className="settings-section">
+              <span className="node-type">Catch</span>
+              <div className="settings-grid is-single">
+                <SettingField label="Padding" ariaLabel="Catch padding" hint="Time to reach the terminal and wait" setting="catchPadMinutes" unit="min" settings={settings} onChange={changeSetting} />
+              </div>
+              <div className="settings-subgroup">
+                <span className="settings-subhead">Time left to leave</span>
+                <div className="settings-grid">
+                  <SettingField label="Turns yellow below" ariaLabel="Catch yellow under" hint="Minutes left to leave" setting="catchSoonMinutes" unit="min" settings={settings} onChange={changeSetting} />
+                  <SettingField label="Turns red below" ariaLabel="Catch red under" hint="Minutes left to leave" setting="catchImminentMinutes" unit="min" settings={settings} onChange={changeSetting} />
+                </div>
+              </div>
+              <div className="settings-subgroup">
+                <span className="settings-subhead">Vehicle space</span>
+                <div className="settings-grid">
+                  <SettingField label="Turns yellow below" ariaLabel="Space yellow under" hint="Remaining capacity" setting="spaceSoonPercent" unit="%" settings={settings} onChange={changeSetting} />
+                  <SettingField label="Turns red below" ariaLabel="Space red under" hint="Remaining capacity" setting="spaceImminentPercent" unit="%" settings={settings} onChange={changeSetting} />
+                </div>
+              </div>
+            </div>
+            <div className="settings-section">
+              <span className="node-type">Disruption</span>
+              <div className="settings-grid">
+                <SettingField label="Lead" ariaLabel="Disruption lead" hint="Offload to traffic on the road" setting="disruptionLeadMinutes" unit="min" settings={settings} onChange={changeSetting} />
+                <SettingField label="Turns yellow below" ariaLabel="Disruption yellow under" hint="Minutes until traffic hits" setting="disruptionSoonMinutes" unit="min" settings={settings} onChange={changeSetting} />
+                <SettingField label="Turns red below" ariaLabel="Disruption red under" hint="Minutes until traffic hits" setting="disruptionImminentMinutes" unit="min" settings={settings} onChange={changeSetting} />
+              </div>
+            </div>
+            <div className="settings-footer">
+              <button type="button" className="reset-settings" onClick={resetSettings}>Reset to defaults</button>
+            </div>
+          </div>}
 
           </div>
 
