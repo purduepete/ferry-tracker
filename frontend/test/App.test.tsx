@@ -181,6 +181,24 @@ describe('Ferry data explorer', () => {
     expect(screen.getByText(/95 drive-up \/ 202/)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('status', { name: 'Loading updated ferry data' })).not.toBeInTheDocument());
   });
+
+  it('marks a vessel destination WSDOT has not published yet', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json([{ ...vessels[0], arrivingTerminalId: null, arrivingTerminalName: null }]);
+      if (url.includes('/api/terminal-mates')) return json([
+        { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
+      ]);
+      return json([]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Tacoma' });
+
+    const direction = screen.getByRole('heading', { name: 'Tacoma' }).nextElementSibling;
+    expect(direction?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Seattle —');
+  });
 });
 
 describe('Remembered route', () => {
