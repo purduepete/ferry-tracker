@@ -76,9 +76,17 @@ $nodeMajor = [int]($nodeVersion.TrimStart('v').Split('.')[0])
 if ($nodeMajor -lt 22) { throw "Node $nodeVersion is too old. The workspace requires Node 22 or newer." }
 Write-Ok ("node {0} at {1}" -f $nodeVersion, $NodeExe)
 
-$npmCmd = (Get-Command npm.cmd -ErrorAction SilentlyContinue) ?? (Get-Command npm -ErrorAction SilentlyContinue)
-if (-not $npmCmd) { throw 'npm was not found on PATH for this elevated session.' }
-Write-Ok ("npm at {0}" -f $npmCmd.Source)
+$npmCmd = $null
+# An elevated session may not carry the Scoop shims on PATH, so prefer the npm beside node.exe.
+$npmBesideNode = Join-Path (Split-Path -Parent $NodeExe) 'npm.cmd'
+if (Test-Path -LiteralPath $npmBesideNode) { $npmCmd = $npmBesideNode }
+else {
+  $found = Get-Command npm.cmd -ErrorAction SilentlyContinue
+  if (-not $found) { $found = Get-Command npm -ErrorAction SilentlyContinue }
+  if ($found) { $npmCmd = $found.Source }
+}
+if (-not $npmCmd) { throw "npm was not found beside $NodeExe or on PATH for this elevated session." }
+Write-Ok ("npm at {0}" -f $npmCmd)
 
 $gitCmd = Get-Command git -ErrorAction SilentlyContinue
 if (-not $gitCmd -and -not $SkipClone) { throw 'git was not found on PATH. Install Git, or clone manually and re-run with -SkipClone.' }
@@ -152,7 +160,8 @@ $lines = @(
   "CAPTURE_MIN_FREE_DISK_MB=$MinFreeDiskMb"
   'CAPTURE_STATUS_ENABLED=true'
 )
-Set-Content -LiteralPath $envPath -Value $lines -Encoding utf8
+# Windows PowerShell 5.1 writes a BOM with -Encoding utf8, and dotenv should never see one.
+[IO.File]::WriteAllLines($envPath, [string[]]$lines, (New-Object Text.UTF8Encoding($false)))
 Write-Ok ("wrote {0}" -f $envPath)
 
 if (-not $KeepStagedEnv -and $StagedEnvFile -and (Test-Path -LiteralPath $StagedEnvFile) -and ((Resolve-Path $StagedEnvFile).Path -ne (Resolve-Path $envPath).Path)) {
@@ -169,10 +178,10 @@ foreach ($dir in @($DataDir, (Join-Path $DataDir 'raw'), (Join-Path $DataDir 'ba
 
 Write-Step 'Install and build'
 
-Invoke-Checked -FilePath $npmCmd.Source -Arguments @('ci') -WorkingDirectory $InstallRoot -What 'npm ci'
+Invoke-Checked -FilePath $npmCmd -Arguments @('ci') -WorkingDirectory $InstallRoot -What 'npm ci'
 Write-Ok 'dependencies installed'
 
-Invoke-Checked -FilePath $npmCmd.Source -Arguments @('run', 'build') -WorkingDirectory $InstallRoot -What 'npm run build'
+Invoke-Checked -FilePath $npmCmd -Arguments @('run', 'build') -WorkingDirectory $InstallRoot -What 'npm run build'
 foreach ($artifact in @('shared\dist', 'server\dist\index.js', 'frontend\dist\index.html')) {
   if (-not (Test-Path -LiteralPath (Join-Path $InstallRoot $artifact))) { throw "Build finished but $artifact is missing." }
 }
@@ -180,7 +189,7 @@ Write-Ok 'shared, server, and frontend built'
 
 if ($SkipTests) { Write-Ok 'tests skipped by request' }
 else {
-  Invoke-Checked -FilePath $npmCmd.Source -Arguments @('test') -WorkingDirectory $InstallRoot -What 'npm test'
+  Invoke-Checked -FilePath $npmCmd -Arguments @('test') -WorkingDirectory $InstallRoot -What 'npm test'
   Write-Ok 'test suite passed'
 }
 
