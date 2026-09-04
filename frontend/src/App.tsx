@@ -222,6 +222,11 @@ export function App() {
   const favoriteListRef = useRef<HTMLUListElement>(null);
   const favoriteRouteListRef = useRef<HTMLUListElement>(null);
   const [vesselStackHeight, setVesselStackHeight] = useState(0);
+  const previousTabRef = useRef<Tab>(tab);
+  const historyDatesRef = useRef<string[]>(historyDates);
+  const serviceDateRef = useRef(serviceDate);
+  historyDatesRef.current = historyDates;
+  serviceDateRef.current = serviceDate;
 
   const loadOverview = () => {
     const controller = new AbortController();
@@ -357,6 +362,17 @@ export function App() {
   useEffect(() => {
     if (serviceDate !== LIVE_DATE && !historyDates.includes(serviceDate)) setServiceDate(LIVE_DATE);
   }, [historyDates, serviceDate]);
+
+  // Browsing the Sailings tab defaults to the most recently recorded day; leaving it goes back to live.
+  useEffect(() => {
+    const previousTab = previousTabRef.current;
+    if (tab === 'schedule' && previousTab !== 'schedule') {
+      if (historyDatesRef.current.length) setServiceDate(historyDatesRef.current[0]);
+    } else if (previousTab === 'schedule' && tab !== 'schedule') {
+      if (serviceDateRef.current !== LIVE_DATE) setServiceDate(LIVE_DATE);
+    }
+    previousTabRef.current = tab;
+  }, [tab]);
 
   useEffect(() => {
     const routeSettled = selectedTerminalId === null || effectiveDestinationId === null || initialScheduleSettled;

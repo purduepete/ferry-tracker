@@ -629,6 +629,22 @@ describe('Recorded day browser', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Day' })).toHaveTextContent('Today, live');
   });
+
+  it('jumps to the most recent recorded day when opening Sailings, and back to live when leaving it', async () => {
+    mockDay(['2026-08-30', '2026-08-29']);
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByText(/176 drive-up \/ 202/);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).not.toBeDisabled());
+
+    await user.click(screen.getByRole('tab', { name: 'Sailings' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).toHaveTextContent(serviceDayLabel('2026-08-30')));
+    expect(document.querySelector('.app-header.is-recorded')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Routes' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).toHaveTextContent('Today, live'));
+    expect(document.querySelector('.app-header.is-recorded')).not.toBeInTheDocument();
+  });
 });
 
 describe('Vessel lateness', () => {
