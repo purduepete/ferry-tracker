@@ -146,6 +146,15 @@ test('overrides the Catch padding for one route and resets it back to the settin
   await page.goto('/');
   await page.getByRole('tab', { name: 'Catch' }).click();
 
+  // The disclosure remembers its state, so a reload can leave it already open.
+  const openPadding = async () => {
+    const disclosure = page.getByRole('button', { name: /Padding/ });
+    if (await disclosure.getAttribute('aria-expanded') === 'false') await disclosure.click();
+  };
+  await expect(page.getByRole('button', { name: /Padding/ })).toContainText('30 min');
+  await expect(page.locator('.catch-timing-custom')).toHaveCount(0);
+  await openPadding();
+
   await expect(page.getByRole('button', { name: 'Catch traffic' })).toHaveText('15 min');
   await expect(page.locator('.catch-timing-total')).toHaveText('30 min padding');
   await expect(page.getByRole('button', { name: 'Use settings' })).toHaveCount(0);
@@ -155,6 +164,7 @@ test('overrides the Catch padding for one route and resets it back to the settin
   await page.getByRole('button', { name: 'Catch queue' }).click();
   await page.getByRole('option', { name: '5 min', exact: true }).click();
   await expect(page.locator('.catch-timing-total')).toHaveText('45 min padding for this route');
+  await expect(page.locator('.catch-timing-custom')).toHaveText('Custom');
 
   // The other favorite route is untouched by the one that was overridden.
   await page.getByRole('group', { name: 'Catch route' }).getByRole('button', { name: 'SEA → BI' }).click();
@@ -162,6 +172,7 @@ test('overrides the Catch padding for one route and resets it back to the settin
 
   await page.reload();
   await page.getByRole('tab', { name: 'Catch' }).click();
+  await openPadding();
   await page.getByRole('group', { name: 'Catch route' }).getByRole('button', { name: 'BI → SEA' }).click();
   await expect(page.locator('.catch-timing-total')).toHaveText('45 min padding for this route');
 
@@ -264,10 +275,11 @@ test('drops the tab labels and the route selectors on a phone', async ({ page })
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
   // The padding controls stay on one row, so the total and the reset sit level with the selects.
+  await page.getByRole('button', { name: /Padding/ }).click();
   await page.getByRole('button', { name: 'Catch traffic' }).click();
   await page.getByRole('option', { name: '30 min' }).click();
   await expect.poll(() => page.evaluate(() => {
-    const tops = [...document.querySelectorAll('.catch-timing > *')].map((element) => Math.round(element.getBoundingClientRect().bottom));
+    const tops = [...document.querySelectorAll('.catch-timing-controls > *')].map((element) => Math.round(element.getBoundingClientRect().bottom));
     return new Set(tops).size;
   })).toBe(1);
   await expect(page.getByRole('button', { name: 'Use settings' })).toBeVisible();

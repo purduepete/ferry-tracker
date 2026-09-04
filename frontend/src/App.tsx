@@ -25,6 +25,7 @@ const LIVE_DATE = 'live';
 const lastRouteKey = 'ferry-tracker-last-route';
 const sailingsOnlyKey = 'ferry-tracker-sailings-only';
 const catchRouteKey = 'ferry-tracker-catch-route';
+const catchPaddingOpenKey = 'ferry-tracker-catch-padding-open';
 
 function loadLastRoute(): { terminalId: number | null; destinationId: number | null } {
   const empty = { terminalId: null, destinationId: null };
@@ -54,6 +55,14 @@ function loadCatchRoute() {
     return localStorage.getItem(catchRouteKey);
   } catch {
     return null;
+  }
+}
+
+function loadCatchPaddingOpen() {
+  try {
+    return localStorage.getItem(catchPaddingOpenKey) === 'true';
+  } catch {
+    return false;
   }
 }
 
@@ -203,6 +212,7 @@ export function App() {
   const [newRouteDestinationId, setNewRouteDestinationId] = useState<number | null>(null);
   const [selectedCatchRoute, setSelectedCatchRoute] = useState<string | null>(loadCatchRoute);
   const [catchOverrides, setCatchOverrides] = useState(loadCatchOverrides);
+  const [catchPaddingOpen, setCatchPaddingOpen] = useState(loadCatchPaddingOpen);
   const [sailingsOnly, setSailingsOnly] = useState(loadSailingsOnly);
   const [settings, setSettings] = useState<FerrySettings>(loadSettings);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -603,6 +613,12 @@ export function App() {
     try { localStorage.setItem(sailingsOnlyKey, String(next)); } catch { /* The choice just resets on the next visit. */ }
   };
 
+  const toggleCatchPadding = () => {
+    const next = !catchPaddingOpen;
+    setCatchPaddingOpen(next);
+    try { localStorage.setItem(catchPaddingOpenKey, String(next)); } catch { /* The choice just resets on the next visit. */ }
+  };
+
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let nextIndex: number | null = null;
     if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
@@ -682,7 +698,7 @@ export function App() {
           {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings schedule</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Sailing time</th><th>Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => <tr key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><td>{localTime(sailing.departingTime)}</td><td>{departureDelayMinutes(sailing) === null ? '—' : <DepartureDelay sailing={sailing} />}</td><td><SailingArrival sailing={sailing} vessels={vessels} /></td><td><SailingTime sailing={sailing} vessels={vessels} /></td><td><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRoute} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}>{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></td></tr>)}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
 
           {tab === 'catch' && <div className="countdown-card">
-            <div className="schedule-heading has-switcher">
+            <div className="schedule-heading catch-heading has-switcher">
               <div><span className="node-type">Leave by</span><h2>{catchRoute ? routeName(catchRoute, terminals) : 'No favorite route'}</h2></div>
               {favoriteRoutes.length > 1 && <div className="route-chips" role="group" aria-label="Catch route">
                 {favoriteRoutes.map((route) => {
@@ -693,10 +709,18 @@ export function App() {
               </div>}
             </div>
             {catchRoute && <div className="catch-timing">
-              <label><span>Traffic</span><FilterSelect ariaLabel="Catch traffic" value={timing.trafficMinutes} onChange={(value) => changeCatchOverride({ trafficMinutes: value })} options={minuteOptions} /></label>
-              <label><span>Queue</span><FilterSelect ariaLabel="Catch queue" value={timing.queueMinutes} onChange={(value) => changeCatchOverride({ queueMinutes: value })} options={minuteOptions} /></label>
-              <span className="catch-timing-total">{timing.padMinutes} min<span className="catch-timing-words"> padding{timing.overridden ? ' for this route' : ''}</span></span>
-              {timing.overridden && <button className="catch-timing-reset" type="button" title="Go back to the padding in Settings" onClick={resetCatchOverride}><RotateCcw size={13} aria-hidden="true" /><span className="catch-timing-words">Use settings</span></button>}
+              <button className="settings-disclosure" type="button" aria-expanded={catchPaddingOpen} onClick={toggleCatchPadding}>
+                <ChevronDown className={catchPaddingOpen ? 'open' : ''} size={14} />
+                <span className="node-type">Padding</span>
+                <span className="settings-disclosure-count">{timing.padMinutes} min</span>
+                {timing.overridden && <span className="catch-timing-custom">Custom</span>}
+              </button>
+              {catchPaddingOpen && <div className="catch-timing-controls">
+                <label><span>Traffic</span><FilterSelect ariaLabel="Catch traffic" value={timing.trafficMinutes} onChange={(value) => changeCatchOverride({ trafficMinutes: value })} options={minuteOptions} /></label>
+                <label><span>Queue</span><FilterSelect ariaLabel="Catch queue" value={timing.queueMinutes} onChange={(value) => changeCatchOverride({ queueMinutes: value })} options={minuteOptions} /></label>
+                <span className="catch-timing-total">{timing.padMinutes} min<span className="catch-timing-words"> padding{timing.overridden ? ' for this route' : ''}</span></span>
+                {timing.overridden && <button className="catch-timing-reset" type="button" title="Go back to the padding in Settings" onClick={resetCatchOverride}><RotateCcw size={13} aria-hidden="true" /><span className="catch-timing-words">Use settings</span></button>}
+              </div>}
             </div>}
             {!catchRoute ? <div className="empty">Add a favorite route in Settings to see when to leave.</div>
               : catchLoading && !catchResponse ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div>

@@ -1399,6 +1399,7 @@ describe('Catch padding overrides', () => {
     await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
     expect(screen.queryByRole('button', { name: 'Use settings' })).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: /Padding/ }));
     await user.click(screen.getByRole('button', { name: 'Catch traffic' }));
     await user.click(screen.getByRole('option', { name: '30 min' }));
 
@@ -1414,6 +1415,31 @@ describe('Catch padding overrides', () => {
     expect(JSON.parse(localStorage.getItem('ferry-tracker-catch-overrides') ?? '{}')).toEqual({});
   });
 
+  it('collapses the padding controls and flags a route that overrides them', async () => {
+    overviewFetch(departure);
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await user.click(screen.getByRole('tab', { name: 'Catch' }));
+    await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
+
+    const disclosure = screen.getByRole('button', { name: /Padding/ });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(disclosure).toHaveTextContent('30 min');
+    expect(screen.queryByRole('button', { name: 'Catch traffic' })).not.toBeInTheDocument();
+    expect(document.querySelector('.catch-timing-custom')).toBeNull();
+
+    await user.click(disclosure);
+    expect(localStorage.getItem('ferry-tracker-catch-padding-open')).toBe('true');
+    await user.click(screen.getByRole('button', { name: 'Catch traffic' }));
+    await user.click(screen.getByRole('option', { name: '30 min' }));
+
+    await user.click(disclosure);
+    expect(screen.queryByRole('button', { name: 'Catch traffic' })).not.toBeInTheDocument();
+    expect(disclosure).toHaveTextContent('45 min');
+    expect(document.querySelector('.catch-timing-custom')).toHaveTextContent('Custom');
+  });
+
   it('keeps each favorite route on its own padding', async () => {
     localStorage.setItem('ferry-tracker-catch-overrides', JSON.stringify({ '3-7': { trafficMinutes: 0, queueMinutes: 0 } }));
     overviewFetch(departure);
@@ -1426,6 +1452,7 @@ describe('Catch padding overrides', () => {
     await user.click(within(screen.getByRole('group', { name: 'Catch route' })).getByRole('button', { name: 'SEA → BI' }));
 
     await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
+    await user.click(screen.getByRole('button', { name: /Padding/ }));
     expect(screen.getByRole('button', { name: 'Catch traffic' })).toHaveTextContent('15 min');
     expect(screen.queryByRole('button', { name: 'Use settings' })).not.toBeInTheDocument();
   });
