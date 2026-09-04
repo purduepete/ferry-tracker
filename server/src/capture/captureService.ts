@@ -206,6 +206,7 @@ export class CaptureService {
     const legs = runLegRollup(this.db, {
       dwellCeilingMinutes: this.config.capture.dwellCeilingMinutes,
       dockDebounceSeconds: this.config.capture.dockDebounceSeconds,
+      now: this.now(),
     });
     const pruned = await pruneOldData(this.db, { retentionDays: this.config.capture.retentionDays, now: this.now });
     const removed =

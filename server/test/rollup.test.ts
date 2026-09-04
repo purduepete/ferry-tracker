@@ -464,6 +464,64 @@ describe('dock state debounce', () => {
     expect(rows[0].complete).toBe(1);
   });
 
+  // An arrival the debounce has not judged yet cannot be written, because a complete leg
+  // becomes the anchor that the next pass never reaches back past.
+  it('holds a fresh arrival back until it has outlived the debounce window', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 20, atDock: 0, leftDock: at(10) },
+      { minute: 21, atDock: 1 },
+    ]);
+
+    runLegRollup(db, { ...options, now: BASE + 21.5 * 60_000 });
+
+    const [leg] = legs();
+    expect(leg.departed_at).toBe(at(10));
+    expect(leg.dock_arrival_at).toBeNull();
+    expect(leg.complete).toBe(0);
+  });
+
+  it('writes the arrival on the pass that finds it settled', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 20, atDock: 0, leftDock: at(10) },
+      { minute: 21, atDock: 1 },
+    ]);
+    runLegRollup(db, { ...options, now: BASE + 21.5 * 60_000 });
+
+    runLegRollup(db, { ...options, now: BASE + 24 * 60_000 });
+
+    const rows = legs();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].dock_arrival_at).toBe(at(21));
+    expect(rows[0].complete).toBe(1);
+  });
+
+  it('never records a blip arrival that a later poll contradicts', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 20, atDock: 0, leftDock: at(10) },
+      { minute: 21, atDock: 1 },
+    ]);
+    runLegRollup(db, { ...options, now: BASE + 21.5 * 60_000 });
+
+    observe([
+      { minute: 22, atDock: 0, leftDock: at(10) },
+      { minute: 40, atDock: 0, leftDock: at(10) },
+      { minute: 50, atDock: 1 },
+    ]);
+    runLegRollup(db, { ...options, now: BASE + 53 * 60_000 });
+
+    const rows = legs();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].departed_at).toBe(at(10));
+    expect(rows[0].dock_arrival_at).toBe(at(50));
+    expect(rows[0].complete).toBe(1);
+  });
+
   it('reaches the same legs whether replayed in one pass or many', () => {
     const trace: Array<{ minute: number; atDock: number; leftDock?: string }> = [
       { minute: 0, atDock: 1 },

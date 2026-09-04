@@ -58,7 +58,10 @@ function getCaptureConfig(): CaptureConfig {
     spaceIntervalMs: positive(process.env.CAPTURE_SPACE_INTERVAL_MS, 60_000),
     referenceIntervalMs: positive(process.env.CAPTURE_REFERENCE_INTERVAL_MS, 21_600_000),
     scheduleIntervalMs: positive(process.env.CAPTURE_SCHEDULE_INTERVAL_MS, 21_600_000),
-    rollupIntervalMs: positive(process.env.CAPTURE_ROLLUP_INTERVAL_MS, 900_000),
+    // A dock arrival only reaches the Sailings table once the rollup closes the leg, and the
+    // rollup holds an arrival back until it has outlived the debounce window, so an arrival
+    // shows up within dockDebounceSeconds plus one of these.
+    rollupIntervalMs: positive(process.env.CAPTURE_ROLLUP_INTERVAL_MS, 60_000),
     retentionDays: retention(process.env.CAPTURE_RETENTION_DAYS),
     dwellCeilingMinutes: positive(process.env.CAPTURE_DWELL_CEILING_MINUTES, 120),
     // Twice the p99 poll gap of 60s, so a blip cannot outlive it. The ceiling is the

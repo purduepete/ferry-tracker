@@ -4,6 +4,7 @@ import type { Db } from '../db/database.js';
 export interface RollupOptions {
   dwellCeilingMinutes: number;
   dockDebounceSeconds: number;
+  now?: number;
 }
 
 export interface RollupResult {
@@ -99,6 +100,18 @@ function debounceDockState(observations: Observation[], windowSeconds: number): 
   );
 }
 
+// The final run has no successor, so the debounce had nothing to judge it against and its
+// state is still a guess. Writing it would close a leg on a blip, and a complete leg becomes
+// the anchor that the next pass never reaches back past. So the tail waits instead: it is
+// re-read next pass, and once the run is older than the window nothing can collapse it.
+function trimUnsettledTail(observations: Observation[], windowSeconds: number, nowMs: number): Observation[] {
+  if (windowSeconds <= 0 || observations.length === 0) return observations;
+  const runs = dockRuns(observations);
+  const last = runs[runs.length - 1];
+  if (!last || nowMs - last.startMs >= windowSeconds * 1000) return observations;
+  return observations.slice(0, last.indexes[0]);
+}
+
 function dockRuns(observations: Observation[]): DockRun[] {
   const runs: DockRun[] = [];
   let open: DockRun | null = null;
@@ -134,15 +147,17 @@ export function runLegRollup(db: Db, options: RollupOptions): RollupResult {
 
   const result: RollupResult = { vessels: vessels.length, legsWritten: 0, legsRemoved: 0, watermark: null };
   const watermarks: string[] = [];
+  const nowMs = options.now ?? Date.now();
 
   const run = db.transaction(() => {
     for (const { vessel_id: vesselId } of vessels) {
       const anchor = lastCompleteLeg(db, vesselId);
       result.legsRemoved += clearFrom(db, vesselId, anchor?.departed_at ?? null);
 
-      const observations = debounceDockState(
-        readObservations(db, vesselId, anchor?.dock_arrival_at ?? null),
+      const observations = trimUnsettledTail(
+        debounceDockState(readObservations(db, vesselId, anchor?.dock_arrival_at ?? null), options.dockDebounceSeconds),
         options.dockDebounceSeconds,
+        nowMs,
       );
       if (observations.length === 0) continue;
 

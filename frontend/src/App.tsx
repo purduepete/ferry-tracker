@@ -18,7 +18,7 @@ const tabs: Array<{ id: Tab; label: string; icon: typeof Waypoints }> = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 const COUNTDOWN_TICK_MS = 15_000;
-const COUNTDOWN_REFRESH_MS = 60_000;
+const BACKGROUND_REFRESH_MS = 60_000;
 const MINIMUM_SKELETON_MS = 500;
 const SKELETON_EXIT_MS = 520;
 const LIVE_DATE = 'live';
@@ -297,6 +297,9 @@ export function App() {
       || left.name.localeCompare(right.name));
   const hasOverview = terminalResponse !== null && vesselResponse !== null && mateResponse !== null;
   const recordedDay = serviceDate !== LIVE_DATE;
+  const latestRecordedDay = historyDates[0] ?? null;
+  // A finished day never gains another sailing, so only the day still being recorded is polled.
+  const scheduleDayIsLive = !recordedDay || serviceDate === latestRecordedDay;
   const dayOptions = [
     { value: LIVE_DATE, label: 'Today, live' },
     ...historyDates.map((date) => ({ value: date, label: serviceDayLabel(date), icon: <History className="recorded-mark" size={13} aria-hidden="true" /> })),
@@ -447,15 +450,17 @@ export function App() {
 
   // Ticking the clock is not enough: a boat that ties up leaves the vessel feed and the one
   // behind it only appears in a fresh fetch, so the countdown tabs poll while they are open.
+  // Sailings polls for the same reason: the rollup stamps a dock arrival minutes after it happens.
   useEffect(() => {
-    if (tab !== 'catch' && tab !== 'disruption') return;
+    const polling = tab === 'catch' || tab === 'disruption' || (tab === 'schedule' && scheduleDayIsLive);
+    if (!polling) return;
     const timer = window.setInterval(() => {
       setBackgroundRefresh(true);
       loadOverview();
       setRefreshVersion((current) => current + 1);
-    }, COUNTDOWN_REFRESH_MS);
+    }, BACKGROUND_REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [tab]);
+  }, [scheduleDayIsLive, tab]);
 
   // The Catch tab follows the chosen favorite route, so it needs its own schedule rather than
   // the route the selectors happen to be showing. Keyed on the terminals, so renaming a
