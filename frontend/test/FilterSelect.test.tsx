@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { FilterSelect } from '../src/components/FilterSelect';
@@ -17,6 +17,19 @@ describe('FilterSelect', () => {
     await user.click(screen.getByRole('button', { name: 'Terminal' }));
     expect(screen.getByRole('option', { name: 'Seattle' })).toHaveAttribute('aria-selected', 'true');
     await user.click(screen.getByRole('option', { name: 'Bainbridge Island' }));
+    expect(onChange).toHaveBeenCalledWith(3);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('commits a touch on pointerup, since iOS may never send the click', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<FilterSelect ariaLabel="Terminal" options={options} value={7} onChange={onChange} />);
+    await user.click(screen.getByRole('button', { name: 'Terminal' }));
+
+    const option = screen.getByRole('option', { name: 'Bainbridge Island' });
+    fireEvent.pointerUp(option, { pointerType: 'touch' });
+
     expect(onChange).toHaveBeenCalledWith(3);
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Check, ChevronDown, Star } from 'lucide-react';
 
 export interface FilterSelectOption<T extends string | number> {
@@ -45,6 +45,13 @@ export function FilterSelect<T extends string | number>({ ariaLabel, disabled = 
     if (!option) return;
     onChange(option.value);
     setOpen(false);
+  };
+
+  // iOS throws the click away when a finger drifts a pixel, so a touch commits on pointerup.
+  const selectOnTouch = (event: ReactPointerEvent<HTMLButtonElement>, index: number) => {
+    if (event.pointerType === 'mouse') return;
+    event.preventDefault();
+    select(index);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -105,6 +112,7 @@ export function FilterSelect<T extends string | number>({ ariaLabel, disabled = 
             aria-selected={active}
             className={`filter-select-option${active ? ' selected' : ''}${highlightIndex === index ? ' highlighted' : ''}`}
             onPointerMove={() => setHighlightIndex(index)}
+            onPointerUp={(event) => selectOnTouch(event, index)}
             onClick={() => select(index)}
           >
             <span className="option-check">{active && <Check size={14} />}</span>
