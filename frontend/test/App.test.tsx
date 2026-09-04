@@ -615,6 +615,11 @@ describe('Recorded day browser', () => {
     expect(await screen.findByText(/3 drive-up \/ 139/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Day' }).querySelector('.recorded-mark')).toBeInTheDocument();
     expect(document.querySelector('.vessel-stack.is-dimmed')).toBeInTheDocument();
+    expect(document.querySelector('.app-header.is-recorded')).toBeInTheDocument();
+
+    // Catch is always live, so the day it is browsing must not colour the header.
+    await user.click(screen.getByRole('tab', { name: 'Catch' }));
+    await waitFor(() => expect(document.querySelector('.app-header.is-recorded')).not.toBeInTheDocument());
   });
 
   it('offers only today when nothing was recorded', async () => {

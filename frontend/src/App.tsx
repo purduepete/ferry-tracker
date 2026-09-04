@@ -611,7 +611,7 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
+      <header className={`app-header${recordedDay && !routelessTab ? ' is-recorded' : ''}`}>
         <div className="header-inner">
         <button className="brand" type="button" title="Go to Routes" onClick={() => setTab('routes')}><span className="brand-mark"><Anchor size={22} /></span><div><strong>Ferry Tracker</strong><span>WSDOT data explorer</span></div></button>
         <div className="header-actions">

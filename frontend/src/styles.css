@@ -88,6 +88,8 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .app-shell { min-height: 100%; background: var(--bg); }
 .app-header { min-height: var(--navbar-height); padding: var(--safe-area-top) var(--safe-area-right) 0 var(--safe-area-left); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 30; }
 .header-inner { width: min(100%, 1440px); height: 64px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; }
+/* The only recorded-day cue that survives every width: the source badge and the Day picker both hide on a phone. */
+.app-header.is-recorded::after { content: ''; position: absolute; inset: auto 0 -1px; height: 2px; background: color-mix(in srgb, var(--warning) 65%, transparent); }
 .brand { display: flex; gap: 10px; align-items: center; color: var(--accent); padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .brand-mark { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line)); background: color-mix(in srgb, var(--accent-soft) 45%, transparent); color: var(--accent); }
 .brand div { display: flex; flex-direction: column; }
