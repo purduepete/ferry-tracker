@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
-import { capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchWindowLevel, catchWindows, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, loadSettings, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, reorderFavoriteTerminals, sailingArrival, sailingTimeMinutes, serviceDayLabel, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
+import { addFavoriteRoute, capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchWindowLevel, catchWindows, DEFAULT_FAVORITE_ROUTES, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, isPublishedRoute, loadFavoriteRoutes, loadSettings, normalizeFavoriteRoutes, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingTimeMinutes, serviceDayLabel, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
@@ -801,6 +801,178 @@ describe('Favorite terminal order', () => {
   it('leaves the order alone when the drop goes nowhere', () => {
     expect(reorderFavoriteTerminals([7, 3], [7, 3], 7, 7)).toEqual([7, 3]);
     expect(reorderFavoriteTerminals([7, 3], [7, 3], 999, 7)).toEqual([7, 3]);
+  });
+});
+
+describe('Favorite routes', () => {
+  const catalog = [
+    { id: 7, name: 'Seattle' },
+    { id: 3, name: 'Bainbridge Island' },
+    { id: 1, name: 'Anacortes' },
+  ];
+  const bi = { originId: 3, destinationId: 7, label: 'BI → SEA' };
+  const sea = { originId: 7, destinationId: 3, label: '' };
+
+  it('names a route by its label, falling back to the terminal pair', () => {
+    expect(routeKey(bi)).toBe('3-7');
+    expect(routeName(bi, catalog)).toBe('BI → SEA');
+    expect(routeName(sea, catalog)).toBe('Seattle to Bainbridge Island');
+    expect(routePairName({ originId: 3, destinationId: 999 }, catalog)).toBe('Bainbridge Island to Unknown');
+  });
+
+  it('keeps a stored route, drops junk, and never stores the same pair twice', () => {
+    expect(normalizeFavoriteRoutes([bi, { ...bi, label: 'again' }])).toEqual([bi]);
+    expect(normalizeFavoriteRoutes([{ originId: 3, destinationId: 3, label: 'nowhere' }])).toEqual([]);
+    expect(normalizeFavoriteRoutes([{ originId: '3', destinationId: 7, label: 'text ids' }])).toEqual([]);
+    expect(normalizeFavoriteRoutes([{ originId: 3, destinationId: 7 }])).toEqual([{ originId: 3, destinationId: 7, label: '' }]);
+    expect(normalizeFavoriteRoutes('nonsense')).toEqual([]);
+  });
+
+  it('seeds the Bainbridge pair only when nothing was ever saved', () => {
+    expect(loadFavoriteRoutes()).toEqual(DEFAULT_FAVORITE_ROUTES);
+    localStorage.setItem('ferry-tracker-favorite-routes', JSON.stringify([]));
+    expect(loadFavoriteRoutes()).toEqual([]);
+    localStorage.setItem('ferry-tracker-favorite-routes', JSON.stringify([bi]));
+    expect(loadFavoriteRoutes()).toEqual([bi]);
+  });
+
+  it('adds a route at the end and refuses a duplicate or a round trip to nowhere', () => {
+    expect(addFavoriteRoute([bi], 7, 3)).toEqual([bi, { originId: 7, destinationId: 3, label: '' }]);
+    expect(addFavoriteRoute([bi], 3, 7)).toEqual([bi]);
+    expect(addFavoriteRoute([], 3, 3)).toEqual([]);
+  });
+
+  it('renames and removes by pair', () => {
+    expect(renameFavoriteRoute([bi], '3-7', 'Home')).toEqual([{ ...bi, label: 'Home' }]);
+    expect(renameFavoriteRoute([bi], '9-9', 'Home')).toEqual([bi]);
+    expect(removeFavoriteRoute([bi, sea], '3-7')).toEqual([sea]);
+  });
+
+  it('drops a route onto another and leaves a missing one alone', () => {
+    const three = [bi, sea, { originId: 1, destinationId: 7, label: '' }];
+    expect(reorderFavoriteRoutes(three, '3-7', '1-7').map(routeKey)).toEqual(['7-3', '1-7', '3-7']);
+    expect(reorderFavoriteRoutes(three, '1-7', '3-7').map(routeKey)).toEqual(['1-7', '3-7', '7-3']);
+    expect(reorderFavoriteRoutes(three, '3-7', '3-7')).toEqual(three);
+    expect(reorderFavoriteRoutes(three, '9-9', '3-7')).toEqual(three);
+  });
+
+  it('only counts a route WSDOT still publishes in that direction', () => {
+    const mates = [{ departingTerminalId: 3, arrivingTerminalId: 7 }];
+    expect(isPublishedRoute(bi, mates)).toBe(true);
+    expect(isPublishedRoute(sea, mates)).toBe(false);
+  });
+});
+
+describe('Favorite routes in the app', () => {
+  const bothWays = [
+    { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
+    { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
+  ];
+  const scheduleUrls: string[] = [];
+
+  function mockApp() {
+    scheduleUrls.length = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json(bothWays);
+      if (url.includes('/api/history')) return json([]);
+      if (url.includes('/api/schedule')) scheduleUrls.push(url);
+      return json([]);
+    });
+  }
+
+  async function openFavoriteRoutes(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('tab', { name: 'Settings' }));
+    await user.click(await screen.findByRole('button', { name: /Favorite routes/ }));
+  }
+
+  it('seeds both Bainbridge directions and offers them as quick picks', async () => {
+    mockApp();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    expect([...document.querySelectorAll('.route-chip')].map((chip) => chip.textContent)).toEqual(['BI → SEA', 'SEA → BI']);
+  });
+
+  it('jumps the selectors to a favorite route', async () => {
+    mockApp();
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await user.click(screen.getByRole('button', { name: 'BI → SEA' }));
+    expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island');
+    expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
+    expect(screen.getByRole('button', { name: 'BI → SEA' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('adds a route, labels it, and stores the pair once', async () => {
+    localStorage.setItem('ferry-tracker-favorite-routes', JSON.stringify([]));
+    mockApp();
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await openFavoriteRoutes(user);
+
+    const add = screen.getByRole('button', { name: 'Add route' });
+    expect(add).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'New route origin' }));
+    await user.click(screen.getByRole('option', { name: 'Bainbridge Island' }));
+    expect(add).toBeEnabled();
+    await user.click(add);
+
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-favorite-routes') ?? '[]')).toEqual([{ originId: 3, destinationId: 7, label: '' }]);
+    expect(screen.getByRole('button', { name: 'Add route' })).toBeDisabled();
+
+    await user.type(screen.getByRole('textbox', { name: 'Label for Bainbridge Island to Seattle' }), 'Commute');
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-favorite-routes') ?? '[]')).toEqual([{ originId: 3, destinationId: 7, label: 'Commute' }]);
+  });
+
+  it('reorders with the keyboard and removes a route', async () => {
+    mockApp();
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await openFavoriteRoutes(user);
+
+    screen.getByRole('button', { name: 'Reorder Seattle to Bainbridge Island' }).focus();
+    await user.keyboard('{ArrowUp}');
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-favorite-routes') ?? '[]').map(routeKey)).toEqual(['7-3', '3-7']);
+
+    await user.click(screen.getByRole('button', { name: 'Remove Seattle to Bainbridge Island from favorite routes' }));
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-favorite-routes') ?? '[]').map(routeKey)).toEqual(['3-7']);
+  });
+
+  it('fetches the schedule for the route the Catch tab is switched to', async () => {
+    mockApp();
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await user.click(screen.getByRole('tab', { name: 'Catch' }));
+    expect(await screen.findByRole('heading', { name: 'BI → SEA' })).toBeInTheDocument();
+    await waitFor(() => expect(scheduleUrls.some((url) => url.includes('departingTerminalId=3&arrivingTerminalId=7'))).toBe(true));
+
+    await user.click(screen.getByRole('button', { name: 'Catch route' }));
+    await user.click(screen.getByRole('option', { name: 'SEA → BI' }));
+    expect(await screen.findByRole('heading', { name: 'SEA → BI' })).toBeInTheDocument();
+    await waitFor(() => expect(scheduleUrls.some((url) => url.includes('departingTerminalId=7&arrivingTerminalId=3'))).toBe(true));
+    expect(localStorage.getItem('ferry-tracker-catch-route')).toBe('7-3');
+  });
+
+  it('asks for a favorite route when there are none', async () => {
+    localStorage.setItem('ferry-tracker-favorite-routes', JSON.stringify([]));
+    mockApp();
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await user.click(screen.getByRole('tab', { name: 'Catch' }));
+    expect(await screen.findByText('Add a favorite route in Settings to see when to leave.')).toBeInTheDocument();
+    expect(document.querySelector('.route-chip')).toBeNull();
   });
 });
 

@@ -121,6 +121,13 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 .selectors { display: grid; grid-template-columns: minmax(220px, 300px) 36px minmax(220px, 300px) minmax(150px, 200px); align-items: end; gap: 10px; }
 .selectors label { min-width: 0; display: grid; gap: 6px; }
 .selectors label > span { color: var(--muted); font-size: 12px; }
+.route-controls { min-width: 0; display: grid; gap: 8px; }
+/* Scrolls rather than wraps, so a long favorite list never grows the sticky band. */
+.route-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.route-chips::-webkit-scrollbar { display: none; }
+.route-chip { flex: 0 0 auto; padding: 5px 10px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font: inherit; font-size: 12px; font-weight: 520; white-space: nowrap; cursor: pointer; transition: color .2s ease, background-color .2s ease, border-color .2s ease; }
+.route-chip:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.route-chip.active { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent-soft) 56%, transparent); }
 .filter-select { min-width: 0; position: relative; }
 .filter-select-trigger { width: 100%; height: 40px; padding: 0 11px 0 12px; border: 1px solid var(--line); border-radius: 0; background: var(--surface); color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 520; text-align: left; transition: color .2s ease, background-color .2s ease, border-color .2s ease; }
 .filter-select-trigger:hover:not(:disabled), .filter-select-trigger[aria-expanded='true'] { background: var(--surface-2); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
@@ -231,6 +238,8 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .schedule-card { border: 1px solid var(--line); background: var(--surface); }
 .schedule-card .table-wrap { border: 0; border-top: 1px solid var(--line); }
 .schedule-heading { padding: 14px 16px; }
+.schedule-heading.has-switcher { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; }
+.schedule-heading.has-switcher .filter-select { flex: 0 1 220px; }
 .schedule-heading h2 { margin-bottom: 0; }
 .countdown-card { border: 1px solid var(--line); background: var(--surface); }
 .countdown-card .schedule-heading { border-bottom: 1px solid var(--line); }
@@ -274,6 +283,20 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .favorite-star { width: 34px; height: 34px; flex: 0 0 34px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .2s ease; }
 .favorite-star:hover { color: var(--warning); }
 .favorite-star.active { color: var(--warning); }
+.favorite-route-list { max-width: 460px; }
+.favorite-route { flex: 1; min-width: 0; display: grid; gap: 2px; padding: 7px 0; }
+.favorite-label { width: 100%; padding: 3px 6px; border: 1px solid var(--line); border-radius: 0; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
+.favorite-label:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.favorite-pair { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.favorite-pair em { color: var(--warning); font-style: normal; }
+.favorite-remove { width: 34px; height: 34px; flex: 0 0 34px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .2s ease; }
+.favorite-remove:hover { color: var(--danger); }
+.route-add { display: flex; align-items: center; gap: 8px; margin-top: 10px; max-width: 460px; flex-wrap: wrap; }
+.route-add .filter-select { flex: 1 1 130px; }
+.route-add-arrow { flex: 0 0 auto; color: var(--muted); }
+.route-add-button { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.route-add-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.route-add-button:disabled { color: var(--muted); cursor: not-allowed; opacity: .5; }
 .settings-footer { padding: 14px 16px; }
 .reset-settings { padding: 8px 14px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
 .reset-settings:hover { border-color: var(--accent); color: var(--accent); }

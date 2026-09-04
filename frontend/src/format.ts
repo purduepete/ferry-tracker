@@ -1,4 +1,4 @@
-import type { SailingView, VesselView } from '@ferry-tracker/shared';
+import type { SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 
 // Floored, not rounded: a boat 40 seconds late still shows the same clock minute as its
 // slot, so rounding up would contradict the times either side of the pill.
@@ -209,6 +209,101 @@ export function reorderFavoriteTerminals(favoriteIds: number[], visibleIds: numb
 
 export function toggleFavoriteTerminalId(favoriteIds: number[], id: number): number[] {
   return favoriteIds.includes(id) ? favoriteIds.filter((value) => value !== id) : [...favoriteIds, id];
+}
+
+export const favoriteRoutesKey = 'ferry-tracker-favorite-routes';
+const ROUTE_LABEL_LIMIT = 24;
+
+export interface FavoriteRoute {
+  originId: number;
+  destinationId: number;
+  label: string;
+}
+
+type RoutePair = Pick<FavoriteRoute, 'originId' | 'destinationId'>;
+
+// The pair is the identity, so a route can only be saved once and nothing has to mint an id.
+export function routeKey(route: RoutePair) {
+  return `${route.originId}-${route.destinationId}`;
+}
+
+export const DEFAULT_FAVORITE_ROUTES: FavoriteRoute[] = [
+  { originId: BAINBRIDGE_TERMINAL_ID, destinationId: SEATTLE_TERMINAL_ID, label: 'BI → SEA' },
+  { originId: SEATTLE_TERMINAL_ID, destinationId: BAINBRIDGE_TERMINAL_ID, label: 'SEA → BI' },
+];
+
+export function normalizeFavoriteRoutes(raw: unknown): FavoriteRoute[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const routes: FavoriteRoute[] = [];
+  for (const entry of raw) {
+    if (entry === null || typeof entry !== 'object') continue;
+    const { originId, destinationId, label } = entry as Record<string, unknown>;
+    if (!Number.isInteger(originId) || !Number.isInteger(destinationId) || originId === destinationId) continue;
+    const route: FavoriteRoute = {
+      originId: originId as number,
+      destinationId: destinationId as number,
+      label: typeof label === 'string' ? label.slice(0, ROUTE_LABEL_LIMIT).trim() : '',
+    };
+    if (seen.has(routeKey(route))) continue;
+    seen.add(routeKey(route));
+    routes.push(route);
+  }
+  return routes;
+}
+
+// WSDOT decides which pairs sail, so a route is only offered while it is still published.
+export function isPublishedRoute(route: RoutePair, mates: Array<Pick<TerminalMateView, 'departingTerminalId' | 'arrivingTerminalId'>>) {
+  return mates.some((mate) => mate.departingTerminalId === route.originId && mate.arrivingTerminalId === route.destinationId);
+}
+
+export function loadFavoriteRoutes(): FavoriteRoute[] {
+  try {
+    const raw = localStorage.getItem(favoriteRoutesKey);
+    // An empty list is a real choice, so only a missing key seeds the Bainbridge pair.
+    return raw === null ? DEFAULT_FAVORITE_ROUTES : normalizeFavoriteRoutes(JSON.parse(raw));
+  } catch {
+    return DEFAULT_FAVORITE_ROUTES;
+  }
+}
+
+export function saveFavoriteRoutes(routes: FavoriteRoute[]) {
+  try {
+    localStorage.setItem(favoriteRoutesKey, JSON.stringify(routes));
+  } catch { /* The routes remain active for this tab. */ }
+}
+
+export function addFavoriteRoute(routes: FavoriteRoute[], originId: number, destinationId: number, label = ''): FavoriteRoute[] {
+  const route: FavoriteRoute = { originId, destinationId, label: label.slice(0, ROUTE_LABEL_LIMIT).trim() };
+  if (originId === destinationId || routes.some((existing) => routeKey(existing) === routeKey(route))) return routes;
+  return [...routes, route];
+}
+
+export function removeFavoriteRoute(routes: FavoriteRoute[], key: string): FavoriteRoute[] {
+  return routes.filter((route) => routeKey(route) !== key);
+}
+
+// Not trimmed here, or a space could never be typed between two words.
+export function renameFavoriteRoute(routes: FavoriteRoute[], key: string, label: string): FavoriteRoute[] {
+  return routes.map((route) => (routeKey(route) === key ? { ...route, label: label.slice(0, ROUTE_LABEL_LIMIT) } : route));
+}
+
+export function reorderFavoriteRoutes(routes: FavoriteRoute[], key: string, targetKey: string): FavoriteRoute[] {
+  const from = routes.findIndex((route) => routeKey(route) === key);
+  const to = routes.findIndex((route) => routeKey(route) === targetKey);
+  if (from === -1 || to === -1 || from === to) return routes;
+  const moved = [...routes];
+  moved.splice(to, 0, ...moved.splice(from, 1));
+  return moved;
+}
+
+export function routePairName(route: RoutePair, terminals: Array<Pick<TerminalView, 'id' | 'name'>>) {
+  const name = (id: number) => terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown';
+  return `${name(route.originId)} to ${name(route.destinationId)}`;
+}
+
+export function routeName(route: FavoriteRoute, terminals: Array<Pick<TerminalView, 'id' | 'name'>>) {
+  return route.label || routePairName(route, terminals);
 }
 
 export interface DisruptionWave {

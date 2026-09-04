@@ -112,6 +112,37 @@ test('sets favorite terminals and their order from Settings', async ({ page }) =
   await expect(page.getByRole('option').nth(1)).toHaveAccessibleName('Bainbridge Island');
 });
 
+test('saves a favorite route and drives the Catch tab with it', async ({ page }) => {
+  await page.goto('/');
+
+  // Seeded on the first visit, and one click puts that route in the selectors.
+  await expect(page.locator('.route-chip')).toHaveText(['BI → SEA', 'SEA → BI']);
+  await page.getByRole('button', { name: 'BI → SEA' }).click();
+  await expect(page.locator('.schedule-node h2')).toHaveText('Bainbridge Island to Seattle');
+  await expect(page.getByRole('button', { name: 'BI → SEA' })).toHaveAttribute('aria-pressed', 'true');
+
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: /Favorite routes/ }).click();
+  await page.getByRole('textbox', { name: 'Label for Bainbridge Island to Seattle' }).fill('Morning');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-favorite-routes'))).toContain('Morning');
+
+  await page.getByRole('button', { name: 'Reorder Seattle to Bainbridge Island' }).focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('.favorite-route-list li')).toHaveCount(2);
+  await expect(page.locator('.favorite-route-list .favorite-pair').first()).toHaveText('Seattle to Bainbridge Island');
+
+  await page.getByRole('tab', { name: 'Catch' }).click();
+  await expect(page.getByRole('heading', { name: 'SEA → BI' })).toBeVisible();
+  await page.getByRole('button', { name: 'Catch route' }).click();
+  await page.getByRole('option', { name: 'Morning' }).click();
+  await expect(page.getByRole('heading', { name: 'Morning' })).toBeVisible();
+
+  // The choice outlives the reload, so the phone opens on the route it was left on.
+  await page.reload();
+  await page.getByRole('tab', { name: 'Catch' }).click();
+  await expect(page.getByRole('heading', { name: 'Morning' })).toBeVisible();
+});
+
 test('reopens on the terminal and destination chosen before the reload', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Origin' }).click();

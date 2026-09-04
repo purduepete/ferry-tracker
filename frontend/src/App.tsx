@@ -1,8 +1,8 @@
 import { isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, Clock3, ExternalLink, GripVertical, History, ListFilter, MapPin, RefreshCw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind } from 'lucide-react';
+import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, Clock3, ExternalLink, GripVertical, History, ListFilter, MapPin, Plus, RefreshCw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { BAINBRIDGE_TERMINAL_ID, capacityLevel, catchPillClass, catchWindowLevel, catchWindows, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, LATE_MINUTES, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshTime, reorderFavoriteTerminals, sailingArrival, sailingTimeMinutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type FerrySettings } from './format';
+import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, capacityLevel, catchPillClass, catchWindowLevel, catchWindows, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshTime, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingTimeMinutes, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type FavoriteRoute, type FerrySettings } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -24,6 +24,7 @@ const SKELETON_EXIT_MS = 520;
 const LIVE_DATE = 'live';
 const lastRouteKey = 'ferry-tracker-last-route';
 const sailingsOnlyKey = 'ferry-tracker-sailings-only';
+const catchRouteKey = 'ferry-tracker-catch-route';
 
 function loadLastRoute(): { terminalId: number | null; destinationId: number | null } {
   const empty = { terminalId: null, destinationId: null };
@@ -45,6 +46,14 @@ function loadSailingsOnly() {
     return localStorage.getItem(sailingsOnlyKey) === 'true';
   } catch {
     return false;
+  }
+}
+
+function loadCatchRoute() {
+  try {
+    return localStorage.getItem(catchRouteKey);
+  } catch {
+    return null;
   }
 }
 
@@ -187,6 +196,12 @@ export function App() {
   const [favoriteTerminalIds, setFavoriteTerminalIds] = useState<number[]>(loadFavoriteTerminalIds);
   const [draggedFavoriteId, setDraggedFavoriteId] = useState<number | null>(null);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
+  const [favoriteRoutes, setFavoriteRoutes] = useState<FavoriteRoute[]>(loadFavoriteRoutes);
+  const [draggedRouteKey, setDraggedRouteKey] = useState<string | null>(null);
+  const [favoriteRoutesOpen, setFavoriteRoutesOpen] = useState(false);
+  const [newRouteOriginId, setNewRouteOriginId] = useState<number | null>(null);
+  const [newRouteDestinationId, setNewRouteDestinationId] = useState<number | null>(null);
+  const [selectedCatchRoute, setSelectedCatchRoute] = useState<string | null>(loadCatchRoute);
   const [sailingsOnly, setSailingsOnly] = useState(loadSailingsOnly);
   const [settings, setSettings] = useState<FerrySettings>(loadSettings);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -194,6 +209,7 @@ export function App() {
   const scheduleRequestId = useRef(0);
   const vesselStackRef = useRef<HTMLDivElement>(null);
   const favoriteListRef = useRef<HTMLUListElement>(null);
+  const favoriteRouteListRef = useRef<HTMLUListElement>(null);
   const [vesselStackHeight, setVesselStackHeight] = useState(0);
 
   const loadOverview = () => {
@@ -235,13 +251,27 @@ export function App() {
   const favoriteOrder = orderedTerminals.filter((entry) => entry.favorite).map((entry) => entry.terminal.id);
   const terminalOptions = orderedTerminals.map(({ terminal, favorite }) => ({ value: terminal.id, label: terminal.name, favorite }));
   const vessels = vesselResponse?.data ?? [];
+  const mates = mateResponse?.data ?? [];
   const selectedTerminal = terminals.find((terminal) => terminal.id === selectedTerminalId) ?? null;
-  const destinationIds = [...new Set((mateResponse?.data ?? [])
+  const destinationIds = [...new Set(mates
     .filter((mate) => mate.departingTerminalId === selectedTerminalId)
     .map((mate) => mate.arrivingTerminalId))];
   const effectiveDestinationId = destinationId !== null && destinationIds.includes(destinationId)
     ? destinationId
     : destinationIds[0] ?? null;
+  const catchRoute = favoriteRoutes.find((route) => routeKey(route) === selectedCatchRoute) ?? favoriteRoutes[0] ?? null;
+  const catchOriginId = catchRoute?.originId ?? null;
+  const catchDestinationId = catchRoute?.destinationId ?? null;
+  const newRouteDestinationIds = [...new Set(mates
+    .filter((mate) => mate.departingTerminalId === newRouteOriginId)
+    .map((mate) => mate.arrivingTerminalId))];
+  const effectiveNewRouteDestinationId = newRouteDestinationId !== null && newRouteDestinationIds.includes(newRouteDestinationId)
+    ? newRouteDestinationId
+    : newRouteDestinationIds[0] ?? null;
+  const canAddRoute = newRouteOriginId !== null && effectiveNewRouteDestinationId !== null
+    && !favoriteRoutes.some((route) => routeKey(route) === `${newRouteOriginId}-${effectiveNewRouteDestinationId}`);
+  const routelessTab = tab === 'catch' || tab === 'disruption' || tab === 'settings';
+  const quickPickRoutes = favoriteRoutes.filter((route) => isPublishedRoute(route, mates));
   const associatedVessels = selectedTerminalId === null ? [] : vessels
     .filter((vessel) => vessel.departingTerminalId === selectedTerminalId || vessel.arrivingTerminalId === selectedTerminalId)
     .sort((left, right) =>
@@ -383,14 +413,15 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [tab]);
 
-  // The Catch tab is pinned to Bainbridge, so it needs its own schedule rather than the
-  // route the selectors happen to be showing.
+  // The Catch tab follows the chosen favorite route, so it needs its own schedule rather than
+  // the route the selectors happen to be showing. Keyed on the terminals, so renaming a
+  // favorite does not refetch.
   useEffect(() => {
-    if (tab !== 'catch') return;
+    if (tab !== 'catch' || catchOriginId === null || catchDestinationId === null) return;
     const controller = new AbortController();
     let active = true;
     setCatchLoading(true);
-    ferryApi.schedule(BAINBRIDGE_TERMINAL_ID, SEATTLE_TERMINAL_ID, controller.signal)
+    ferryApi.schedule(catchOriginId, catchDestinationId, controller.signal)
       .then((schedule) => {
         if (!active) return;
         setCatchResponse(schedule);
@@ -398,7 +429,7 @@ export function App() {
         setLastRefreshAt((current) => latestTimestamp(current, schedule.fetchedAt));
       })
       .catch((cause: unknown) => {
-        if (active) setCatchError(cause instanceof Error ? cause.message : 'Unable to load the Bainbridge schedule.');
+        if (active) setCatchError(cause instanceof Error ? cause.message : 'Unable to load the schedule for this route.');
       })
       .finally(() => {
         if (active) setCatchLoading(false);
@@ -407,7 +438,7 @@ export function App() {
       active = false;
       controller.abort();
     };
-  }, [refreshVersion, tab]);
+  }, [catchOriginId, catchDestinationId, refreshVersion, tab]);
 
   // Disruption needs the Seattle to Bainbridge leg, which carries how full the arriving boat was.
   useEffect(() => {
@@ -491,9 +522,15 @@ export function App() {
   // Reordering moves the grip's own DOM node, which drops its pointer capture, so the window
   // has to see the rest of the drag.
   useEffect(() => {
-    if (draggedFavoriteId === null) return;
-    const move = (event: PointerEvent) => dragFavoriteTerminal(event.clientY, draggedFavoriteId);
-    const stop = () => setDraggedFavoriteId(null);
+    if (draggedFavoriteId === null && draggedRouteKey === null) return;
+    const move = (event: PointerEvent) => {
+      if (draggedFavoriteId !== null) dragFavoriteTerminal(event.clientY, draggedFavoriteId);
+      else if (draggedRouteKey !== null) dragFavoriteRoute(event.clientY, draggedRouteKey);
+    };
+    const stop = () => {
+      setDraggedFavoriteId(null);
+      setDraggedRouteKey(null);
+    };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', stop);
     window.addEventListener('pointercancel', stop);
@@ -503,6 +540,38 @@ export function App() {
       window.removeEventListener('pointercancel', stop);
     };
   });
+
+  const changeFavoriteRoutes = (next: FavoriteRoute[]) => {
+    setFavoriteRoutes(next);
+    saveFavoriteRoutes(next);
+  };
+
+  const addRoute = () => {
+    if (newRouteOriginId === null || effectiveNewRouteDestinationId === null) return;
+    changeFavoriteRoutes(addFavoriteRoute(favoriteRoutes, newRouteOriginId, effectiveNewRouteDestinationId));
+    setNewRouteDestinationId(null);
+  };
+
+  const nudgeFavoriteRoute = (key: string, direction: -1 | 1) => {
+    const keys = favoriteRoutes.map(routeKey);
+    const target = keys[keys.indexOf(key) + direction];
+    if (target !== undefined) changeFavoriteRoutes(reorderFavoriteRoutes(favoriteRoutes, key, target));
+  };
+
+  const dragFavoriteRoute = (clientY: number, key: string) => {
+    for (const row of favoriteRouteListRef.current?.querySelectorAll<HTMLElement>('li') ?? []) {
+      const box = row.getBoundingClientRect();
+      if (clientY < box.top || clientY > box.bottom) continue;
+      const overKey = row.dataset.routeKey;
+      if (overKey && overKey !== key) changeFavoriteRoutes(reorderFavoriteRoutes(favoriteRoutes, key, overKey));
+      return;
+    }
+  };
+
+  const changeCatchRoute = (key: string) => {
+    setSelectedCatchRoute(key);
+    try { localStorage.setItem(catchRouteKey, key); } catch { /* The choice just resets on the next visit. */ }
+  };
 
   const toggleSailingsOnly = () => {
     const next = !sailingsOnly;
@@ -538,14 +607,23 @@ export function App() {
       </header>
 
       <main>
-        {/* Catch and Disruption are pinned to Bainbridge and Settings has no route at all. */}
-        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}${tab === 'catch' || tab === 'disruption' || tab === 'settings' ? ' is-routeless' : ''}`} aria-labelledby="route-heading">
+        {/* Catch follows its own favorite route, Disruption is pinned, and Settings has no route at all. */}
+        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}${routelessTab ? ' is-routeless' : ''}`} aria-labelledby="route-heading">
           <div className="route-title"><span className="eyebrow">Route explorer</span><h1 id="route-heading">Sailings and vessel positions</h1></div>
-          <div className="selectors">
-            <label><span>Origin</span><FilterSelect ariaLabel="Origin" value={selectedTerminalId} onChange={setSelectedTerminalId} disabled={loading && !backgroundRefresh} options={terminalOptions} /></label>
-            <button className="swap-button" type="button" aria-label="Reverse route" title={canSwapRoute ? 'Swap origin and destination' : 'Reverse route unavailable'} disabled={!canSwapRoute} onClick={swapRoute}><ArrowLeftRight size={18} /></button>
-            <label><span>Destination</span><FilterSelect ariaLabel="Destination" value={effectiveDestinationId} onChange={setDestinationId} disabled={!destinationIds.length} placeholder="No live association" options={destinationIds.map((id) => ({ value: id, label: terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown' }))} /></label>
-            <label className="day-field"><span>Day</span><FilterSelect ariaLabel="Day" value={serviceDate} onChange={setServiceDate} disabled={!historyDates.length} options={dayOptions} /></label>
+          <div className="route-controls">
+            <div className="selectors">
+              <label><span>Origin</span><FilterSelect ariaLabel="Origin" value={selectedTerminalId} onChange={setSelectedTerminalId} disabled={loading && !backgroundRefresh} options={terminalOptions} /></label>
+              <button className="swap-button" type="button" aria-label="Reverse route" title={canSwapRoute ? 'Swap origin and destination' : 'Reverse route unavailable'} disabled={!canSwapRoute} onClick={swapRoute}><ArrowLeftRight size={18} /></button>
+              <label><span>Destination</span><FilterSelect ariaLabel="Destination" value={effectiveDestinationId} onChange={setDestinationId} disabled={!destinationIds.length} placeholder="No live association" options={destinationIds.map((id) => ({ value: id, label: terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown' }))} /></label>
+              <label className="day-field"><span>Day</span><FilterSelect ariaLabel="Day" value={serviceDate} onChange={setServiceDate} disabled={!historyDates.length} options={dayOptions} /></label>
+            </div>
+            {!routelessTab && quickPickRoutes.length > 0 && <div className="route-chips" role="group" aria-label="Favorite routes">
+              {quickPickRoutes.map((route) => {
+                const key = routeKey(route);
+                const active = selectedTerminalId === route.originId && effectiveDestinationId === route.destinationId;
+                return <button key={key} type="button" className={`route-chip${active ? ' active' : ''}`} aria-pressed={active} title={routePairName(route, terminals)} onClick={() => openRoute(route.originId, route.destinationId)}>{routeName(route, terminals)}</button>;
+              })}
+            </div>}
           </div>
         </section>
 
@@ -580,8 +658,12 @@ export function App() {
           {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings schedule</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Sailing time</th><th>Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => <tr key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><td>{localTime(sailing.departingTime)}</td><td>{departureDelayMinutes(sailing) === null ? '—' : <DepartureDelay sailing={sailing} />}</td><td><SailingArrival sailing={sailing} vessels={vessels} /></td><td><SailingTime sailing={sailing} vessels={vessels} /></td><td><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRoute} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}>{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></td></tr>)}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
 
           {tab === 'catch' && <div className="countdown-card">
-            <div className="schedule-heading"><span className="node-type">Leave by</span><h2>Bainbridge Island to Seattle</h2></div>
-            {catchLoading && !catchResponse ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div>
+            <div className="schedule-heading has-switcher">
+              <div><span className="node-type">Leave by</span><h2>{catchRoute ? routeName(catchRoute, terminals) : 'No favorite route'}</h2></div>
+              {favoriteRoutes.length > 1 && <FilterSelect ariaLabel="Catch route" value={catchRoute ? routeKey(catchRoute) : null} onChange={changeCatchRoute} options={favoriteRoutes.map((route) => ({ value: routeKey(route), label: routeName(route, terminals) }))} />}
+            </div>
+            {!catchRoute ? <div className="empty">Add a favorite route in Settings to see when to leave.</div>
+              : catchLoading && !catchResponse ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div>
               : catchError ? <div className="empty">{catchError}</div>
               : nextCatch ? <>
                 <div className={`countdown-headline is-${catchWindowLevel(nextCatch, settings)}`}>
@@ -648,6 +730,48 @@ export function App() {
                   <button className={`favorite-star${favorite ? ' active' : ''}`} type="button" aria-pressed={favorite} aria-label={favorite ? `Remove ${terminal.name} from favorites` : `Add ${terminal.name} to favorites`} title={favorite ? 'Remove from favorites' : 'Add to favorites'} onClick={() => toggleFavoriteTerminal(terminal.id)}><Star fill={favorite ? 'currentColor' : 'none'} size={15} /></button>
                 </li>)}
               </ul>
+              </>}
+            </div>
+            <div className="settings-section">
+              <button className="settings-disclosure" type="button" aria-expanded={favoriteRoutesOpen} onClick={() => setFavoriteRoutesOpen(!favoriteRoutesOpen)}>
+                <ChevronDown className={favoriteRoutesOpen ? 'open' : ''} size={14} />
+                <span className="node-type">Favorite routes</span>
+                <span className="settings-disclosure-count">{favoriteRoutes.length} saved</span>
+              </button>
+              {favoriteRoutesOpen && <>
+              <p className="settings-note">Favorite routes fill the Catch tab and the quick pick beside the selectors. Drag a handle to change their order.</p>
+              <ul className="favorite-list favorite-route-list" ref={favoriteRouteListRef}>
+                {favoriteRoutes.map((route) => {
+                  const key = routeKey(route);
+                  const pair = routePairName(route, terminals);
+                  return <li key={key} data-route-key={key} className={`is-favorite${draggedRouteKey === key ? ' is-dragging' : ''}`}>
+                    <button
+                      className="favorite-grip"
+                      type="button"
+                      aria-label={`Reorder ${pair}`}
+                      title="Drag to reorder, or use the arrow keys"
+                      onPointerDown={(event) => { event.preventDefault(); event.currentTarget.focus(); setDraggedRouteKey(key); }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                        event.preventDefault();
+                        nudgeFavoriteRoute(key, event.key === 'ArrowUp' ? -1 : 1);
+                      }}
+                    ><GripVertical size={14} /></button>
+                    <span className="favorite-route">
+                      <input className="favorite-label" value={route.label} maxLength={24} placeholder={pair} aria-label={`Label for ${pair}`} onChange={(event) => changeFavoriteRoutes(renameFavoriteRoute(favoriteRoutes, key, event.target.value))} />
+                      <span className="favorite-pair">{pair}{!isPublishedRoute(route, mates) && hasOverview && <em> · not sailing</em>}</span>
+                    </span>
+                    <button className="favorite-remove" type="button" aria-label={`Remove ${pair} from favorite routes`} title="Remove this route" onClick={() => changeFavoriteRoutes(removeFavoriteRoute(favoriteRoutes, key))}><X size={15} /></button>
+                  </li>;
+                })}
+              </ul>
+              {!favoriteRoutes.length && <p className="settings-note">No favorite routes yet.</p>}
+              <div className="route-add">
+                <FilterSelect ariaLabel="New route origin" value={newRouteOriginId} onChange={setNewRouteOriginId} placeholder="Origin" options={terminalOptions} />
+                <ArrowRight className="route-add-arrow" size={14} aria-hidden="true" />
+                <FilterSelect ariaLabel="New route destination" value={effectiveNewRouteDestinationId} onChange={setNewRouteDestinationId} disabled={!newRouteDestinationIds.length} placeholder="Destination" options={newRouteDestinationIds.map((id) => ({ value: id, label: terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown' }))} />
+                <button className="route-add-button" type="button" disabled={!canAddRoute} title={canAddRoute ? 'Save this route' : 'Pick a route that is not already saved'} onClick={addRoute}><Plus size={14} />Add route</button>
+              </div>
               </>}
             </div>
             <div className="settings-section">
