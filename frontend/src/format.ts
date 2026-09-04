@@ -73,10 +73,10 @@ export const DISRUPTION_LEAD_MINUTES = 10;
 // And about this long to drain off it again.
 export const DISRUPTION_DURATION_MINUTES = 15;
 // Drive to the terminal, then sit in the holding lane before they load.
-export const CATCH_TRAVEL_MINUTES = 15;
-export const CATCH_BUFFER_MINUTES = 15;
-export const CATCH_DEFAULT_PAD_MINUTES = CATCH_TRAVEL_MINUTES + CATCH_BUFFER_MINUTES;
-export const CATCH_PAD_CHOICES = [0, 5, 10, 15, 20, 25, 30, 40, 45, 60, 75, 90];
+export const CATCH_TRAFFIC_MINUTES = 15;
+export const CATCH_QUEUE_MINUTES = 15;
+export const CATCH_DEFAULT_PAD_MINUTES = CATCH_TRAFFIC_MINUTES + CATCH_QUEUE_MINUTES;
+export const CATCH_MINUTE_CHOICES = [0, 5, 10, 15, 20, 25, 30, 40, 45, 60, 75, 90];
 export const THRESHOLD_MINUTE_CHOICES = [0, 2, 3, 5, 7, 10, 12, 15, 20, 25, 30, 45, 60];
 export const SPACE_SOON_PERCENT_CHOICES = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
 export const SPACE_IMMINENT_PERCENT_CHOICES = [5, 10, 15, 20, 25, 30, 35];
@@ -84,7 +84,8 @@ export const DISRUPTION_LEAD_CHOICES = [0, 5, 10, 15, 20, 25, 30];
 export const DISRUPTION_DURATION_CHOICES = [5, 10, 15, 20, 25, 30, 45, 60];
 
 export interface FerrySettings {
-  catchPadMinutes: number;
+  catchTrafficMinutes: number;
+  catchQueueMinutes: number;
   catchSoonMinutes: number;
   catchImminentMinutes: number;
   spaceSoonPercent: number;
@@ -96,7 +97,8 @@ export interface FerrySettings {
 }
 
 export const DEFAULT_SETTINGS: FerrySettings = {
-  catchPadMinutes: CATCH_DEFAULT_PAD_MINUTES,
+  catchTrafficMinutes: CATCH_TRAFFIC_MINUTES,
+  catchQueueMinutes: CATCH_QUEUE_MINUTES,
   catchSoonMinutes: 10,
   catchImminentMinutes: 5,
   spaceSoonPercent: 50,
@@ -108,7 +110,8 @@ export const DEFAULT_SETTINGS: FerrySettings = {
 };
 
 export const SETTING_CHOICES: Record<keyof FerrySettings, number[]> = {
-  catchPadMinutes: CATCH_PAD_CHOICES,
+  catchTrafficMinutes: CATCH_MINUTE_CHOICES,
+  catchQueueMinutes: CATCH_MINUTE_CHOICES,
   catchSoonMinutes: THRESHOLD_MINUTE_CHOICES,
   catchImminentMinutes: THRESHOLD_MINUTE_CHOICES,
   spaceSoonPercent: SPACE_SOON_PERCENT_CHOICES,
@@ -129,6 +132,12 @@ export function normalizeSettings(raw: unknown): FerrySettings {
   for (const key of Object.keys(DEFAULT_SETTINGS) as Array<keyof FerrySettings>) {
     const value = stored[key];
     if (typeof value === 'number' && SETTING_CHOICES[key].includes(value)) settings[key] = value;
+  }
+  // Padding used to be one number, so an old total carries over as traffic with nothing queued.
+  const pad = stored.catchPadMinutes;
+  if (stored.catchTrafficMinutes === undefined && typeof pad === 'number' && CATCH_MINUTE_CHOICES.includes(pad)) {
+    settings.catchTrafficMinutes = pad;
+    settings.catchQueueMinutes = 0;
   }
   settings.catchImminentMinutes = Math.min(settings.catchImminentMinutes, settings.catchSoonMinutes);
   settings.disruptionImminentMinutes = Math.min(settings.disruptionImminentMinutes, settings.disruptionSoonMinutes);
@@ -304,6 +313,72 @@ export function routePairName(route: RoutePair, terminals: Array<Pick<TerminalVi
 
 export function routeName(route: FavoriteRoute, terminals: Array<Pick<TerminalView, 'id' | 'name'>>) {
   return route.label || routePairName(route, terminals);
+}
+
+export const catchOverridesKey = 'ferry-tracker-catch-overrides';
+
+// Null means the route defers to the global setting for that half of the padding.
+export interface CatchOverride {
+  trafficMinutes: number | null;
+  queueMinutes: number | null;
+}
+
+export type CatchOverrides = Record<string, CatchOverride>;
+
+function overrideMinutes(value: unknown): number | null {
+  return typeof value === 'number' && CATCH_MINUTE_CHOICES.includes(value) ? value : null;
+}
+
+export function normalizeCatchOverrides(raw: unknown): CatchOverrides {
+  if (raw === null || typeof raw !== 'object') return {};
+  const overrides: CatchOverrides = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (value === null || typeof value !== 'object') continue;
+    const { trafficMinutes, queueMinutes } = value as Record<string, unknown>;
+    const override = { trafficMinutes: overrideMinutes(trafficMinutes), queueMinutes: overrideMinutes(queueMinutes) };
+    if (override.trafficMinutes !== null || override.queueMinutes !== null) overrides[key] = override;
+  }
+  return overrides;
+}
+
+export function loadCatchOverrides(): CatchOverrides {
+  try {
+    return normalizeCatchOverrides(JSON.parse(localStorage.getItem(catchOverridesKey) ?? 'null'));
+  } catch {
+    return {};
+  }
+}
+
+export function saveCatchOverrides(overrides: CatchOverrides) {
+  try {
+    localStorage.setItem(catchOverridesKey, JSON.stringify(overrides));
+  } catch { /* The route just falls back to the global padding on the next visit. */ }
+}
+
+// Dropping the entry once both halves are null keeps a cleared route out of storage entirely.
+export function setCatchOverride(overrides: CatchOverrides, key: string, patch: Partial<CatchOverride>): CatchOverrides {
+  const current = overrides[key] ?? { trafficMinutes: null, queueMinutes: null };
+  const next = { ...current, ...patch };
+  if (next.trafficMinutes === null && next.queueMinutes === null) return clearCatchOverride(overrides, key);
+  return { ...overrides, [key]: next };
+}
+
+export function clearCatchOverride(overrides: CatchOverrides, key: string): CatchOverrides {
+  return Object.fromEntries(Object.entries(overrides).filter(([entryKey]) => entryKey !== key));
+}
+
+export function catchTiming(
+  settings: Pick<FerrySettings, 'catchTrafficMinutes' | 'catchQueueMinutes'>,
+  override?: CatchOverride,
+) {
+  const trafficMinutes = override?.trafficMinutes ?? settings.catchTrafficMinutes;
+  const queueMinutes = override?.queueMinutes ?? settings.catchQueueMinutes;
+  return {
+    trafficMinutes,
+    queueMinutes,
+    padMinutes: trafficMinutes + queueMinutes,
+    overridden: override !== undefined && (override.trafficMinutes !== null || override.queueMinutes !== null),
+  };
 }
 
 export interface DisruptionWave {
@@ -506,7 +581,7 @@ export const CATCH_LATE_LIMIT_MINUTES = 15;
 export function catchWindows(
   sailings: Array<Pick<SailingView, 'departingTime' | 'actualDeparture' | 'vesselId' | 'vesselName' | 'isCancelled' | 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount'>>,
   now: number,
-  padMinutes: number = DEFAULT_SETTINGS.catchPadMinutes,
+  padMinutes: number = CATCH_DEFAULT_PAD_MINUTES,
 ): CatchWindow[] {
   return sailings
     .flatMap((sailing) => {

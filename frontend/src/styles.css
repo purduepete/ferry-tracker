@@ -243,6 +243,12 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .schedule-heading h2 { margin-bottom: 0; }
 .countdown-card { border: 1px solid var(--line); background: var(--surface); }
 .countdown-card .schedule-heading { border-bottom: 1px solid var(--line); }
+.catch-timing { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.catch-timing label { min-width: 0; flex: 1 1 130px; display: grid; gap: 6px; }
+.catch-timing label > span { color: var(--muted); font-size: 12px; }
+.catch-timing-total { color: var(--muted); font-size: 12px; padding-bottom: 12px; }
+.catch-timing-reset { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+.catch-timing-reset:hover { border-color: var(--accent); color: var(--accent); }
 .countdown-headline { display: grid; gap: 4px; padding: 16px; border-left: 3px solid var(--success); }
 .countdown-headline.is-soon { border-left-color: var(--warning); }
 .countdown-headline.is-imminent { border-left-color: var(--danger); }
@@ -258,7 +264,6 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .countdown-card .sailing-placeholder { padding: 16px; }
 .settings-section { padding: 14px 16px; border-bottom: 1px solid var(--line); }
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-top: 10px; }
-.settings-grid.is-single { grid-template-columns: minmax(190px, 360px); }
 .settings-subgroup { margin-top: 14px; padding-left: 12px; border-left: 2px solid var(--line); }
 .settings-subhead { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 .setting-field { display: grid; gap: 4px; align-content: start; }

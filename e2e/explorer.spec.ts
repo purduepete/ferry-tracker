@@ -143,8 +143,37 @@ test('saves a favorite route and drives the Catch tab with it', async ({ page })
   await expect(page.getByRole('heading', { name: 'Morning' })).toBeVisible();
 });
 
-test('reopens on the terminal and destination chosen before the reload', async ({ page }) => {
+test('overrides the Catch padding for one route and resets it back to the settings', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('tab', { name: 'Catch' }).click();
+
+  await expect(page.getByRole('button', { name: 'Catch traffic' })).toHaveText('15 min');
+  await expect(page.locator('.catch-timing-total')).toHaveText('30 min padding');
+  await expect(page.getByRole('button', { name: 'Use settings' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Catch traffic' }).click();
+  await page.getByRole('option', { name: '40 min' }).click();
+  await page.getByRole('button', { name: 'Catch queue' }).click();
+  await page.getByRole('option', { name: '5 min', exact: true }).click();
+  await expect(page.locator('.catch-timing-total')).toHaveText('45 min padding for this route');
+
+  // The other favorite route is untouched by the one that was overridden.
+  await page.getByRole('button', { name: 'Catch route' }).click();
+  await page.getByRole('option', { name: 'SEA → BI' }).click();
+  await expect(page.locator('.catch-timing-total')).toHaveText('30 min padding');
+
+  await page.reload();
+  await page.getByRole('tab', { name: 'Catch' }).click();
+  await page.getByRole('button', { name: 'Catch route' }).click();
+  await page.getByRole('option', { name: 'BI → SEA' }).click();
+  await expect(page.locator('.catch-timing-total')).toHaveText('45 min padding for this route');
+
+  await page.getByRole('button', { name: 'Use settings' }).click();
+  await expect(page.locator('.catch-timing-total')).toHaveText('30 min padding');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-catch-overrides'))).toBe('{}');
+});
+
+test('reopens on the terminal and destination chosen before the reload', async ({ page }) => {  await page.goto('/');
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Bainbridge Island' }).click();
   await expect(page.locator('.schedule-node h2')).toHaveText('Bainbridge Island to Seattle');

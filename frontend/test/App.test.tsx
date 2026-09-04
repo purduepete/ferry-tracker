@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
-import { addFavoriteRoute, capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchWindowLevel, catchWindows, DEFAULT_FAVORITE_ROUTES, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, isPublishedRoute, loadFavoriteRoutes, loadSettings, normalizeFavoriteRoutes, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingTimeMinutes, serviceDayLabel, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
+import { addFavoriteRoute, capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, DEFAULT_FAVORITE_ROUTES, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, isPublishedRoute, loadCatchOverrides, loadFavoriteRoutes, loadSettings, normalizeCatchOverrides, normalizeFavoriteRoutes, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingTimeMinutes, serviceDayLabel, setCatchOverride, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
@@ -1257,7 +1257,7 @@ describe('Catching a ferry', () => {
     await screen.findByRole('heading', { name: 'Seattle' });
     await userEvent.click(screen.getByRole('tab', { name: 'Settings' }));
 
-    expect(await screen.findByRole('button', { name: 'Catch padding' })).toHaveTextContent('30 min');
+    expect(await screen.findByRole('button', { name: 'Catch traffic default' })).toHaveTextContent('15 min');
   });
 
   it('counts down to the next Bainbridge departure and remembers a changed pad', async () => {
@@ -1285,7 +1285,7 @@ describe('Catching a ferry', () => {
     await screen.findByRole('heading', { name: 'Seattle' });
     await user.click(screen.getByRole('tab', { name: 'Catch' }));
 
-    // Pinned to Bainbridge even though the selectors sit on Seattle.
+    // The seeded favorite route wins even though the selectors sit on Seattle.
     await waitFor(() => expect(catchRoute).toContain('departingTerminalId=3&arrivingTerminalId=7'));
     await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
     expect(document.querySelector('.countdown-headline')).toHaveClass('is-clear');
@@ -1294,12 +1294,12 @@ describe('Catching a ferry', () => {
     expect(document.querySelectorAll('.countdown-later .sailing-list li')).toHaveLength(1);
 
     await user.click(screen.getByRole('tab', { name: 'Settings' }));
-    await user.click(await screen.findByRole('button', { name: 'Catch padding' }));
-    await user.click(screen.getByRole('option', { name: '45 min' }));
+    await user.click(await screen.findByRole('button', { name: 'Catch traffic default' }));
+    await user.click(screen.getByRole('option', { name: '30 min' }));
     await user.click(screen.getByRole('tab', { name: 'Catch' }));
     expect(document.querySelector('.countdown-value')).toHaveTextContent('5 min');
     expect(document.querySelector('.countdown-headline')).toHaveClass('is-soon');
-    expect(JSON.parse(localStorage.getItem('ferry-tracker-settings') ?? '{}').catchPadMinutes).toBe(45);
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-settings') ?? '{}').catchTrafficMinutes).toBe(30);
   });
 
   it('says so when nothing is catchable', async () => {
@@ -1317,6 +1317,101 @@ describe('Catching a ferry', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Catch' }));
 
     expect(await screen.findByText('No sailing left today that you can still make.')).toBeInTheDocument();
+  });
+});
+
+describe('Catch padding overrides', () => {
+  const overviewFetch = (departures: (mins: number, from: number, to: number) => unknown) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([
+        { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
+        { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
+      ]);
+      if (url.includes('/api/history')) return json([]);
+      if (url.includes('departingTerminalId=3&arrivingTerminalId=7')) return json([departures(50.5, 3, 7)]);
+      if (url.includes('departingTerminalId=7&arrivingTerminalId=3')) return json([departures(50.5, 7, 3)]);
+      return json([]);
+    });
+  };
+  const departure = (mins: number, from: number, to: number) => ({
+    vesselId: 1, vesselName: 'Tacoma', departingTime: new Date(Date.now() + mins * 60000).toISOString(), arrivingTime: null,
+    departingTerminalId: from, arrivingTerminalId: to, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null,
+    maxSpaceCount: 202, spaceAvailable: true, actualDeparture: null, departureDelayMinutes: null, raw: {},
+  });
+
+  it('falls back to the settings for whichever half is not overridden', () => {
+    expect(catchTiming(DEFAULT_SETTINGS)).toEqual({ trafficMinutes: 15, queueMinutes: 15, padMinutes: 30, overridden: false });
+    expect(catchTiming(DEFAULT_SETTINGS, { trafficMinutes: null, queueMinutes: null }))
+      .toEqual({ trafficMinutes: 15, queueMinutes: 15, padMinutes: 30, overridden: false });
+    expect(catchTiming(DEFAULT_SETTINGS, { trafficMinutes: 40, queueMinutes: null }))
+      .toEqual({ trafficMinutes: 40, queueMinutes: 15, padMinutes: 55, overridden: true });
+    expect(catchTiming(DEFAULT_SETTINGS, { trafficMinutes: null, queueMinutes: 0 }))
+      .toEqual({ trafficMinutes: 15, queueMinutes: 0, padMinutes: 15, overridden: true });
+  });
+
+  it('stores an override per route and drops it once nothing is overridden', () => {
+    const one = setCatchOverride({}, '3-7', { trafficMinutes: 30 });
+    expect(one).toEqual({ '3-7': { trafficMinutes: 30, queueMinutes: null } });
+    const two = setCatchOverride(one, '7-3', { queueMinutes: 5 });
+    expect(two['3-7']).toEqual({ trafficMinutes: 30, queueMinutes: null });
+    expect(two['7-3']).toEqual({ trafficMinutes: null, queueMinutes: 5 });
+    expect(setCatchOverride(two, '3-7', { trafficMinutes: null })).toEqual({ '7-3': { trafficMinutes: null, queueMinutes: 5 } });
+    expect(clearCatchOverride(two, '7-3')).toEqual({ '3-7': { trafficMinutes: 30, queueMinutes: null } });
+    expect(clearCatchOverride({}, '3-7')).toEqual({});
+  });
+
+  it('drops junk and unlisted minute values when reading storage', () => {
+    expect(normalizeCatchOverrides({ '3-7': { trafficMinutes: 7, queueMinutes: 'x' } })).toEqual({});
+    expect(normalizeCatchOverrides({ '3-7': { trafficMinutes: 40, queueMinutes: 7 } }))
+      .toEqual({ '3-7': { trafficMinutes: 40, queueMinutes: null } });
+    expect(normalizeCatchOverrides({ '3-7': null })).toEqual({});
+    expect(normalizeCatchOverrides('nope')).toEqual({});
+    localStorage.setItem('ferry-tracker-catch-overrides', '{oops');
+    expect(loadCatchOverrides()).toEqual({});
+  });
+
+  it('overrides the padding from the Catch tab and puts it back on reset', async () => {
+    overviewFetch(departure);
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await user.click(screen.getByRole('tab', { name: 'Catch' }));
+    await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
+    expect(screen.queryByRole('button', { name: 'Use settings' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Catch traffic' }));
+    await user.click(screen.getByRole('option', { name: '30 min' }));
+
+    expect(document.querySelector('.countdown-value')).toHaveTextContent('5 min');
+    expect(screen.getByText('45 min padding for this route')).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-catch-overrides') ?? '{}'))
+      .toEqual({ '3-7': { trafficMinutes: 30, queueMinutes: null } });
+
+    await user.click(screen.getByRole('button', { name: 'Use settings' }));
+
+    expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min');
+    expect(screen.getByText('30 min padding')).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('ferry-tracker-catch-overrides') ?? '{}')).toEqual({});
+  });
+
+  it('keeps each favorite route on its own padding', async () => {
+    localStorage.setItem('ferry-tracker-catch-overrides', JSON.stringify({ '3-7': { trafficMinutes: 0, queueMinutes: 0 } }));
+    overviewFetch(departure);
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await user.click(screen.getByRole('tab', { name: 'Catch' }));
+    await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('50 min'));
+
+    await user.click(screen.getByRole('button', { name: 'Catch route' }));
+    await user.click(screen.getByRole('option', { name: 'SEA → BI' }));
+
+    await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
+    expect(screen.getByRole('button', { name: 'Catch traffic' })).toHaveTextContent('15 min');
+    expect(screen.queryByRole('button', { name: 'Use settings' })).not.toBeInTheDocument();
   });
 });
 
@@ -1354,17 +1449,24 @@ describe('Settings', () => {
   it('keeps a stored value, rejects junk, and never lets red be looser than yellow', () => {
     expect(normalizeSettings({ spaceSoonPercent: 25, spaceImminentPercent: 50 })).toMatchObject({ spaceSoonPercent: 25, spaceImminentPercent: 25 });
     expect(normalizeSettings({ catchSoonMinutes: 3, catchImminentMinutes: 10 })).toMatchObject({ catchSoonMinutes: 3, catchImminentMinutes: 3 });
-    expect(normalizeSettings({ catchPadMinutes: 7 })).toMatchObject({ catchPadMinutes: DEFAULT_SETTINGS.catchPadMinutes });
-    expect(normalizeSettings({ catchPadMinutes: '45' })).toMatchObject({ catchPadMinutes: DEFAULT_SETTINGS.catchPadMinutes });
+    expect(normalizeSettings({ catchTrafficMinutes: 7 })).toMatchObject({ catchTrafficMinutes: DEFAULT_SETTINGS.catchTrafficMinutes });
+    expect(normalizeSettings({ catchTrafficMinutes: '45' })).toMatchObject({ catchTrafficMinutes: DEFAULT_SETTINGS.catchTrafficMinutes });
     expect(normalizeSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(normalizeSettings({ disruptionLeadMinutes: 20 })).toMatchObject({ disruptionLeadMinutes: 20 });
   });
 
+  it('splits an old single pad into traffic with nothing queued', () => {
+    expect(normalizeSettings({ catchPadMinutes: 45 })).toMatchObject({ catchTrafficMinutes: 45, catchQueueMinutes: 0 });
+    expect(normalizeSettings({ catchPadMinutes: 7 })).toMatchObject(DEFAULT_SETTINGS);
+    expect(normalizeSettings({ catchPadMinutes: 45, catchTrafficMinutes: 20, catchQueueMinutes: 10 }))
+      .toMatchObject({ catchTrafficMinutes: 20, catchQueueMinutes: 10 });
+  });
+
   it('carries the pad over from the key it used to live in', () => {
     localStorage.setItem('ferry-tracker-catch-pad', '45');
-    expect(loadSettings().catchPadMinutes).toBe(45);
-    localStorage.setItem('ferry-tracker-settings', JSON.stringify({ ...DEFAULT_SETTINGS, catchPadMinutes: 20 }));
-    expect(loadSettings().catchPadMinutes).toBe(20);
+    expect(loadSettings()).toMatchObject({ catchTrafficMinutes: 45, catchQueueMinutes: 0 });
+    localStorage.setItem('ferry-tracker-settings', JSON.stringify({ ...DEFAULT_SETTINGS, catchTrafficMinutes: 20 }));
+    expect(loadSettings().catchTrafficMinutes).toBe(20);
   });
 
   it('changes the pad and the space threshold, and persists both', async () => {
@@ -1382,17 +1484,17 @@ describe('Settings', () => {
     await screen.findByRole('heading', { name: 'Seattle' });
     await user.click(screen.getByRole('tab', { name: 'Settings' }));
 
-    await user.click(await screen.findByRole('button', { name: 'Catch padding' }));
+    await user.click(await screen.findByRole('button', { name: 'Catch traffic default' }));
     await user.click(screen.getByRole('option', { name: '45 min' }));
     await user.click(screen.getByRole('button', { name: 'Space yellow under' }));
     await user.click(screen.getByRole('option', { name: '45%' }));
 
     const stored = JSON.parse(localStorage.getItem('ferry-tracker-settings') ?? '{}');
-    expect(stored).toMatchObject({ catchPadMinutes: 45, spaceSoonPercent: 45 });
+    expect(stored).toMatchObject({ catchTrafficMinutes: 45, spaceSoonPercent: 45 });
   });
 
   it('resets every value back to the defaults', async () => {
-    localStorage.setItem('ferry-tracker-settings', JSON.stringify({ ...DEFAULT_SETTINGS, catchPadMinutes: 60, disruptionLeadMinutes: 25 }));
+    localStorage.setItem('ferry-tracker-settings', JSON.stringify({ ...DEFAULT_SETTINGS, catchTrafficMinutes: 60, disruptionLeadMinutes: 25 }));
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url.includes('/api/terminals')) return json(terminals);
@@ -1406,11 +1508,11 @@ describe('Settings', () => {
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
     await user.click(screen.getByRole('tab', { name: 'Settings' }));
-    expect(await screen.findByRole('button', { name: 'Catch padding' })).toHaveTextContent('60 min');
+    expect(await screen.findByRole('button', { name: 'Catch traffic default' })).toHaveTextContent('60 min');
 
     await user.click(screen.getByRole('button', { name: 'Reset to defaults' }));
 
-    expect(screen.getByRole('button', { name: 'Catch padding' })).toHaveTextContent('30 min');
+    expect(screen.getByRole('button', { name: 'Catch traffic default' })).toHaveTextContent('15 min');
     expect(JSON.parse(localStorage.getItem('ferry-tracker-settings') ?? '{}')).toEqual(DEFAULT_SETTINGS);
   });
 });

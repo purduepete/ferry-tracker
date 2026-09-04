@@ -1,8 +1,8 @@
 import { isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, Clock3, ExternalLink, GripVertical, History, ListFilter, MapPin, Plus, RefreshCw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
+import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, Clock3, ExternalLink, GripVertical, History, ListFilter, MapPin, Plus, RefreshCw, RotateCcw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, capacityLevel, catchPillClass, catchWindowLevel, catchWindows, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshTime, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingTimeMinutes, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type FavoriteRoute, type FerrySettings } from './format';
+import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshTime, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingTimeMinutes, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CatchOverride, type FavoriteRoute, type FerrySettings } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -202,6 +202,7 @@ export function App() {
   const [newRouteOriginId, setNewRouteOriginId] = useState<number | null>(null);
   const [newRouteDestinationId, setNewRouteDestinationId] = useState<number | null>(null);
   const [selectedCatchRoute, setSelectedCatchRoute] = useState<string | null>(loadCatchRoute);
+  const [catchOverrides, setCatchOverrides] = useState(loadCatchOverrides);
   const [sailingsOnly, setSailingsOnly] = useState(loadSailingsOnly);
   const [settings, setSettings] = useState<FerrySettings>(loadSettings);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -262,6 +263,8 @@ export function App() {
   const catchRoute = favoriteRoutes.find((route) => routeKey(route) === selectedCatchRoute) ?? favoriteRoutes[0] ?? null;
   const catchOriginId = catchRoute?.originId ?? null;
   const catchDestinationId = catchRoute?.destinationId ?? null;
+  const catchRouteKeyValue = catchRoute ? routeKey(catchRoute) : null;
+  const timing = catchTiming(settings, catchRouteKeyValue === null ? undefined : catchOverrides[catchRouteKeyValue]);
   const newRouteDestinationIds = [...new Set(mates
     .filter((mate) => mate.departingTerminalId === newRouteOriginId)
     .map((mate) => mate.arrivingTerminalId))];
@@ -371,8 +374,23 @@ export function App() {
   const waves = disruptionWaves(vessels, countdownNow, settings, inboundResponse?.data ?? []);
   const [nextWave, ...laterWaves] = waves;
   const nextLoad = nextWave ? disruptionLoad(inboundResponse?.data ?? [], nextWave.vesselId, nextWave.landingAt) : null;
-  const catches = catchWindows(catchResponse?.data ?? [], countdownNow, settings.catchPadMinutes);
+  const catches = catchWindows(catchResponse?.data ?? [], countdownNow, timing.padMinutes);
   const [nextCatch, ...laterCatches] = catches;
+  const minuteOptions = CATCH_MINUTE_CHOICES.map((minutes) => ({ value: minutes, label: `${minutes} min` }));
+
+  const changeCatchOverride = (patch: Partial<CatchOverride>) => {
+    if (catchRouteKeyValue === null) return;
+    const next = setCatchOverride(catchOverrides, catchRouteKeyValue, patch);
+    setCatchOverrides(next);
+    saveCatchOverrides(next);
+  };
+
+  const resetCatchOverride = () => {
+    if (catchRouteKeyValue === null) return;
+    const next = clearCatchOverride(catchOverrides, catchRouteKeyValue);
+    setCatchOverrides(next);
+    saveCatchOverrides(next);
+  };
 
   const changeSetting = (key: keyof FerrySettings, value: number) => {
     const next = normalizeSettings({ ...settings, [key]: value });
@@ -662,6 +680,12 @@ export function App() {
               <div><span className="node-type">Leave by</span><h2>{catchRoute ? routeName(catchRoute, terminals) : 'No favorite route'}</h2></div>
               {favoriteRoutes.length > 1 && <FilterSelect ariaLabel="Catch route" value={catchRoute ? routeKey(catchRoute) : null} onChange={changeCatchRoute} options={favoriteRoutes.map((route) => ({ value: routeKey(route), label: routeName(route, terminals) }))} />}
             </div>
+            {catchRoute && <div className="catch-timing">
+              <label><span>Traffic</span><FilterSelect ariaLabel="Catch traffic" value={timing.trafficMinutes} onChange={(value) => changeCatchOverride({ trafficMinutes: value })} options={minuteOptions} /></label>
+              <label><span>Queue</span><FilterSelect ariaLabel="Catch queue" value={timing.queueMinutes} onChange={(value) => changeCatchOverride({ queueMinutes: value })} options={minuteOptions} /></label>
+              <span className="catch-timing-total">{timing.padMinutes} min padding{timing.overridden ? ' for this route' : ''}</span>
+              {timing.overridden && <button className="catch-timing-reset" type="button" title="Go back to the padding in Settings" onClick={resetCatchOverride}><RotateCcw size={13} aria-hidden="true" />Use settings</button>}
+            </div>}
             {!catchRoute ? <div className="empty">Add a favorite route in Settings to see when to leave.</div>
               : catchLoading && !catchResponse ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div>
               : catchError ? <div className="empty">{catchError}</div>
@@ -776,8 +800,12 @@ export function App() {
             </div>
             <div className="settings-section">
               <span className="node-type">Catch</span>
-              <div className="settings-grid is-single">
-                <SettingField label="Padding" ariaLabel="Catch padding" hint="Time to commute to the terminal and queue" setting="catchPadMinutes" unit="min" settings={settings} onChange={changeSetting} />
+              <div className="settings-subgroup">
+                <span className="settings-subhead">Padding</span>
+                <div className="settings-grid">
+                  <SettingField label="Traffic" ariaLabel="Catch traffic default" hint="Time to drive to the terminal" setting="catchTrafficMinutes" unit="min" settings={settings} onChange={changeSetting} />
+                  <SettingField label="Queue" ariaLabel="Catch queue default" hint="Time waiting in the holding lane" setting="catchQueueMinutes" unit="min" settings={settings} onChange={changeSetting} />
+                </div>
               </div>
               <div className="settings-subgroup">
                 <span className="settings-subhead">Time left to leave</span>
