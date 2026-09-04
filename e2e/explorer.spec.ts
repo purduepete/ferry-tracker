@@ -133,8 +133,7 @@ test('saves a favorite route and drives the Catch tab with it', async ({ page })
 
   await page.getByRole('tab', { name: 'Catch' }).click();
   await expect(page.getByRole('heading', { name: 'SEA → BI' })).toBeVisible();
-  await page.getByRole('button', { name: 'Catch route' }).click();
-  await page.getByRole('option', { name: 'Morning' }).click();
+  await page.getByRole('group', { name: 'Catch route' }).getByRole('button', { name: 'Morning' }).click();
   await expect(page.getByRole('heading', { name: 'Morning' })).toBeVisible();
 
   // The choice outlives the reload, so the phone opens on the route it was left on.
@@ -158,14 +157,12 @@ test('overrides the Catch padding for one route and resets it back to the settin
   await expect(page.locator('.catch-timing-total')).toHaveText('45 min padding for this route');
 
   // The other favorite route is untouched by the one that was overridden.
-  await page.getByRole('button', { name: 'Catch route' }).click();
-  await page.getByRole('option', { name: 'SEA → BI' }).click();
+  await page.getByRole('group', { name: 'Catch route' }).getByRole('button', { name: 'SEA → BI' }).click();
   await expect(page.locator('.catch-timing-total')).toHaveText('30 min padding');
 
   await page.reload();
   await page.getByRole('tab', { name: 'Catch' }).click();
-  await page.getByRole('button', { name: 'Catch route' }).click();
-  await page.getByRole('option', { name: 'BI → SEA' }).click();
+  await page.getByRole('group', { name: 'Catch route' }).getByRole('button', { name: 'BI → SEA' }).click();
   await expect(page.locator('.catch-timing-total')).toHaveText('45 min padding for this route');
 
   await page.getByRole('button', { name: 'Use settings' }).click();
@@ -191,33 +188,37 @@ test('collapses the routes view to the sailings schedule at any width', async ({
   const toggle = page.getByRole('button', { name: 'Sailings only' });
   await expect(page.locator('.terminal-node')).toBeVisible();
 
-  await toggle.click();
-  await expect(page.locator('.schedule-node')).toBeVisible();
-  await expect(page.locator('.terminal-node')).toBeHidden();
-  await expect(page.locator('.vessel-stack')).toBeHidden();
-  await expect(page.locator('.relationship-link').first()).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Destination' })).toBeVisible();
   // "Bainbridge Island" is the longest terminal name, so it decides whether the compact row clips.
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Bainbridge Island' }).click();
   await expect(page.locator('.selectors .filter-select-trigger span').first()).toHaveText('Bainbridge Island');
   const clipped = await page.locator('.selectors .filter-select-trigger span').evaluateAll((spans) => spans.filter((span) => span.scrollWidth > span.clientWidth + 1).map((span) => span.textContent ?? ''));
   expect(clipped).toEqual([]);
+
+  await toggle.click();
+  await expect(page.locator('.schedule-node')).toBeVisible();
+  await expect(page.locator('.terminal-node')).toBeHidden();
+  await expect(page.locator('.vessel-stack')).toBeHidden();
+  await expect(page.locator('.relationship-link').first()).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
+  // The favorite chips replace the selectors on a phone, which is the whole point of the mode.
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Destination' })).toBeHidden();
+  await expect(page.locator('.route-chip').first()).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  // The band never slides under the navbar, so the route can change from anywhere in the schedule.
-  // Assert the relationship rather than an exact offset: the fixture schedule is sometimes short
-  // enough that there is nothing to scroll, and the band then sits at its natural spot.
+  // Neither the tab bar nor the band slides under the navbar, so both stay reachable from anywhere
+  // in the schedule. Assert the relationship rather than an exact offset: the fixture schedule is
+  // sometimes short enough that there is nothing to scroll, and both then sit at their natural spot.
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(() => page.evaluate(() => {
     const band = document.querySelector('.selection-band')!.getBoundingClientRect();
+    const tabs = document.querySelector('.tabs')!.getBoundingClientRect();
     const header = document.querySelector('.app-header')!.getBoundingClientRect();
-    return band.top >= header.bottom - 2 && band.bottom <= window.innerHeight;
+    return tabs.top >= header.bottom - 2 && band.top >= tabs.bottom - 2 && band.bottom <= window.innerHeight;
   })).toBe(true);
-  await expect(page.getByRole('button', { name: 'Origin' })).toBeInViewport();
-  await expect(page.getByRole('button', { name: 'Destination' })).toBeInViewport();
+  await expect(page.getByRole('tab', { name: 'Catch' })).toBeInViewport();
+  await expect(page.locator('.route-chip').first()).toBeInViewport();
   await expect(page.getByRole('heading', { name: 'Sailings and vessel positions' })).toBeAttached();
   // The title goes off screen rather than away, so its IDREF still resolves. The tab bar stays.
   await expect.poll(() => page.evaluate(() => document.querySelector('.route-title')!.getBoundingClientRect().height)).toBeLessThan(2);
@@ -228,11 +229,12 @@ test('collapses the routes view to the sailings schedule at any width', async ({
   await expect(page.getByRole('button', { name: 'Sailings only' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.terminal-node')).toBeHidden();
 
-  // A desktop width keeps the collapse and the toggle; only the phone's Day concession comes back.
+  // A desktop width keeps the collapse, the toggle and the selectors; only the phone concessions go.
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.locator('.terminal-node')).toBeHidden();
   await expect(page.locator('.vessel-stack')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sailings only' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().height)).toBeGreaterThan(40);
 

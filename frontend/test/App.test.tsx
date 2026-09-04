@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
@@ -961,8 +961,7 @@ describe('Favorite routes in the app', () => {
     expect(await screen.findByRole('heading', { name: 'BI → SEA' })).toBeInTheDocument();
     await waitFor(() => expect(scheduleUrls.some((url) => url.includes('departingTerminalId=3&arrivingTerminalId=7'))).toBe(true));
 
-    await user.click(screen.getByRole('button', { name: 'Catch route' }));
-    await user.click(screen.getByRole('option', { name: 'SEA → BI' }));
+    await user.click(within(screen.getByRole('group', { name: 'Catch route' })).getByRole('button', { name: 'SEA → BI' }));
     expect(await screen.findByRole('heading', { name: 'SEA → BI' })).toBeInTheDocument();
     await waitFor(() => expect(scheduleUrls.some((url) => url.includes('departingTerminalId=7&arrivingTerminalId=3'))).toBe(true));
     expect(localStorage.getItem('ferry-tracker-catch-route')).toBe('7-3');
@@ -1411,8 +1410,7 @@ describe('Catch padding overrides', () => {
     await user.click(screen.getByRole('tab', { name: 'Catch' }));
     await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('50 min'));
 
-    await user.click(screen.getByRole('button', { name: 'Catch route' }));
-    await user.click(screen.getByRole('option', { name: 'SEA → BI' }));
+    await user.click(within(screen.getByRole('group', { name: 'Catch route' })).getByRole('button', { name: 'SEA → BI' }));
 
     await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
     expect(screen.getByRole('button', { name: 'Catch traffic' })).toHaveTextContent('15 min');

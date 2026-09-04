@@ -242,6 +242,7 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .schedule-heading { padding: 14px 16px; }
 .schedule-heading.has-switcher { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; }
 .schedule-heading.has-switcher .filter-select { flex: 0 1 220px; }
+.schedule-heading.has-switcher .route-chips { flex: 0 1 auto; min-width: 0; padding-bottom: 1px; }
 .schedule-heading h2 { margin-bottom: 0; }
 .countdown-card { border: 1px solid var(--line); background: var(--surface); }
 .countdown-card .schedule-heading { border-bottom: 1px solid var(--line); }
@@ -343,8 +344,11 @@ tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transp
   main { padding: 0 14px calc(36px + var(--safe-area-bottom)); }
   /* Sailings only means live data, so the Day picker goes and the two route selects share a row. */
   .selection-band.is-sailings-only .day-field { display: none; }
-  /* Every tab gets the compact band, pinned so the route can be changed from anywhere in a long list. */
-  .selection-band { position: sticky; top: var(--navbar-height); padding: 10px 0; }
+  /* The favorite chips carry the route here, which buys back the selector row. They are the only
+     control left, so a user with no favorites keeps the selects. */
+  .selection-band.is-sailings-only:not(.is-chipless) .selectors { display: none; }
+  /* Every tab gets the compact band, pinned below the tab bar so the route can be changed from anywhere in a long list. */
+  .selection-band { position: sticky; top: calc(var(--navbar-height) + 44px); padding: 10px 0; }
   /* Off screen instead of display:none, so the h1 still answers its IDREF. */
   .route-title { position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
   .selectors { grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); align-items: center; gap: 6px; }
@@ -357,7 +361,8 @@ tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transp
   .theme-popover { position: fixed; top: calc(var(--navbar-height) + 8px); right: max(12px, var(--safe-area-right)); left: max(12px, var(--safe-area-left)); width: auto; }
   /* The tab bar leads on a phone, above the selectors, and stays put in every mode. */
   main { display: flex; flex-direction: column; }
-  .tabs { order: -1; margin-bottom: 16px; }
+  /* 44px is this bar's own border-box height, which is what the band sticks below. Change both together. */
+  .tabs { order: -1; margin-bottom: 16px; position: sticky; top: var(--navbar-height); z-index: 21; background: color-mix(in srgb, var(--bg) 96%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
   /* Phone tabs are the icon alone. The label is only clipped, never removed, because each panel's
      aria-labelledby points back at its tab button for its accessible name. */
   .tabs button { flex: 1 1 0; min-width: 0; padding: 0; justify-content: center; }

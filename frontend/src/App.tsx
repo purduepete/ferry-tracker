@@ -626,7 +626,7 @@ export function App() {
 
       <main>
         {/* Catch follows its own favorite route, Disruption is pinned, and Settings has no route at all. */}
-        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}${routelessTab ? ' is-routeless' : ''}`} aria-labelledby="route-heading">
+        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}${routelessTab ? ' is-routeless' : ''}${quickPickRoutes.length === 0 ? ' is-chipless' : ''}`} aria-labelledby="route-heading">
           <div className="route-title"><span className="eyebrow">Route explorer</span><h1 id="route-heading">Sailings and vessel positions</h1></div>
           <div className="route-controls">
             <div className="selectors">
@@ -678,7 +678,13 @@ export function App() {
           {tab === 'catch' && <div className="countdown-card">
             <div className="schedule-heading has-switcher">
               <div><span className="node-type">Leave by</span><h2>{catchRoute ? routeName(catchRoute, terminals) : 'No favorite route'}</h2></div>
-              {favoriteRoutes.length > 1 && <FilterSelect ariaLabel="Catch route" value={catchRoute ? routeKey(catchRoute) : null} onChange={changeCatchRoute} options={favoriteRoutes.map((route) => ({ value: routeKey(route), label: routeName(route, terminals) }))} />}
+              {favoriteRoutes.length > 1 && <div className="route-chips" role="group" aria-label="Catch route">
+                {favoriteRoutes.map((route) => {
+                  const key = routeKey(route);
+                  const active = key === catchRouteKeyValue;
+                  return <button key={key} type="button" className={`route-chip${active ? ' active' : ''}`} aria-pressed={active} title={routePairName(route, terminals)} onClick={() => changeCatchRoute(key)}>{routeName(route, terminals)}</button>;
+                })}
+              </div>}
             </div>
             {catchRoute && <div className="catch-timing">
               <label><span>Traffic</span><FilterSelect ariaLabel="Catch traffic" value={timing.trafficMinutes} onChange={(value) => changeCatchOverride({ trafficMinutes: value })} options={minuteOptions} /></label>
