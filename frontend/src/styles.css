@@ -85,8 +85,9 @@ button { cursor: pointer; }
 code, pre { font-family: 'Cascadia Code', 'Consolas', monospace; }
 button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.app-shell { min-height: 100%; background: var(--bg); }
-.app-header { min-height: var(--navbar-height); padding: var(--safe-area-top) var(--safe-area-right) 0 var(--safe-area-left); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 30; }
+.app-shell { min-height: 100%; padding-top: var(--navbar-height); background: var(--bg); }
+/* Sticky rides the iOS toolbar animation; fixed holds the bar still, and it holds on desktop too. */
+.app-header { min-height: var(--navbar-height); padding: var(--safe-area-top) var(--safe-area-right) 0 var(--safe-area-left); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); position: fixed; top: 0; left: 0; right: 0; z-index: 30; }
 .header-inner { width: min(100%, 1440px); height: 64px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; }
 /* The only recorded-day cue that survives every width: the source badge and the Day picker both hide on a phone. */
 .app-header.is-recorded::after { content: ''; position: absolute; inset: auto 0 -1px; height: 2px; background: color-mix(in srgb, var(--warning) 65%, transparent); }
@@ -115,10 +116,10 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .source-badge.live { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 48%, var(--line)); }
 .source-badge.fixture { color: var(--warning); background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 48%, var(--line)); }
 
-main { max-width: 1440px; margin: 0 auto; padding: 0 24px calc(48px + var(--safe-area-bottom)); }
-.selection-band { min-height: 104px; display: flex; align-items: center; justify-content: space-between; gap: 32px; padding: 18px 0; position: sticky; top: var(--navbar-height); z-index: 20; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 96%, transparent); backdrop-filter: blur(12px); }
-/* Vessels and Terminals list everything, so the route selectors would steer nothing. */
-.selection-band.is-hidden { display: none; }
+main { max-width: 1440px; margin: 0 auto; padding: 0 24px calc(48px + var(--safe-area-bottom)); display: flex; flex-direction: column; }
+.selection-band { min-height: 104px; display: flex; align-items: center; justify-content: space-between; gap: 32px; padding: 18px 0; position: sticky; top: calc(var(--navbar-height) + 44px); z-index: 20; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 96%, transparent); backdrop-filter: blur(12px); }
+/* Catch, Disruption, Settings, Vessels and Terminals all ignore the selectors. */
+.selection-band.is-routeless { display: none; }
 .eyebrow, .node-type { color: var(--accent); font-size: 11px; font-weight: 700; text-transform: uppercase; }
 h1 { margin: 3px 0 0; font-size: 26px; font-weight: 650; line-height: 1.15; letter-spacing: 0; }
 h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
@@ -151,7 +152,9 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 .swap-button:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
 .swap-button:disabled { opacity: .35; cursor: not-allowed; }
 .error-banner { padding: 12px 14px; border-left: 3px solid var(--danger); background: color-mix(in srgb, var(--danger) 10%, var(--surface)); color: var(--danger); margin-bottom: 14px; }
-.tabs { display: flex; min-height: 44px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+/* The tab bar leads under the header at every width, and the band sticks below it.
+   44px is this bar's own border-box height; change both offsets together. */
+.tabs { order: -1; display: flex; min-height: 44px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; position: sticky; top: var(--navbar-height); z-index: 21; background: color-mix(in srgb, var(--bg) 96%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
 .tabs::-webkit-scrollbar { display: none; }
 .tabs button { flex: 0 0 auto; border: 0; border-bottom: 3px solid transparent; padding: 0 16px; background: transparent; display: flex; align-items: center; gap: 7px; color: var(--muted); transition: color .2s ease, background-color .2s ease, border-color .2s ease; }
 .tabs button:hover { color: var(--text); background: var(--surface-2); }
@@ -338,9 +341,6 @@ tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transp
 }
 
 @media (max-width: 767px) {
-  /* Sticky rides the iOS toolbar animation; fixed holds the bar still. */
-  .app-shell { padding-top: var(--navbar-height); }
-  .app-header { position: fixed; top: 0; left: 0; right: 0; }
   .header-inner { padding: 0 14px; }
   .brand div span { display: none; }
   main { padding: 0 14px calc(36px + var(--safe-area-bottom)); }
@@ -358,19 +358,20 @@ tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transp
   .swap-button { width: 32px; height: 36px; justify-self: center; transform: none; }
   .filter-select-trigger { height: 36px; padding: 0 8px; gap: 4px; }
   .catch-timing-total, .catch-timing-reset { height: 36px; }
+  /* One row on a phone: the sum keeps its number, the reset keeps its icon, and both keep their
+     words for a screen reader because the button's name comes from that clipped text. */
+  .catch-timing { flex-wrap: nowrap; gap: 8px; padding: 10px 14px; }
+  .catch-timing label { flex: 1 1 0; }
+  .catch-timing-total { flex: 0 0 auto; white-space: nowrap; }
+  .catch-timing-reset { padding: 0 11px; }
+  .catch-timing-words { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
   /* Day has no room on the route row, so it takes the one below. */
   .day-field { grid-column: 1 / -1; }
   .theme-popover { position: fixed; top: calc(var(--navbar-height) + 8px); right: max(12px, var(--safe-area-right)); left: max(12px, var(--safe-area-left)); width: auto; }
-  /* The tab bar leads on a phone, above the selectors, and stays put in every mode. */
-  main { display: flex; flex-direction: column; }
-  /* 44px is this bar's own border-box height, which is what the band sticks below. Change both together. */
-  .tabs { order: -1; margin-bottom: 16px; position: sticky; top: var(--navbar-height); z-index: 21; background: color-mix(in srgb, var(--bg) 96%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
   /* Phone tabs are the icon alone. The label is only clipped, never removed, because each panel's
      aria-labelledby points back at its tab button for its accessible name. */
   .tabs button { flex: 1 1 0; min-width: 0; padding: 0; justify-content: center; }
   .tab-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
-  /* With the title clipped and the selectors gone, the band would be an empty rule. */
-  .selection-band.is-routeless { display: none; }
 }
 
 @media (max-width: 639px) {

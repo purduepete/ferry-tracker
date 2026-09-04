@@ -1403,14 +1403,14 @@ describe('Catch padding overrides', () => {
     await user.click(screen.getByRole('option', { name: '30 min' }));
 
     expect(document.querySelector('.countdown-value')).toHaveTextContent('5 min');
-    expect(screen.getByText('45 min padding for this route')).toBeInTheDocument();
+    expect(document.querySelector('.catch-timing-total')).toHaveTextContent('45 min padding for this route');
     expect(JSON.parse(localStorage.getItem('ferry-tracker-catch-overrides') ?? '{}'))
       .toEqual({ '3-7': { trafficMinutes: 30, queueMinutes: null } });
 
     await user.click(screen.getByRole('button', { name: 'Use settings' }));
 
     expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min');
-    expect(screen.getByText('30 min padding')).toBeInTheDocument();
+    expect(document.querySelector('.catch-timing-total')).toHaveTextContent('30 min padding');
     expect(JSON.parse(localStorage.getItem('ferry-tracker-catch-overrides') ?? '{}')).toEqual({});
   });
 
@@ -1432,7 +1432,7 @@ describe('Catch padding overrides', () => {
 });
 
 describe('Routeless tabs', () => {
-  it('flags the selection band on Catch, Disruption and Settings so the phone layout can drop it', async () => {
+  it('flags the selection band on every tab that steers no route, so the layout can drop it', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url.includes('/api/terminals')) return json(terminals);
@@ -1458,14 +1458,13 @@ describe('Routeless tabs', () => {
 
     // Vessels and Terminals list everything, so their band goes at every width, not just on a phone.
     await user.click(screen.getByRole('tab', { name: 'Vessels' }));
-    expect(document.querySelector('.selection-band')).toHaveClass('is-hidden');
+    expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
 
     await user.click(screen.getByRole('tab', { name: 'Terminals' }));
-    expect(document.querySelector('.selection-band')).toHaveClass('is-hidden');
+    expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
 
     await user.click(screen.getByRole('tab', { name: 'Sailings' }));
     expect(document.querySelector('.selection-band')).not.toHaveClass('is-routeless');
-    expect(document.querySelector('.selection-band')).not.toHaveClass('is-hidden');
   });
 });
 

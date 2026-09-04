@@ -273,8 +273,7 @@ export function App() {
     : newRouteDestinationIds[0] ?? null;
   const canAddRoute = newRouteOriginId !== null && effectiveNewRouteDestinationId !== null
     && !favoriteRoutes.some((route) => routeKey(route) === `${newRouteOriginId}-${effectiveNewRouteDestinationId}`);
-  const bandlessTab = tab === 'vessels' || tab === 'terminals';
-  const routelessTab = bandlessTab || tab === 'catch' || tab === 'disruption' || tab === 'settings';
+  const routelessTab = tab === 'catch' || tab === 'disruption' || tab === 'settings' || tab === 'vessels' || tab === 'terminals';
   const quickPickRoutes = favoriteRoutes.filter((route) => isPublishedRoute(route, mates));
   const associatedVessels = selectedTerminalId === null ? [] : vessels
     .filter((vessel) => vessel.departingTerminalId === selectedTerminalId || vessel.arrivingTerminalId === selectedTerminalId)
@@ -633,7 +632,7 @@ export function App() {
 
       <main>
         {/* Catch follows its own favorite route, Disruption is pinned, and Settings has no route at all. */}
-        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}${routelessTab ? ' is-routeless' : ''}${bandlessTab ? ' is-hidden' : ''}${quickPickRoutes.length === 0 ? ' is-chipless' : ''}`} aria-labelledby="route-heading">
+        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}${routelessTab ? ' is-routeless' : ''}${quickPickRoutes.length === 0 ? ' is-chipless' : ''}`} aria-labelledby="route-heading">
           <div className="route-title"><span className="eyebrow">Route explorer</span><h1 id="route-heading">Sailings and vessel positions</h1></div>
           <div className="route-controls">
             <div className="selectors">
@@ -696,8 +695,8 @@ export function App() {
             {catchRoute && <div className="catch-timing">
               <label><span>Traffic</span><FilterSelect ariaLabel="Catch traffic" value={timing.trafficMinutes} onChange={(value) => changeCatchOverride({ trafficMinutes: value })} options={minuteOptions} /></label>
               <label><span>Queue</span><FilterSelect ariaLabel="Catch queue" value={timing.queueMinutes} onChange={(value) => changeCatchOverride({ queueMinutes: value })} options={minuteOptions} /></label>
-              <span className="catch-timing-total">{timing.padMinutes} min padding{timing.overridden ? ' for this route' : ''}</span>
-              {timing.overridden && <button className="catch-timing-reset" type="button" title="Go back to the padding in Settings" onClick={resetCatchOverride}><RotateCcw size={13} aria-hidden="true" />Use settings</button>}
+              <span className="catch-timing-total">{timing.padMinutes} min<span className="catch-timing-words"> padding{timing.overridden ? ' for this route' : ''}</span></span>
+              {timing.overridden && <button className="catch-timing-reset" type="button" title="Go back to the padding in Settings" onClick={resetCatchOverride}><RotateCcw size={13} aria-hidden="true" /><span className="catch-timing-words">Use settings</span></button>}
             </div>}
             {!catchRoute ? <div className="empty">Add a favorite route in Settings to see when to leave.</div>
               : catchLoading && !catchResponse ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div>

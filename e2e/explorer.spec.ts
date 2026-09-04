@@ -263,6 +263,17 @@ test('drops the tab labels and the route selectors on a phone', async ({ page })
   await expect(page.getByRole('tabpanel', { name: 'Catch' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
+  // The padding controls stay on one row, so the total and the reset sit level with the selects.
+  await page.getByRole('button', { name: 'Catch traffic' }).click();
+  await page.getByRole('option', { name: '30 min' }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const tops = [...document.querySelectorAll('.catch-timing > *')].map((element) => Math.round(element.getBoundingClientRect().bottom));
+    return new Set(tops).size;
+  })).toBe(1);
+  await expect(page.getByRole('button', { name: 'Use settings' })).toBeVisible();
+  await expect.poll(() => page.locator('.catch-timing-reset').evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBeLessThan(50);
+  await page.getByRole('button', { name: 'Use settings' }).click();
+
   await page.getByRole('tab', { name: 'Disruption' }).click();
   await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
 
@@ -286,12 +297,15 @@ test('drops the tab labels and the route selectors on a phone', async ({ page })
   await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
   await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
 
-  // Desktop keeps both the words and the selectors, and the band leads again.
+  // Desktop keeps the words and the selectors, but a routeless tab still drops the band.
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole('tab', { name: 'Catch' }).click();
-  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
   await expect.poll(() => catchTab.locator('.tab-label').evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(20);
-  await expect.poll(tabsLeadTheBand).toBe(false);
+
+  await page.getByRole('tab', { name: 'Routes' }).click();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
+  await expect.poll(tabsLeadTheBand).toBe(true);
 });
 
 for (const width of [390, 767, 768, 1024, 1440]) {
