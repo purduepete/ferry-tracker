@@ -75,9 +75,9 @@
 *::-webkit-scrollbar-thumb { min-height: 32px; border: 2px solid var(--scrollbar-track); border-radius: 0; background: var(--scrollbar-thumb); }
 *::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 *::-webkit-scrollbar-corner { background: var(--scrollbar-track); }
-html { background: var(--bg); scroll-behavior: smooth; }
-/* 100vh on iOS is the toolbar-hidden height, which scrolls a short page by the toolbar. */
-body { margin: 0; min-width: 320px; min-height: 100vh; min-height: 100dvh; background: var(--bg); color: var(--text); font-weight: 400; -webkit-user-select: none; user-select: none; }
+/* Percentage height tracks the VISIBLE viewport on iOS; 100vh and 100dvh both overshoot it. */
+html { height: 100%; background: var(--bg); scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; min-height: 100%; background: var(--bg); color: var(--text); font-weight: 400; -webkit-user-select: none; user-select: none; }
 input, textarea, [contenteditable='true'] { -webkit-user-select: text; user-select: text; }
 button, input { font: inherit; }
 button { color: inherit; }
@@ -85,8 +85,8 @@ button { cursor: pointer; }
 code, pre { font-family: 'Cascadia Code', 'Consolas', monospace; }
 button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.app-shell { min-height: 100vh; min-height: 100dvh; background: var(--bg); }
-.app-header { min-height: var(--navbar-height); padding: var(--safe-area-top) var(--safe-area-right) 0 var(--safe-area-left); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 30; }
+.app-shell { min-height: 100%; background: var(--bg); }
+.app-header { min-height: var(--navbar-height); padding: var(--safe-area-top) var(--safe-area-right) 0 var(--safe-area-left); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 30; }
 .header-inner { width: min(100%, 1440px); height: 64px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; }
 .brand { display: flex; gap: 10px; align-items: center; color: var(--accent); padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .brand-mark { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line)); background: color-mix(in srgb, var(--accent-soft) 45%, transparent); color: var(--accent); }
@@ -306,6 +306,9 @@ tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transp
 }
 
 @media (max-width: 767px) {
+  /* Sticky rides the iOS toolbar animation; fixed holds the bar still. */
+  .app-shell { padding-top: var(--navbar-height); }
+  .app-header { position: fixed; top: 0; left: 0; right: 0; }
   .header-inner { padding: 0 14px; }
   .brand div span { display: none; }
   main { padding: 0 14px calc(36px + var(--safe-area-bottom)); }
