@@ -2,7 +2,7 @@ import { isValidElement, useEffect, useRef, useState, type CSSProperties, type K
 import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, Clock3, ExternalLink, GripVertical, History, ListFilter, MapPin, RefreshCw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { BAINBRIDGE_TERMINAL_ID, capacityLevel, catchPillClass, catchWindowLevel, catchWindows, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, LATE_MINUTES, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshTime, reorderFavoriteTerminals, sailingArrival, sailingTimeMinutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type FerrySettings } from './format';
+import { BAINBRIDGE_TERMINAL_ID, capacityLevel, catchPillClass, catchWindowLevel, catchWindows, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, LATE_MINUTES, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshTime, reorderFavoriteTerminals, sailingArrival, sailingTimeMinutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type FerrySettings } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -107,40 +107,6 @@ function CapacityMeter({ sailing }: { sailing: SailingView }) {
   // A wide-open sailing carries no decision value, so only a partial boat gets a pill.
   if (percent === 100) return null;
   return <CapacityPill openPercent={percent} total={sailing.maxSpaceCount} />;
-}
-
-function getCurrentSailing(sailings: SailingView[]): SailingView | null {
-  const now = new Date();
-  const fifteenMinutesMs = 15 * 60 * 1000;
-  const departedAt = (sailing: SailingView) => (sailing.departingTime === null ? null : new Date(sailing.departingTime).getTime());
-
-  // Find sailings that departed within the last 15 minutes
-  const recentPast = sailings.filter(sailing => {
-    const departure = departedAt(sailing);
-    if (departure === null) return false;
-    const timeDiff = now.getTime() - departure;
-    return timeDiff >= 0 && timeDiff <= fifteenMinutesMs;
-  });
-
-  if (recentPast.length) {
-    // Return the most recent one (latest departure time)
-    return recentPast.reduce((latest, current) =>
-      (departedAt(current) ?? 0) > (departedAt(latest) ?? 0) ? current : latest
-    );
-  }
-
-  // Otherwise, return the next upcoming sailing
-  const upcoming = sailings.filter(sailing => {
-    const departure = departedAt(sailing);
-    return departure !== null && departure > now.getTime();
-  });
-
-  return upcoming.length ? upcoming[0] : null;
-}
-
-function isCurrentSailing(sailing: SailingView, currentSailing: SailingView | null): boolean {
-  if (!currentSailing) return false;
-  return sailing.departingTime === currentSailing.departingTime;
 }
 
 function Field({ label, value }: { label: string; value: unknown }) {
@@ -370,7 +336,7 @@ export function App() {
   }, [initialDataVisible, tab]);
 
   const destination = terminals.find((terminal) => terminal.id === effectiveDestinationId) ?? null;
-  const currentSailing = scheduleResponse?.data ? getCurrentSailing(scheduleResponse.data) : null;
+  const currentSailing = scheduleResponse?.data ? getCurrentSailing(scheduleResponse.data, vessels) : null;
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const waves = disruptionWaves(vessels, countdownNow, settings, inboundResponse?.data ?? []);
   const [nextWave, ...laterWaves] = waves;

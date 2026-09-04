@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
-import { capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchWindowLevel, catchWindows, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, loadSettings, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, reorderFavoriteTerminals, sailingArrival, sailingTimeMinutes, serviceDayLabel, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
+import { capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchWindowLevel, catchWindows, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, loadSettings, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, reorderFavoriteTerminals, sailingArrival, sailingTimeMinutes, serviceDayLabel, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
@@ -696,6 +696,52 @@ describe('Sailing time', () => {
   it('gives nothing when either end is missing or the pair is out of order', () => {
     expect(sailingTimeMinutes(sailing, [])).toBeNull();
     expect(sailingTimeMinutes({ ...sailing, actualArrival: '2026-09-01T23:40:00.000Z' }, [])).toBeNull();
+  });
+});
+
+describe('Current sailing', () => {
+  const at = (time: string) => `2026-09-01T${time}:00.000Z`;
+  const now = Date.parse(at('18:51'));
+  const schedule = [
+    { departingTime: at('17:35'), actualDeparture: at('17:45'), vesselId: 2 },
+    { departingTime: at('18:40'), actualDeparture: null, vesselId: 1 },
+    { departingTime: at('19:20'), actualDeparture: null, vesselId: 2 },
+    { departingTime: at('20:20'), actualDeparture: null, vesselId: 1 },
+  ];
+  const underway = [{ id: 1, atDock: false, scheduledDeparture: at('18:40') }];
+
+  it('moves on once the live feed shows the boat away from the dock', () => {
+    expect(getCurrentSailing(schedule, underway, now)?.departingTime).toBe(at('19:20'));
+  });
+
+  it('moves on once a departure has been recorded', () => {
+    const recorded = schedule.map((sailing) => (sailing.vesselId === 1 && sailing.departingTime === at('18:40')
+      ? { ...sailing, actualDeparture: at('18:46') }
+      : sailing));
+    expect(getCurrentSailing(recorded, [], now)?.departingTime).toBe(at('19:20'));
+  });
+
+  it('holds a late boat that is still at the dock', () => {
+    expect(getCurrentSailing(schedule, [{ id: 1, atDock: true, scheduledDeparture: at('18:40') }], now)?.departingTime).toBe(at('18:40'));
+  });
+
+  it('will not lend another boat departure to the row', () => {
+    const wrongBoat = [{ id: 9, atDock: false, scheduledDeparture: at('18:40') }];
+    expect(getCurrentSailing(schedule, wrongBoat, now)?.departingTime).toBe(at('18:40'));
+  });
+
+  it('drops a boat more than fifteen minutes past its slot with nothing observed', () => {
+    expect(getCurrentSailing(schedule, [], Date.parse(at('18:56')))?.departingTime).toBe(at('19:20'));
+  });
+
+  it('gives nothing once every sailing has gone', () => {
+    expect(getCurrentSailing(schedule.slice(0, 2), underway, now)).toBeNull();
+  });
+
+  it('matches a row by its scheduled departure', () => {
+    expect(isCurrentSailing(schedule[2], schedule[2])).toBe(true);
+    expect(isCurrentSailing(schedule[1], schedule[2])).toBe(false);
+    expect(isCurrentSailing(schedule[1], null)).toBe(false);
   });
 });
 

@@ -311,9 +311,44 @@ export function sailingTimeMinutes(
   return { minutes: Math.round(minutes), estimated: arrival.estimated };
 }
 
+type CurrentSailing = Pick<SailingView, 'departingTime' | 'actualDeparture' | 'vesselId'>;
+
+const CURRENT_SAILING_GRACE_MS = 15 * 60 * 1000;
+
+// A boat that has left is not the one you can still walk onto. The recorded actualDeparture
+// only lands once the crossing finishes, so the live feed is what retires a sailing in the
+// moment. With neither signal the schedule alone is unreliable for a late boat, and the grace
+// keeps it current while it is probably still loading.
+export function getCurrentSailing<T extends CurrentSailing>(
+  sailings: T[],
+  vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'scheduledDeparture'>> = [],
+  now: number = Date.now(),
+): T | null {
+  const scheduledAt = (sailing: T) => (sailing.departingTime === null ? null : Date.parse(sailing.departingTime));
+  const gone = (sailing: T) =>
+    (sailing.actualDeparture !== null && Date.parse(sailing.actualDeparture) <= now)
+    || vessels.some((vessel) => vessel.id === sailing.vesselId && vessel.atDock === false && vessel.scheduledDeparture === sailing.departingTime);
+
+  const justDeparted = sailings.filter((sailing) => {
+    if (gone(sailing)) return false;
+    const scheduled = scheduledAt(sailing);
+    if (scheduled === null) return false;
+    return now - scheduled >= 0 && now - scheduled <= CURRENT_SAILING_GRACE_MS;
+  });
+  if (justDeparted.length) {
+    return justDeparted.reduce((latest, sailing) => ((scheduledAt(sailing) ?? 0) > (scheduledAt(latest) ?? 0) ? sailing : latest));
+  }
+
+  return sailings.find((sailing) => !gone(sailing) && (scheduledAt(sailing) ?? 0) > now) ?? null;
+}
+
+export function isCurrentSailing(sailing: Pick<CurrentSailing, 'departingTime'>, currentSailing: Pick<CurrentSailing, 'departingTime'> | null): boolean {
+  if (!currentSailing) return false;
+  return sailing.departingTime === currentSailing.departingTime;
+}
+
 export function spaceCounts(space: Pick<SailingView, 'driveUpSpaceCount' | 'reservableSpaceCount'>) {
-  const values: string[] = [];
-  if (space.driveUpSpaceCount !== null) values.push(`${space.driveUpSpaceCount} drive-up`);
+  const values: string[] = [];  if (space.driveUpSpaceCount !== null) values.push(`${space.driveUpSpaceCount} drive-up`);
   if (space.reservableSpaceCount !== null) values.push(`${space.reservableSpaceCount} reservable`);
   return values.length ? values.join(', ') : 'Count hidden';
 }
