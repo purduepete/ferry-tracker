@@ -100,8 +100,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .icon-button:hover, .icon-button[aria-expanded='true'] { color: var(--text); background: var(--surface-2); }
 .icon-button:disabled { cursor: wait; color: var(--accent); }
 .icon-button.active { color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
-/* The toggle only earns its place once the routes grid stacks, so it is absent from the desktop a11y tree. */
-.sailings-only-button { display: none; }
 .icon-button.is-busy svg { animation: icon-spin 1s linear infinite; }
 @keyframes icon-spin { to { transform: rotate(360deg); } }
 .theme-menu { height: 100%; position: relative; display: flex; align-items: center; }
@@ -183,6 +181,9 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 @keyframes panel-enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
 
 .relationship-grid { display: grid; grid-template-columns: minmax(210px, 1fr) 90px minmax(210px, 1fr) 90px minmax(210px, 1fr); align-items: center; gap: 12px; }
+/* The schedule is the last grid child, which collapses the loading skeleton the same way. */
+.relationship-grid.is-sailings-only { grid-template-columns: minmax(0, 720px); justify-content: center; }
+.relationship-grid.is-sailings-only > :not(:last-child) { display: none; }
 .relationship-node { align-self: stretch; padding: 17px; border: 1px solid var(--line); border-top: 3px solid var(--accent); background: var(--surface); box-shadow: var(--shadow); min-width: 0; position: relative; }
 .relationship-node code, .data-card code { display: inline-block; font-size: 11px; color: var(--muted); background: var(--surface-2); padding: 3px 6px; margin-bottom: 12px; }
 .relationship-node p { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 13px; }
@@ -295,9 +296,6 @@ tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transp
 
 @media (max-width: 1023px) {
   .relationship-grid { grid-template-columns: 1fr; }
-  .sailings-only-button { display: grid; }
-  /* The schedule is the last grid child, which collapses the loading skeleton the same way. */
-  .relationship-grid.is-sailings-only > :not(:last-child) { display: none; }
   /* Rotating the whole connector spun a full-width rule into a column taller than the row. */
   .relationship-link { height: 52px; }
   .relationship-link::before { left: 50%; right: auto; top: 0; bottom: 0; width: 1px; height: auto; }

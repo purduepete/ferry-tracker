@@ -125,7 +125,7 @@ test('reopens on the terminal and destination chosen before the reload', async (
   await expect(page.locator('.schedule-node h2')).toHaveText('Bainbridge Island to Seattle');
 });
 
-test('collapses the routes view to the sailings schedule on a phone', async ({ page }) => {
+test('collapses the routes view to the sailings schedule at any width', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   const toggle = page.getByRole('button', { name: 'Sailings only' });
@@ -168,12 +168,17 @@ test('collapses the routes view to the sailings schedule on a phone', async ({ p
   await expect(page.getByRole('button', { name: 'Sailings only' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.terminal-node')).toBeHidden();
 
-  // The toggle is a narrow-screen affordance, so a desktop width shows every card again.
+  // A desktop width keeps the collapse and the toggle; only the phone's Day concession comes back.
   await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(page.locator('.terminal-node')).toBeVisible();
+  await expect(page.locator('.terminal-node')).toBeHidden();
+  await expect(page.locator('.vessel-stack')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Sailings only' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Sailings only' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().height)).toBeGreaterThan(40);
+
+  await page.getByRole('button', { name: 'Sailings only' }).click();
+  await expect(page.locator('.terminal-node')).toBeVisible();
+  await expect(page.locator('.schedule-node')).toBeVisible();
 });
 
 test('drops the tab labels and the route selectors on a phone', async ({ page }) => {
