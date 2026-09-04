@@ -92,7 +92,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .app-header { min-height: var(--navbar-height); padding: var(--safe-area-top) var(--safe-area-right) 0 var(--safe-area-left); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 30; }
 .header-inner { width: min(100%, 1440px); height: 64px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; }
 .brand { display: flex; gap: 10px; align-items: center; color: var(--accent); padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
-.brand-mark { width: 36px; height: 36px; display: grid; place-items: center; background: var(--accent); color: var(--accent-contrast); }
+.brand-mark { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line)); background: color-mix(in srgb, var(--accent-soft) 45%, transparent); color: var(--accent); }
 .brand div { display: flex; flex-direction: column; }
 .brand strong { color: var(--text); font-size: 16px; font-weight: 680; line-height: 1.1; }
 .brand div span { color: var(--muted); font-size: 10px; line-height: 1.4; text-transform: uppercase; }
