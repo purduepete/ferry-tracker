@@ -8,6 +8,9 @@ export interface FilterSelectOption<T extends string | number> {
   icon?: ReactNode;
 }
 
+// How far a finger may drift and still count as a tap rather than a scroll.
+const TAP_SLOP_PX = 10;
+
 interface FilterSelectProps<T extends string | number> {
   ariaLabel: string;
   disabled?: boolean;
@@ -21,6 +24,7 @@ export function FilterSelect<T extends string | number>({ ariaLabel, disabled = 
   const [open, setOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const touchStart = useRef<{ x: number; y: number; index: number } | null>(null);
   const listboxId = useId();
   const selected = options.find((option) => option.value === value);
   const optionId = (index: number) => `${listboxId}-option-${index}`;
@@ -50,6 +54,11 @@ export function FilterSelect<T extends string | number>({ ariaLabel, disabled = 
   // iOS throws the click away when a finger drifts a pixel, so a touch commits on pointerup.
   const selectOnTouch = (event: ReactPointerEvent<HTMLButtonElement>, index: number) => {
     if (event.pointerType === 'mouse') return;
+    const start = touchStart.current;
+    touchStart.current = null;
+    // A finger that travelled was scrolling the list, not picking a row.
+    if (!start || start.index !== index) return;
+    if (Math.abs(event.clientX - start.x) > TAP_SLOP_PX || Math.abs(event.clientY - start.y) > TAP_SLOP_PX) return;
     event.preventDefault();
     select(index);
   };
@@ -111,7 +120,8 @@ export function FilterSelect<T extends string | number>({ ariaLabel, disabled = 
             role="option"
             aria-selected={active}
             className={`filter-select-option${active ? ' selected' : ''}${highlightIndex === index ? ' highlighted' : ''}`}
-            onPointerMove={() => setHighlightIndex(index)}
+            onPointerMove={(event) => { if (event.pointerType === 'mouse') setHighlightIndex(index); }}
+            onPointerDown={(event) => { if (event.pointerType !== 'mouse') touchStart.current = { x: event.clientX, y: event.clientY, index }; }}
             onPointerUp={(event) => selectOnTouch(event, index)}
             onClick={() => select(index)}
           >

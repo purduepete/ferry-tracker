@@ -913,6 +913,19 @@ describe('Favorite routes in the app', () => {
     expect(screen.getByRole('button', { name: 'BI → SEA' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('stays on the Sailings tab when a favorite route is picked there', async () => {
+    mockApp();
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await user.click(screen.getByRole('tab', { name: 'Sailings' }));
+    await user.click(screen.getByRole('button', { name: 'BI → SEA' }));
+
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island');
+  });
+
   it('adds a route, labels it, and stores the pair once', async () => {
     localStorage.setItem('ferry-tracker-favorite-routes', JSON.stringify([]));
     mockApp();
@@ -1443,8 +1456,16 @@ describe('Routeless tabs', () => {
     await user.click(screen.getByRole('tab', { name: 'Settings' }));
     expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
 
+    // Vessels and Terminals list everything, so their band goes at every width, not just on a phone.
+    await user.click(screen.getByRole('tab', { name: 'Vessels' }));
+    expect(document.querySelector('.selection-band')).toHaveClass('is-hidden');
+
+    await user.click(screen.getByRole('tab', { name: 'Terminals' }));
+    expect(document.querySelector('.selection-band')).toHaveClass('is-hidden');
+
     await user.click(screen.getByRole('tab', { name: 'Sailings' }));
     expect(document.querySelector('.selection-band')).not.toHaveClass('is-routeless');
+    expect(document.querySelector('.selection-band')).not.toHaveClass('is-hidden');
   });
 });
 

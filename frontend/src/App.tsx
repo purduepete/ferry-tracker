@@ -273,7 +273,8 @@ export function App() {
     : newRouteDestinationIds[0] ?? null;
   const canAddRoute = newRouteOriginId !== null && effectiveNewRouteDestinationId !== null
     && !favoriteRoutes.some((route) => routeKey(route) === `${newRouteOriginId}-${effectiveNewRouteDestinationId}`);
-  const routelessTab = tab === 'catch' || tab === 'disruption' || tab === 'settings';
+  const bandlessTab = tab === 'vessels' || tab === 'terminals';
+  const routelessTab = bandlessTab || tab === 'catch' || tab === 'disruption' || tab === 'settings';
   const quickPickRoutes = favoriteRoutes.filter((route) => isPublishedRoute(route, mates));
   const associatedVessels = selectedTerminalId === null ? [] : vessels
     .filter((vessel) => vessel.departingTerminalId === selectedTerminalId || vessel.arrivingTerminalId === selectedTerminalId)
@@ -509,6 +510,12 @@ export function App() {
     setTab('routes');
   };
 
+  // The band sits on Routes and Sailings alike, so a chip there changes the route in place.
+  const pickRoute = (terminalId: number, destination: number) => {
+    setSelectedTerminalId(terminalId);
+    setDestinationId(destination);
+  };
+
   const toggleFavoriteTerminal = (terminalId: number) => {
     const nextFavorites = toggleFavoriteTerminalId(favoriteTerminalIds, terminalId);
     setFavoriteTerminalIds(nextFavorites);
@@ -626,7 +633,7 @@ export function App() {
 
       <main>
         {/* Catch follows its own favorite route, Disruption is pinned, and Settings has no route at all. */}
-        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}${routelessTab ? ' is-routeless' : ''}${quickPickRoutes.length === 0 ? ' is-chipless' : ''}`} aria-labelledby="route-heading">
+        <section className={`selection-band${tab === 'routes' && sailingsOnly ? ' is-sailings-only' : ''}${routelessTab ? ' is-routeless' : ''}${bandlessTab ? ' is-hidden' : ''}${quickPickRoutes.length === 0 ? ' is-chipless' : ''}`} aria-labelledby="route-heading">
           <div className="route-title"><span className="eyebrow">Route explorer</span><h1 id="route-heading">Sailings and vessel positions</h1></div>
           <div className="route-controls">
             <div className="selectors">
@@ -639,7 +646,7 @@ export function App() {
               {quickPickRoutes.map((route) => {
                 const key = routeKey(route);
                 const active = selectedTerminalId === route.originId && effectiveDestinationId === route.destinationId;
-                return <button key={key} type="button" className={`route-chip${active ? ' active' : ''}`} aria-pressed={active} title={routePairName(route, terminals)} onClick={() => openRoute(route.originId, route.destinationId)}>{routeName(route, terminals)}</button>;
+                return <button key={key} type="button" className={`route-chip${active ? ' active' : ''}`} aria-pressed={active} title={routePairName(route, terminals)} onClick={() => pickRoute(route.originId, route.destinationId)}>{routeName(route, terminals)}</button>;
               })}
             </div>}
           </div>
