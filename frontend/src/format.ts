@@ -79,8 +79,11 @@ export const CATCH_DEFAULT_PAD_MINUTES = CATCH_TRAFFIC_MINUTES + CATCH_QUEUE_MIN
 // Nothing is added for the dock turnaround, so a projected delay only ever says the boat cannot
 // sail before it has arrived. Guessing high would push leave-by later and lose someone a ferry.
 export const CATCH_TURNAROUND_MINUTES = 0;
-// Past this, a boat reading late at the dock is more likely a frozen feed than a real delay.
+// Past this an inbound boat is running a LATER slot, not a very late version of this one.
 export const CATCH_STALE_DELAY_MINUTES = 20;
+// How recently the feed must have refreshed a vessel before its at-dock reading is believed.
+// Capture polls well inside a minute, so this only rejects a feed that has genuinely gone quiet.
+export const CATCH_FEED_FRESH_MINUTES = 5;
 // Above dockside GPS jitter, below the first real movement out of the slip.
 export const UNDERWAY_KNOTS = 0.5;
 export const CATCH_MINUTE_CHOICES = [0, 5, 10, 15, 20, 25, 30, 40, 45, 60, 75, 90];
@@ -596,7 +599,16 @@ export interface CatchDeparture {
   departed: boolean;
 }
 
-type CatchVessel = Pick<VesselView, 'id' | 'atDock' | 'speed' | 'leftDock' | 'eta' | 'scheduledDeparture' | 'arrivingTerminalId'>;
+type CatchVessel = Pick<VesselView, 'id' | 'atDock' | 'speed' | 'leftDock' | 'eta' | 'scheduledDeparture' | 'arrivingTerminalId' | 'updatedAt'>;
+
+// A missing timestamp is treated as fresh: the feed publishes one on every real record, so its
+// absence means a fixture or a trimmed payload rather than a boat nobody has heard from.
+function feedIsFresh(vessel: Pick<CatchVessel, 'updatedAt'>, now: number) {
+  if (!vessel.updatedAt) return true;
+  const updatedAt = Date.parse(vessel.updatedAt);
+  if (Number.isNaN(updatedAt)) return true;
+  return now - updatedAt <= CATCH_FEED_FRESH_MINUTES * 60000;
+}
 
 // The recorded actualDeparture only lands once a crossing finishes, so lateness for a sailing you
 // could still make has to come from the live fleet. Two signals, both lower bounds: the assigned
@@ -627,7 +639,9 @@ export function catchDeparture(
 
   if (ownSlot && vessel.atDock === true) {
     const lateBy = Math.floor((now - scheduledAt) / 60000);
-    if (lateBy < LATE_MINUTES || lateBy > CATCH_STALE_DELAY_MINUTES) return onTime;
+    // How late the boat is says nothing about whether the reading is trustworthy. Only a feed that
+    // has stopped refreshing is stale, and a boat really can sit there for half an hour.
+    if (lateBy < LATE_MINUTES || !feedIsFresh(vessel, now)) return onTime;
     return { ...onTime, departsAt: Math.max(scheduledAt, now), delayMinutes: lateBy, delaySource: 'observed' };
   }
 

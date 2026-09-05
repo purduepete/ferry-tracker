@@ -1219,7 +1219,7 @@ describe('Catching a ferry', () => {
   };
   const boat = {
     id: 18, atDock: true, speed: 0, leftDock: null, eta: null,
-    scheduledDeparture: '2026-09-01T18:00:00.000Z', arrivingTerminalId: null,
+    scheduledDeparture: '2026-09-01T18:00:00.000Z', arrivingTerminalId: null, updatedAt: null,
   };
 
   it('colors the countdown at each threshold', () => {
@@ -1286,8 +1286,20 @@ describe('Catching a ferry', () => {
     });
     // Under two minutes is inside the reporting noise, so nothing is claimed.
     expect(catchWindows([sailing], Date.parse('2026-09-01T18:01:00.000Z'), 30, [boat])).toEqual([]);
-    // Past the staleness cap the feed is likelier frozen than the boat that late.
-    expect(catchWindows([sailing], Date.parse('2026-09-01T18:21:00.000Z'), 30, [boat])).toEqual([]);
+    // A boat really can sit there for half an hour, and how late it is says nothing about whether
+    // the reading can be trusted. Only a feed that stopped refreshing is stale.
+    expect(catchWindows([sailing], Date.parse('2026-09-01T18:35:00.000Z'), 30, [boat])[0])
+      .toMatchObject({ delayMinutes: 35, delaySource: 'observed' });
+  });
+
+  it('claims nothing off a vessel feed that has gone quiet', () => {
+    const late = Date.parse('2026-09-01T18:35:00.000Z');
+    expect(catchWindows([sailing], late, 30, [{ ...boat, updatedAt: '2026-09-01T18:29:00.000Z' }])).toEqual([]);
+    expect(catchWindows([sailing], late, 30, [{ ...boat, updatedAt: '2026-09-01T18:30:00.000Z' }])[0])
+      .toMatchObject({ delayMinutes: 35, delaySource: 'observed' });
+    // An unparseable or absent stamp is a fixture, not a boat nobody has heard from.
+    expect(catchWindows([sailing], late, 30, [{ ...boat, updatedAt: 'not a date' }])[0])
+      .toMatchObject({ delayMinutes: 35 });
   });
 
   it('will not retire a sailing on a flapping AtDock alone', () => {
@@ -1395,7 +1407,7 @@ describe('Catching a ferry', () => {
 
   it('flags a boat still sitting at the dock past its departure', async () => {
     const overdueAt = new Date(Date.now() - 6 * 60000 - 20000).toISOString();
-    const tiedUp = [{ ...vessels[0], atDock: true, speed: 0, arrivingTerminalId: 7, scheduledDeparture: overdueAt }];
+    const tiedUp = [{ ...vessels[0], atDock: true, speed: 0, arrivingTerminalId: 7, scheduledDeparture: overdueAt, updatedAt: new Date().toISOString() }];
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url.includes('/api/terminals')) return json(terminals);
