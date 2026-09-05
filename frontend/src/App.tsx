@@ -2,7 +2,7 @@ import { isValidElement, useEffect, useRef, useState, type CSSProperties, type K
 import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, Clock3, ExternalLink, GripVertical, History, ListFilter, MapPin, Plus, RefreshCw, RotateCcw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshTime, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingTimeMinutes, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CatchOverride, type FavoriteRoute, type FerrySettings } from './format';
+import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshTime, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingTimeMinutes, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CatchOverride, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -125,6 +125,15 @@ function CapacityMeter({ sailing }: { sailing: SailingView }) {
   // A wide-open sailing carries no decision value, so only a partial boat gets a pill.
   if (percent === 100) return null;
   return <CapacityPill openPercent={percent} total={sailing.maxSpaceCount} />;
+}
+
+// The pill is the whole statement, so the word "late" is never printed beside it.
+function CatchDelay({ window }: { window: CatchWindow }) {
+  if (window.delayMinutes === null) return null;
+  const title = window.delaySource === 'observed'
+    ? `Still at the dock ${window.delayMinutes} minutes after the scheduled departure`
+    : `Not expected to leave before ${clockTime(window.expectedDepartureAt ?? window.departureAt)}, ${window.delayMinutes} minutes late`;
+  return <span className="delay-pill" title={title}>{window.delayMinutes} min</span>;
 }
 
 function Field({ label, value }: { label: string; value: unknown }) {
@@ -403,7 +412,7 @@ export function App() {
   const waves = disruptionWaves(vessels, countdownNow, settings, inboundResponse?.data ?? []);
   const [nextWave, ...laterWaves] = waves;
   const nextLoad = nextWave ? disruptionLoad(inboundResponse?.data ?? [], nextWave.vesselId, nextWave.landingAt) : null;
-  const catches = catchWindows(catchResponse?.data ?? [], countdownNow, timing.padMinutes);
+  const catches = catchWindows(catchResponse?.data ?? [], countdownNow, timing.padMinutes, vessels);
   const [nextCatch, ...laterCatches] = catches;
   const minuteOptions = CATCH_MINUTE_CHOICES.map((minutes) => ({ value: minutes, label: `${minutes} min` }));
 
@@ -749,14 +758,14 @@ export function App() {
               : nextCatch ? <>
                 <div className={`countdown-headline is-${catchWindowLevel(nextCatch, settings)}`}>
                   <strong className="countdown-value">{`${nextCatch.minutesAway} min`}</strong>
-                  <span className="countdown-at">Leave by {clockTime(nextCatch.leaveByAt)} for the {clockTime(nextCatch.departureAt)} sailing</span>
+                  <span className="countdown-at">Leave by {clockTime(nextCatch.leaveByAt)} for the {clockTime(nextCatch.departureAt)} sailing<CatchDelay window={nextCatch} /></span>
                 </div>
                 <dl className="countdown-detail">
-                  <Field label="Departure" value={fieldTime(nextCatch.departureAt)} />
+                  <Field label="Departure" value={<>{fieldTime(nextCatch.departureAt)}<CatchDelay window={nextCatch} /></>} />
                   <Field label="Vessel" value={nextCatch.vesselName && <VesselLink vesselId={nextCatch.vesselId} vesselName={nextCatch.vesselName} vessels={vessels} onOpen={openRoute} />} />
                   <Field label="Space" value={nextCatch.spaceLabel && <>{nextCatch.spaceLabel} <CapacityPill openPercent={nextCatch.spacePercent} total={nextCatch.spaceTotal} /></>} />
                 </dl>
-                {laterCatches.length > 0 && <div className="countdown-later"><span className="node-type">Then</span><ol className="sailing-list">{laterCatches.slice(0, 4).map((window) => <li key={window.departureAt}><strong>{clockTime(window.departureAt)}<span className={`capacity-pill ${catchPillClass(catchWindowLevel(window, settings))}`}>{`${window.minutesAway} min`}</span></strong><span>Leave by {clockTime(window.leaveByAt)}{window.spaceLabel ? ` · ${window.spaceLabel} ` : ''}<CapacityPill openPercent={window.spacePercent} total={window.spaceTotal} /></span></li>)}</ol></div>}
+                {laterCatches.length > 0 && <div className="countdown-later"><span className="node-type">Then</span><ol className="sailing-list">{laterCatches.slice(0, 4).map((window) => <li key={window.departureAt}><strong>{clockTime(window.departureAt)}<CatchDelay window={window} /><span className={`capacity-pill ${catchPillClass(catchWindowLevel(window, settings))}`}>{`${window.minutesAway} min`}</span></strong><span>Leave by {clockTime(window.leaveByAt)}{window.spaceLabel ? ` · ${window.spaceLabel} ` : ''}<CapacityPill openPercent={window.spacePercent} total={window.spaceTotal} /></span></li>)}</ol></div>}
               </> : <div className="empty">No sailing left today that you can still make.</div>}
           </div>}
 

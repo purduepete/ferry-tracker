@@ -76,6 +76,13 @@ export const DISRUPTION_DURATION_MINUTES = 15;
 export const CATCH_TRAFFIC_MINUTES = 15;
 export const CATCH_QUEUE_MINUTES = 15;
 export const CATCH_DEFAULT_PAD_MINUTES = CATCH_TRAFFIC_MINUTES + CATCH_QUEUE_MINUTES;
+// Nothing is added for the dock turnaround, so a projected delay only ever says the boat cannot
+// sail before it has arrived. Guessing high would push leave-by later and lose someone a ferry.
+export const CATCH_TURNAROUND_MINUTES = 0;
+// Past this, a boat reading late at the dock is more likely a frozen feed than a real delay.
+export const CATCH_STALE_DELAY_MINUTES = 20;
+// Above dockside GPS jitter, below the first real movement out of the slip.
+export const UNDERWAY_KNOTS = 0.5;
 export const CATCH_MINUTE_CHOICES = [0, 5, 10, 15, 20, 25, 30, 40, 45, 60, 75, 90];
 export const THRESHOLD_MINUTE_CHOICES = [0, 2, 3, 5, 7, 10, 12, 15, 20, 25, 30, 45, 60];
 export const SPACE_SOON_PERCENT_CHOICES = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
@@ -538,6 +545,9 @@ export function compactVehicleSpace(sailing: Pick<SailingView, 'spaceAvailable' 
 
 export interface CatchWindow {
   departureAt: string;
+  expectedDepartureAt: string | null;
+  delayMinutes: number | null;
+  delaySource: CatchDelaySource;
   leaveByAt: string;
   minutesAway: number;
   vesselId: number | null;
@@ -576,28 +586,99 @@ export function catchPillClass(level: 'clear' | 'soon' | 'imminent') {
 // How far past leave-by a sailing still counts as catchable.
 export const CATCH_LATE_LIMIT_MINUTES = 15;
 
+export type CatchDelaySource = 'observed' | 'projected' | null;
+
+export interface CatchDeparture {
+  scheduledAt: number;
+  departsAt: number;
+  delayMinutes: number | null;
+  delaySource: CatchDelaySource;
+  departed: boolean;
+}
+
+type CatchVessel = Pick<VesselView, 'id' | 'atDock' | 'speed' | 'leftDock' | 'eta' | 'scheduledDeparture' | 'arrivingTerminalId'>;
+
+// The recorded actualDeparture only lands once a crossing finishes, so lateness for a sailing you
+// could still make has to come from the live fleet. Two signals, both lower bounds: the assigned
+// boat is still tied up past its own slot, or it is still crossing the other way and cannot sail
+// out of a terminal it has not reached.
+export function catchDeparture(
+  sailing: Pick<SailingView, 'departingTime' | 'departingTerminalId' | 'vesselId'>,
+  vessels: CatchVessel[],
+  now: number,
+): CatchDeparture | null {
+  if (sailing.departingTime === null) return null;
+  const scheduledAt = Date.parse(sailing.departingTime);
+  if (Number.isNaN(scheduledAt)) return null;
+  const onTime: CatchDeparture = { scheduledAt, departsAt: scheduledAt, delayMinutes: null, delaySource: null, departed: false };
+
+  const vessel = sailing.vesselId === null ? undefined : vessels.find((candidate) => candidate.id === sailing.vesselId);
+  if (vessel === undefined) return onTime;
+  const ownSlot = vessel.scheduledDeparture === sailing.departingTime;
+
+  if (ownSlot && vessel.atDock === false) {
+    // AtDock flaps for a minute or two either side of a real departure, so it never retires a
+    // sailing on its own. A false "still here" costs a wasted glance; a false "gone" hides the
+    // late boat this whole feature exists to show.
+    const moving = vessel.speed !== null && vessel.speed > UNDERWAY_KNOTS;
+    const pulledOut = vessel.speed === null && vessel.leftDock !== null && Date.parse(vessel.leftDock) >= scheduledAt;
+    if (moving || pulledOut) return { ...onTime, departed: true };
+  }
+
+  if (ownSlot && vessel.atDock === true) {
+    const lateBy = Math.floor((now - scheduledAt) / 60000);
+    if (lateBy < LATE_MINUTES || lateBy > CATCH_STALE_DELAY_MINUTES) return onTime;
+    return { ...onTime, departsAt: Math.max(scheduledAt, now), delayMinutes: lateBy, delaySource: 'observed' };
+  }
+
+  if (vessel.atDock === false && vessel.arrivingTerminalId !== null && vessel.arrivingTerminalId === sailing.departingTerminalId) {
+    const eta = vesselEta(vessel) ?? vessel.eta;
+    if (!eta) return onTime;
+    const arrivesAt = Date.parse(eta);
+    if (Number.isNaN(arrivesAt)) return onTime;
+    const earliest = Math.max(arrivesAt, now) + CATCH_TURNAROUND_MINUTES * 60000;
+    const delayMinutes = Math.floor((earliest - scheduledAt) / 60000);
+    // Past the cap the boat is running a LATER slot, not a very late version of this one. WSDOT
+    // reuses one vesselId across the whole day, so without this an inbound boat projects onto
+    // every earlier slot it was ever booked for and keeps hours-dead sailings on the card.
+    if (delayMinutes < LATE_MINUTES || delayMinutes > CATCH_STALE_DELAY_MINUTES) return onTime;
+    return { ...onTime, departsAt: earliest, delayMinutes, delaySource: 'projected' };
+  }
+
+  return onTime;
+}
+
 // A boat still at the dock is worth showing once leave-by has passed, so minutesAway can run
 // negative, but only until it is 15 minutes gone or the deck is full.
 export function catchWindows(
-  sailings: Array<Pick<SailingView, 'departingTime' | 'actualDeparture' | 'vesselId' | 'vesselName' | 'isCancelled' | 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount'>>,
+  sailings: Array<Pick<SailingView, 'departingTime' | 'departingTerminalId' | 'vesselId' | 'vesselName' | 'isCancelled' | 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount'>>,
   now: number,
   padMinutes: number = CATCH_DEFAULT_PAD_MINUTES,
+  vessels: CatchVessel[] = [],
 ): CatchWindow[] {
+  const padMs = padMinutes * 60000;
   return sailings
     .flatMap((sailing) => {
-      const departure = sailing.actualDeparture ?? sailing.departingTime;
-      if (!departure || sailing.isCancelled) return [];
-      const departsAt = Date.parse(departure);
-      if (Number.isNaN(departsAt)) return [];
-      if (departsAt <= now) return [];
+      if (sailing.isCancelled) return [];
+      const departure = catchDeparture(sailing, vessels, now);
+      if (departure === null || departure.departed) return [];
       if (openSpaceCount(sailing) === 0) return [];
-      const leaveBy = departsAt - padMinutes * 60000;
-      const minutesAway = Math.floor((leaveBy - now) / 60000);
-      if (minutesAway < -CATCH_LATE_LIMIT_MINUTES) return [];
+      // A boat verifiably still at the dock is still boardable, so only the vessel feed or the
+      // staleness cap retires it. Everything else answers to the clock.
+      if (departure.delaySource !== 'observed') {
+        if (departure.departsAt <= now) return [];
+        if (Math.floor((departure.departsAt - padMs - now) / 60000) < -CATCH_LATE_LIMIT_MINUTES) return [];
+      }
+      // Leave-by stays on the timetable. A delay is never certain enough to buy anyone time, and
+      // guessing long is the one error that makes you miss the boat.
+      const leaveBy = departure.scheduledAt - padMs;
       return [{
-        departureAt: new Date(departsAt).toISOString(),
+        departureAt: new Date(departure.scheduledAt).toISOString(),
+        expectedDepartureAt: departure.delaySource === 'projected' ? new Date(departure.departsAt).toISOString() : null,
+        delayMinutes: departure.delayMinutes,
+        delaySource: departure.delaySource,
         leaveByAt: new Date(leaveBy).toISOString(),
-        minutesAway,
+        minutesAway: Math.floor((leaveBy - now) / 60000),
         vesselId: sailing.vesselId,
         vesselName: sailing.vesselName ?? null,
         spaceLabel: sailing.spaceAvailable ? compactVehicleSpace(sailing) : null,

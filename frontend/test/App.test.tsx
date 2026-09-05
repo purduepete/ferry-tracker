@@ -1214,8 +1214,12 @@ describe('Bainbridge disruption', () => {
 describe('Catching a ferry', () => {
   const now = Date.parse('2026-09-01T17:00:00.000Z');
   const sailing = {
-    departingTime: '2026-09-01T18:00:00.000Z', actualDeparture: null, vesselName: 'Tacoma', isCancelled: false,
+    departingTime: '2026-09-01T18:00:00.000Z', departingTerminalId: 3, vesselId: 18, vesselName: 'Tacoma', isCancelled: false,
     spaceAvailable: true, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202,
+  };
+  const boat = {
+    id: 18, atDock: true, speed: 0, leftDock: null, eta: null,
+    scheduledDeparture: '2026-09-01T18:00:00.000Z', arrivingTerminalId: null,
   };
 
   it('colors the countdown at each threshold', () => {
@@ -1239,8 +1243,12 @@ describe('Catching a ferry', () => {
     expect(CATCH_DEFAULT_PAD_MINUTES).toBe(30);
     expect(catchWindows([sailing], now)).toEqual([{
       departureAt: '2026-09-01T18:00:00.000Z',
+      expectedDepartureAt: null,
+      delayMinutes: null,
+      delaySource: null,
       leaveByAt: '2026-09-01T17:30:00.000Z',
       minutesAway: 30,
+      vesselId: 18,
       vesselName: 'Tacoma',
       spaceLabel: '176 drive-up / 202',
       spacePercent: 87,
@@ -1267,9 +1275,59 @@ describe('Catching a ferry', () => {
     expect(catchWindows([{ ...sailing, driveUpSpaceCount: 1, reservableSpaceCount: null }], now)).toHaveLength(1);
   });
 
-  it('credits a boat the feed says is running late', () => {
-    expect(catchWindows([{ ...sailing, actualDeparture: '2026-09-01T18:09:00.000Z' }], now)[0])
-      .toMatchObject({ leaveByAt: '2026-09-01T17:39:00.000Z', minutesAway: 39 });
+  it('keeps a boat the feed still shows tied up past its own slot', () => {
+    const late = Date.parse('2026-09-01T18:06:00.000Z');
+    expect(catchWindows([sailing], late, 30, [boat])[0]).toMatchObject({
+      delayMinutes: 6,
+      delaySource: 'observed',
+      expectedDepartureAt: null,
+      leaveByAt: '2026-09-01T17:30:00.000Z',
+      minutesAway: -36,
+    });
+    // Under two minutes is inside the reporting noise, so nothing is claimed.
+    expect(catchWindows([sailing], Date.parse('2026-09-01T18:01:00.000Z'), 30, [boat])).toEqual([]);
+    // Past the staleness cap the feed is likelier frozen than the boat that late.
+    expect(catchWindows([sailing], Date.parse('2026-09-01T18:21:00.000Z'), 30, [boat])).toEqual([]);
+  });
+
+  it('will not retire a sailing on a flapping AtDock alone', () => {
+    const flap = { ...boat, atDock: false, speed: 0.2 };
+    expect(catchWindows([sailing], now, 30, [flap])).toHaveLength(1);
+    expect(catchWindows([sailing], now, 30, [{ ...flap, speed: null }])).toHaveLength(1);
+    expect(catchWindows([sailing], now, 30, [{ ...flap, speed: null, leftDock: '2026-09-01T17:59:00.000Z' }])).toHaveLength(1);
+  });
+
+  it('retires a sailing once its boat is confirmed under way', () => {
+    expect(catchWindows([sailing], now, 30, [{ ...boat, atDock: false, speed: 15.2 }])).toEqual([]);
+    expect(catchWindows([sailing], now, 30, [{ ...boat, atDock: false, speed: null, leftDock: '2026-09-01T18:00:30.000Z' }])).toEqual([]);
+  });
+
+  it('reads a delay off the boat that is still crossing the other way', () => {
+    const inbound = { ...boat, atDock: false, speed: 14, scheduledDeparture: '2026-09-01T17:20:00.000Z', arrivingTerminalId: 3, eta: '2026-09-01T18:12:00.000Z' };
+    expect(catchWindows([sailing], now, 30, [inbound])[0]).toMatchObject({
+      delayMinutes: 12,
+      delaySource: 'projected',
+      expectedDepartureAt: '2026-09-01T18:12:00.000Z',
+      // A guessed delay never buys time, so leave-by stays on the timetable.
+      leaveByAt: '2026-09-01T17:30:00.000Z',
+      minutesAway: 30,
+    });
+    // Its own late departure is added back on to WSDOT's estimate.
+    expect(catchWindows([sailing], now, 30, [{ ...inbound, leftDock: '2026-09-01T17:26:00.000Z', eta: '2026-09-01T18:05:00.000Z' }])[0])
+      .toMatchObject({ delayMinutes: 11, expectedDepartureAt: '2026-09-01T18:11:00.000Z' });
+    expect(catchWindows([sailing], now, 30, [{ ...inbound, eta: '2026-09-01T18:01:00.000Z' }])[0])
+      .toMatchObject({ delayMinutes: null, delaySource: null });
+    expect(catchWindows([sailing], now, 30, [{ ...inbound, arrivingTerminalId: null }])[0])
+      .toMatchObject({ delayMinutes: null });
+    expect(catchWindows([sailing], now, 30, [{ ...inbound, eta: 'not a date' }])[0])
+      .toMatchObject({ delayMinutes: null });
+    // Past the cap the boat is running a LATER slot, so it lends this one nothing...
+    expect(catchWindows([sailing], now, 30, [{ ...inbound, eta: '2026-09-01T18:20:00.000Z' }])[0])
+      .toMatchObject({ delayMinutes: 20, delaySource: 'projected' });
+    expect(catchWindows([sailing], now, 30, [{ ...inbound, eta: '2026-09-01T18:21:00.000Z' }])[0])
+      .toMatchObject({ delayMinutes: null, delaySource: null });
+    // ...and so cannot keep an hours-dead slot alive on the card.
+    expect(catchWindows([sailing], Date.parse('2026-09-01T20:00:00.000Z'), 30, [{ ...inbound, eta: '2026-09-01T20:30:00.000Z' }])).toEqual([]);
   });
 
   it('leaves the space label off a boat with no published count', () => {
@@ -1333,6 +1391,40 @@ describe('Catching a ferry', () => {
     expect(document.querySelector('.countdown-value')).toHaveTextContent('5 min');
     expect(document.querySelector('.countdown-headline')).toHaveClass('is-soon');
     expect(JSON.parse(localStorage.getItem('ferry-tracker-settings') ?? '{}').catchTrafficMinutes).toBe(30);
+  });
+
+  it('flags a boat still sitting at the dock past its departure', async () => {
+    const overdueAt = new Date(Date.now() - 6 * 60000 - 20000).toISOString();
+    const tiedUp = [{ ...vessels[0], atDock: true, speed: 0, arrivingTerminalId: 7, scheduledDeparture: overdueAt }];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(tiedUp);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      if (url.includes('departingTerminalId=3&arrivingTerminalId=7')) {
+        return json([{
+          vesselId: 1, vesselName: 'Tacoma', departingTime: overdueAt, arrivingTime: null,
+          departingTerminalId: 3, arrivingTerminalId: 7, isCancelled: false, driveUpSpaceCount: 176,
+          reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, actualDeparture: null,
+          departureDelayMinutes: null, raw: {},
+        }]);
+      }
+      return json([]);
+    });
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Catch' }));
+
+    const pill = await waitFor(() => {
+      const found = document.querySelector('.countdown-at .delay-pill');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(pill).toHaveTextContent('6 min');
+    expect(pill).toHaveAttribute('title', 'Still at the dock 6 minutes after the scheduled departure');
+    expect(document.querySelectorAll('.countdown-detail .delay-pill')).toHaveLength(1);
   });
 
   it('says so when nothing is catchable', async () => {
