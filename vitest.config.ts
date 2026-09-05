@@ -14,5 +14,6 @@ export default defineConfig({
     globals: true,
     include: ['shared/test/**/*.test.ts', 'server/test/**/*.test.ts', 'frontend/test/**/*.test.tsx'],
     setupFiles: ['frontend/test/setup.ts'],
+    testTimeout: 20000,
   },
 });

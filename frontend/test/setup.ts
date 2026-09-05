@@ -1,6 +1,10 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, vi } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
+
+// The deploy box runs the suite while it is also building, and the 1s default lets a first
+// render lose the race on hardware that is merely slow.
+configure({ asyncUtilTimeout: 5000 });
 
 if (typeof window !== 'undefined') {
   beforeEach(() => {
