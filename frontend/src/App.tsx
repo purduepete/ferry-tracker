@@ -136,6 +136,29 @@ function CatchDelay({ window }: { window: CatchWindow }) {
   return <span className="delay-pill" title={title}>{window.delayMinutes} min</span>;
 }
 
+function CatchTimes({ window, settings, compact = false }: { window: CatchWindow; settings: FerrySettings; compact?: boolean }) {
+  const estimatedLeaveByAt = window.estimatedLeaveByAt;
+  const hasEstimate = window.estimatedMinutesAway !== null && estimatedLeaveByAt !== null;
+  const scheduledLevel = catchWindowLevel({ minutesAway: window.minutesAway, spacePercent: window.spacePercent }, settings);
+  const estimateTitle = window.delaySource === 'observed'
+    ? 'Based on the delay observed so far; departure could be now'
+    : 'Based on the inbound vessel ETA; departure may change';
+  return <div className={`catch-times${compact ? ' is-compact' : ''}${hasEstimate ? ' has-estimate' : ''}`}>
+    <div className={`catch-time is-${scheduledLevel}${window.dimScheduled ? ' is-muted' : ''}`} role="group" aria-label="Scheduled leave by">
+      {hasEstimate && <span className="catch-time-label">Scheduled</span>}
+      <strong className="countdown-value">{window.minutesAway} min</strong>
+      <span className="catch-leave-at">Leave by {clockTime(window.leaveByAt)}</span>
+      {!compact && <span className="countdown-at">{clockTime(window.departureAt)} sailing</span>}
+    </div>
+    {hasEstimate && <div className={`catch-time is-${catchWindowLevel(window, settings)}`} role="group" aria-label="Estimated leave by" title={estimateTitle}>
+      <span className="catch-time-label">Estimated{window.delaySource === 'observed' ? ' (delay so far)' : ''}</span>
+      <strong className="countdown-value">{window.estimatedMinutesAway} min</strong>
+      <span className="catch-leave-at">Leave by {clockTime(estimatedLeaveByAt)}</span>
+      {window.expectedDepartureAt && <span className="countdown-at">{clockTime(window.expectedDepartureAt)} sailing<CatchDelay window={window} /></span>}
+    </div>}
+  </div>;
+}
+
 function Field({ label, value }: { label: string; value: unknown }) {
   const empty = value === null || value === undefined || value === '';
   return <div className="field"><dt>{label}</dt><dd>{empty ? '—' : isValidElement(value) ? value : String(value)}</dd></div>;
@@ -247,6 +270,7 @@ export function App() {
         if (requestId !== overviewRequestId.current) return;
         setTerminalResponse(terminals);
         setVesselResponse(vessels);
+        setCountdownNow(Date.now());
         setMateResponse(mates);
         // A restored terminal is only kept while WSDOT still publishes it.
         setSelectedTerminalId((current) => (current !== null && terminals.data.some((terminal) => terminal.id === current) ? current : terminals.data[0]?.id ?? null));
@@ -412,7 +436,7 @@ export function App() {
   const waves = disruptionWaves(vessels, countdownNow, settings, inboundResponse?.data ?? []);
   const [nextWave, ...laterWaves] = waves;
   const nextLoad = nextWave ? disruptionLoad(inboundResponse?.data ?? [], nextWave.vesselId, nextWave.landingAt) : null;
-  const catches = catchWindows(catchResponse?.data ?? [], countdownNow, timing.padMinutes, vessels);
+  const catches = catchWindows(catchResponse?.data ?? [], countdownNow, timing, vessels);
   const [nextCatch, ...laterCatches] = catches;
   const minuteOptions = CATCH_MINUTE_CHOICES.map((minutes) => ({ value: minutes, label: `${minutes} min` }));
 
@@ -757,15 +781,14 @@ export function App() {
               : catchError ? <div className="empty">{catchError}</div>
               : nextCatch ? <>
                 <div className={`countdown-headline is-${catchWindowLevel(nextCatch, settings)}`}>
-                  <strong className="countdown-value">{`${nextCatch.minutesAway} min`}</strong>
-                  <span className="countdown-at">Leave by {clockTime(nextCatch.leaveByAt)} for the {clockTime(nextCatch.departureAt)} sailing<CatchDelay window={nextCatch} /></span>
+                  <CatchTimes window={nextCatch} settings={settings} />
                 </div>
                 <dl className="countdown-detail">
-                  <Field label="Departure" value={<>{fieldTime(nextCatch.departureAt)}<CatchDelay window={nextCatch} /></>} />
+                  <Field label="Departure" value={<>{nextCatch.expectedDepartureAt && 'Scheduled '}{fieldTime(nextCatch.departureAt)}<CatchDelay window={nextCatch} />{nextCatch.expectedDepartureAt && <span className="catch-departure-estimate" title={nextCatch.delaySource === 'observed' ? 'Delay observed so far; not a future departure forecast' : 'Earliest departure from the inbound vessel ETA'}>Estimated {fieldTime(nextCatch.expectedDepartureAt)}{nextCatch.delaySource === 'observed' ? ' (delay so far)' : ''}</span>}</>} />
                   <Field label="Vessel" value={nextCatch.vesselName && <VesselLink vesselId={nextCatch.vesselId} vesselName={nextCatch.vesselName} vessels={vessels} onOpen={openRoute} />} />
                   <Field label="Space" value={nextCatch.spaceLabel && <>{nextCatch.spaceLabel} <CapacityPill openPercent={nextCatch.spacePercent} total={nextCatch.spaceTotal} /></>} />
                 </dl>
-                {laterCatches.length > 0 && <div className="countdown-later"><span className="node-type">Then</span><ol className="sailing-list">{laterCatches.slice(0, 4).map((window) => <li key={window.departureAt}><strong>{clockTime(window.departureAt)}<CatchDelay window={window} /><span className={`capacity-pill ${catchPillClass(catchWindowLevel(window, settings))}`}>{`${window.minutesAway} min`}</span></strong><span>Leave by {clockTime(window.leaveByAt)}{window.spaceLabel ? ` · ${window.spaceLabel} ` : ''}<CapacityPill openPercent={window.spacePercent} total={window.spaceTotal} /></span></li>)}</ol></div>}
+                {laterCatches.length > 0 && <div className="countdown-later"><span className="node-type">Then</span><ol className="sailing-list">{laterCatches.slice(0, 4).map((window) => <li key={window.departureAt}><strong>{clockTime(window.departureAt)}<CatchDelay window={window} /></strong><CatchTimes window={window} settings={settings} compact /><span>{window.spaceLabel ? `${window.spaceLabel} ` : ''}<CapacityPill openPercent={window.spacePercent} total={window.spaceTotal} /></span></li>)}</ol></div>}
               </> : <div className="empty">No sailing left today that you can still make.</div>}
           </div>}
 

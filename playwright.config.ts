@@ -1,10 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const port = process.env.E2E_PORT ?? '8787';
+
 export default defineConfig({
   testDir: './e2e',
   outputDir: './test-results',
   use: {
-    baseURL: 'http://127.0.0.1:8787',
+    baseURL: `http://127.0.0.1:${port}`,
     trace: 'retain-on-failure',
   },
   projects: [
@@ -13,11 +15,13 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm start',
-    url: 'http://127.0.0.1:8787/api/health',
+    url: `http://127.0.0.1:${port}/api/health`,
     reuseExistingServer: false,
     env: {
       ...process.env,
+      PORT: port,
       DATA_SOURCE: 'fixture',
+      CAPTURE_ENABLED: 'false',
       FIXTURE_NOW: '2026-09-01T18:30:00.000Z',
     },
   },

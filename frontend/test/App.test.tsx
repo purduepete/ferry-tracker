@@ -1043,6 +1043,11 @@ describe('Bainbridge disruption', () => {
     expect(started).toMatchObject({ active: true, minutesAway: -6, minutesLeft: 9 });
   });
 
+  it('counts whole minutes from the clock minute, not the current second', () => {
+    expect(disruptionWaves([inbound], Date.parse('2026-09-01T17:00:43.000Z'))[0])
+      .toMatchObject({ minutesAway: 30, minutesLeft: 45 });
+  });
+
   it('drops the wave once the traffic has cleared', () => {
     expect(disruptionWaves([inbound], Date.parse('2026-09-01T17:45:00.000Z'))).toEqual([]);
   });
@@ -1128,7 +1133,7 @@ describe('Bainbridge disruption', () => {
   it('shows the countdown and the boats behind it', async () => {
     // Relative to the real clock so the countdown does not need fake timers, which would
     // deadlock userEvent.
-    const soon = new Date(Date.now() + 20.5 * 60000).toISOString();
+    const soon = new Date(Date.now() + 20 * 60000).toISOString();
     const later = { ...vessels[0], id: 2, name: 'Wenatchee', eta: new Date(Date.now() + 80 * 60000).toISOString(), leftDock: null };
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
@@ -1151,7 +1156,7 @@ describe('Bainbridge disruption', () => {
   });
 
   it('shows how full the arriving boat was', async () => {
-    const soon = new Date(Date.now() + 20.5 * 60000).toISOString();
+    const soon = new Date(Date.now() + 20 * 60000).toISOString();
     const sailed = new Date(Date.now() - 15 * 60000).toISOString();
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
@@ -1175,7 +1180,7 @@ describe('Bainbridge disruption', () => {
   });
 
   it('leaves the capacity out when the inbound leg has no counts', async () => {
-    const soon = new Date(Date.now() + 20.5 * 60000).toISOString();
+    const soon = new Date(Date.now() + 20 * 60000).toISOString();
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url.includes('/api/terminals')) return json(terminals);
@@ -1248,6 +1253,9 @@ describe('Catching a ferry', () => {
       delaySource: null,
       leaveByAt: '2026-09-01T17:30:00.000Z',
       minutesAway: 30,
+      estimatedLeaveByAt: null,
+      estimatedMinutesAway: null,
+      dimScheduled: false,
       vesselId: 18,
       vesselName: 'Tacoma',
       spaceLabel: '176 drive-up / 202',
@@ -1257,9 +1265,14 @@ describe('Catching a ferry', () => {
   });
 
   it('honors a chosen pad', () => {
-    expect(catchWindows([sailing], now, 45)[0]).toMatchObject({ leaveByAt: '2026-09-01T17:15:00.000Z', minutesAway: 15 });
-    expect(catchWindows([sailing], now, 0)[0]).toMatchObject({ leaveByAt: '2026-09-01T18:00:00.000Z', minutesAway: 60 });
-    expect(catchWindows([sailing], now, 75)[0]).toMatchObject({ leaveByAt: '2026-09-01T16:45:00.000Z', minutesAway: -15 });
+    expect(catchWindows([sailing], now, { trafficMinutes: 30, queueMinutes: 15 })[0]).toMatchObject({ leaveByAt: '2026-09-01T17:15:00.000Z', minutesAway: 15 });
+    expect(catchWindows([sailing], now, { trafficMinutes: 0, queueMinutes: 0 })[0]).toMatchObject({ leaveByAt: '2026-09-01T18:00:00.000Z', minutesAway: 60 });
+    expect(catchWindows([sailing], now, { trafficMinutes: 45, queueMinutes: 30 })[0]).toMatchObject({ leaveByAt: '2026-09-01T16:45:00.000Z', minutesAway: -15 });
+  });
+
+  it('counts whole minutes from the clock minute, not the current second', () => {
+    expect(catchWindows([sailing], Date.parse('2026-09-01T17:00:43.000Z'))[0]).toMatchObject({ minutesAway: 30 });
+    expect(catchWindows([sailing], Date.parse('2026-09-01T17:29:59.000Z'))[0]).toMatchObject({ minutesAway: 1 });
   });
 
   it('keeps a boat that has not sailed, and drops cancelled ones', () => {
@@ -1275,71 +1288,76 @@ describe('Catching a ferry', () => {
     expect(catchWindows([{ ...sailing, driveUpSpaceCount: 1, reservableSpaceCount: null }], now)).toHaveLength(1);
   });
 
-  it('keeps a boat the feed still shows tied up past its own slot', () => {
+  it('keeps a delayed docked boat only when no driving time remains', () => {
     const late = Date.parse('2026-09-01T18:06:00.000Z');
-    expect(catchWindows([sailing], late, 30, [boat])[0]).toMatchObject({
+    const atTerminal = { trafficMinutes: 0, queueMinutes: 15 };
+    expect(catchWindows([sailing], late, undefined, [boat])).toEqual([]);
+    expect(catchWindows([sailing], late, atTerminal, [boat])[0]).toMatchObject({
       delayMinutes: 6,
       delaySource: 'observed',
-      expectedDepartureAt: null,
-      leaveByAt: '2026-09-01T17:30:00.000Z',
-      minutesAway: -36,
+      expectedDepartureAt: '2026-09-01T18:06:00.000Z',
+      leaveByAt: '2026-09-01T17:45:00.000Z',
+      minutesAway: -21,
+      estimatedMinutesAway: -15,
     });
     // Under two minutes is inside the reporting noise, so nothing is claimed.
-    expect(catchWindows([sailing], Date.parse('2026-09-01T18:01:00.000Z'), 30, [boat])).toEqual([]);
+    expect(catchWindows([sailing], Date.parse('2026-09-01T18:01:00.000Z'), atTerminal, [boat])).toEqual([]);
     // A boat really can sit there for half an hour, and how late it is says nothing about whether
     // the reading can be trusted. Only a feed that stopped refreshing is stale.
-    expect(catchWindows([sailing], Date.parse('2026-09-01T18:35:00.000Z'), 30, [boat])[0])
+    expect(catchWindows([sailing], Date.parse('2026-09-01T18:35:00.000Z'), atTerminal, [boat])[0])
       .toMatchObject({ delayMinutes: 35, delaySource: 'observed' });
   });
 
   it('claims nothing off a vessel feed that has gone quiet', () => {
     const late = Date.parse('2026-09-01T18:35:00.000Z');
-    expect(catchWindows([sailing], late, 30, [{ ...boat, updatedAt: '2026-09-01T18:29:00.000Z' }])).toEqual([]);
-    expect(catchWindows([sailing], late, 30, [{ ...boat, updatedAt: '2026-09-01T18:30:00.000Z' }])[0])
+    const atTerminal = { trafficMinutes: 0, queueMinutes: 15 };
+    expect(catchWindows([sailing], late, atTerminal, [{ ...boat, updatedAt: '2026-09-01T18:29:00.000Z' }])).toEqual([]);
+    expect(catchWindows([sailing], late, atTerminal, [{ ...boat, updatedAt: '2026-09-01T18:30:00.000Z' }])[0])
       .toMatchObject({ delayMinutes: 35, delaySource: 'observed' });
     // An unparseable or absent stamp is a fixture, not a boat nobody has heard from.
-    expect(catchWindows([sailing], late, 30, [{ ...boat, updatedAt: 'not a date' }])[0])
+    expect(catchWindows([sailing], late, atTerminal, [{ ...boat, updatedAt: 'not a date' }])[0])
       .toMatchObject({ delayMinutes: 35 });
   });
 
   it('will not retire a sailing on a flapping AtDock alone', () => {
     const flap = { ...boat, atDock: false, speed: 0.2 };
-    expect(catchWindows([sailing], now, 30, [flap])).toHaveLength(1);
-    expect(catchWindows([sailing], now, 30, [{ ...flap, speed: null }])).toHaveLength(1);
-    expect(catchWindows([sailing], now, 30, [{ ...flap, speed: null, leftDock: '2026-09-01T17:59:00.000Z' }])).toHaveLength(1);
+    expect(catchWindows([sailing], now, undefined, [flap])).toHaveLength(1);
+    expect(catchWindows([sailing], now, undefined, [{ ...flap, speed: null }])).toHaveLength(1);
+    expect(catchWindows([sailing], now, undefined, [{ ...flap, speed: null, leftDock: '2026-09-01T17:59:00.000Z' }])).toHaveLength(1);
   });
 
   it('retires a sailing once its boat is confirmed under way', () => {
-    expect(catchWindows([sailing], now, 30, [{ ...boat, atDock: false, speed: 15.2 }])).toEqual([]);
-    expect(catchWindows([sailing], now, 30, [{ ...boat, atDock: false, speed: null, leftDock: '2026-09-01T18:00:30.000Z' }])).toEqual([]);
+    expect(catchWindows([sailing], now, undefined, [{ ...boat, atDock: false, speed: 15.2 }])).toEqual([]);
+    expect(catchWindows([sailing], now, undefined, [{ ...boat, atDock: false, speed: null, leftDock: '2026-09-01T18:00:30.000Z' }])).toEqual([]);
   });
 
   it('reads a delay off the boat that is still crossing the other way', () => {
-    const inbound = { ...boat, atDock: false, speed: 14, scheduledDeparture: '2026-09-01T17:20:00.000Z', arrivingTerminalId: 3, eta: '2026-09-01T18:12:00.000Z' };
-    expect(catchWindows([sailing], now, 30, [inbound])[0]).toMatchObject({
+    const inbound = { ...boat, atDock: false, speed: 14, scheduledDeparture: '2026-09-01T17:20:00.000Z', arrivingTerminalId: 3, eta: '2026-09-01T18:12:00.000Z', updatedAt: new Date(now).toISOString() };
+    expect(catchWindows([sailing], now, undefined, [inbound])[0]).toMatchObject({
       delayMinutes: 12,
       delaySource: 'projected',
       expectedDepartureAt: '2026-09-01T18:12:00.000Z',
-      // A guessed delay never buys time, so leave-by stays on the timetable.
       leaveByAt: '2026-09-01T17:30:00.000Z',
       minutesAway: 30,
+      estimatedLeaveByAt: '2026-09-01T17:42:00.000Z',
+      estimatedMinutesAway: 42,
     });
     // Its own late departure is added back on to WSDOT's estimate.
-    expect(catchWindows([sailing], now, 30, [{ ...inbound, leftDock: '2026-09-01T17:26:00.000Z', eta: '2026-09-01T18:05:00.000Z' }])[0])
+    expect(catchWindows([sailing], now, undefined, [{ ...inbound, leftDock: '2026-09-01T17:26:00.000Z', eta: '2026-09-01T18:05:00.000Z' }])[0])
       .toMatchObject({ delayMinutes: 11, expectedDepartureAt: '2026-09-01T18:11:00.000Z' });
-    expect(catchWindows([sailing], now, 30, [{ ...inbound, eta: '2026-09-01T18:01:00.000Z' }])[0])
+    expect(catchWindows([sailing], now, undefined, [{ ...inbound, eta: '2026-09-01T18:01:00.000Z' }])[0])
       .toMatchObject({ delayMinutes: null, delaySource: null });
-    expect(catchWindows([sailing], now, 30, [{ ...inbound, arrivingTerminalId: null }])[0])
+    expect(catchWindows([sailing], now, undefined, [{ ...inbound, arrivingTerminalId: null }])[0])
       .toMatchObject({ delayMinutes: null });
-    expect(catchWindows([sailing], now, 30, [{ ...inbound, eta: 'not a date' }])[0])
+    expect(catchWindows([sailing], now, undefined, [{ ...inbound, eta: 'not a date' }])[0])
       .toMatchObject({ delayMinutes: null });
     // Past the cap the boat is running a LATER slot, so it lends this one nothing...
-    expect(catchWindows([sailing], now, 30, [{ ...inbound, eta: '2026-09-01T18:20:00.000Z' }])[0])
+    expect(catchWindows([sailing], now, undefined, [{ ...inbound, eta: '2026-09-01T18:20:00.000Z' }])[0])
       .toMatchObject({ delayMinutes: 20, delaySource: 'projected' });
-    expect(catchWindows([sailing], now, 30, [{ ...inbound, eta: '2026-09-01T18:21:00.000Z' }])[0])
+    expect(catchWindows([sailing], now, undefined, [{ ...inbound, eta: '2026-09-01T18:21:00.000Z' }])[0])
       .toMatchObject({ delayMinutes: null, delaySource: null });
     // ...and so cannot keep an hours-dead slot alive on the card.
-    expect(catchWindows([sailing], Date.parse('2026-09-01T20:00:00.000Z'), 30, [{ ...inbound, eta: '2026-09-01T20:30:00.000Z' }])).toEqual([]);
+    expect(catchWindows([sailing], Date.parse('2026-09-01T20:00:00.000Z'), undefined, [{ ...inbound, eta: '2026-09-01T20:30:00.000Z', updatedAt: '2026-09-01T20:00:00.000Z' }])).toEqual([]);
   });
 
   it('leaves the space label off a boat with no published count', () => {
@@ -1378,7 +1396,7 @@ describe('Catching a ferry', () => {
       if (url.includes('/api/history')) return json([]);
       if (url.includes('departingTerminalId=3&arrivingTerminalId=7')) {
         catchRoute = url;
-        return json([departure(50.5), departure(110.5)]);
+        return json([departure(50), departure(110)]);
       }
       return json([]);
     });
@@ -1392,7 +1410,7 @@ describe('Catching a ferry', () => {
     await waitFor(() => expect(catchRoute).toContain('departingTerminalId=3&arrivingTerminalId=7'));
     await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
     expect(document.querySelector('.countdown-headline')).toHaveClass('is-clear');
-    expect(screen.getByText('176 drive-up / 202')).toBeInTheDocument();
+    expect(screen.getByText('176 drive-up / 202', { selector: 'dd' })).toBeInTheDocument();
     expect(screen.getAllByTitle('13% of 202 vehicle spaces taken').length).toBeGreaterThan(0);
     expect(document.querySelectorAll('.countdown-later .sailing-list li')).toHaveLength(1);
 
@@ -1406,8 +1424,10 @@ describe('Catching a ferry', () => {
   });
 
   it('flags a boat still sitting at the dock past its departure', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-06T18:06:20.000Z'));
+    localStorage.setItem('ferry-tracker-catch-overrides', JSON.stringify({ '3-7': { trafficMinutes: 0, queueMinutes: 15 } }));
     const overdueAt = new Date(Date.now() - 6 * 60000 - 20000).toISOString();
-    const tiedUp = [{ ...vessels[0], atDock: true, speed: 0, arrivingTerminalId: 7, scheduledDeparture: overdueAt, updatedAt: new Date().toISOString() }];
+    const tiedUp = [{ ...vessels[0], atDock: true, speed: 0, arrivingTerminalId: 7, scheduledDeparture: overdueAt, updatedAt: new Date(Date.now()).toISOString() }];
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url.includes('/api/terminals')) return json(terminals);
@@ -1437,6 +1457,13 @@ describe('Catching a ferry', () => {
     expect(pill).toHaveTextContent('6 min');
     expect(pill).toHaveAttribute('title', 'Still at the dock 6 minutes after the scheduled departure');
     expect(document.querySelectorAll('.countdown-detail .delay-pill')).toHaveLength(1);
+    const scheduled = screen.getByRole('group', { name: 'Scheduled leave by' });
+    const estimated = screen.getByRole('group', { name: 'Estimated leave by' });
+    expect(scheduled).toHaveClass('is-muted');
+    expect(scheduled).toHaveTextContent('-21 min');
+    expect(estimated).toHaveTextContent('-15 min');
+    expect(estimated).toHaveTextContent('Estimated (delay so far)');
+    expect(estimated).not.toHaveClass('is-muted');
   });
 
   it('says so when nothing is catchable', async () => {
@@ -1468,8 +1495,8 @@ describe('Catch padding overrides', () => {
         { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
       ]);
       if (url.includes('/api/history')) return json([]);
-      if (url.includes('departingTerminalId=3&arrivingTerminalId=7')) return json([departures(50.5, 3, 7)]);
-      if (url.includes('departingTerminalId=7&arrivingTerminalId=3')) return json([departures(50.5, 7, 3)]);
+      if (url.includes('departingTerminalId=3&arrivingTerminalId=7')) return json([departures(50, 3, 7)]);
+      if (url.includes('departingTerminalId=7&arrivingTerminalId=3')) return json([departures(50, 7, 3)]);
       return json([]);
     });
   };

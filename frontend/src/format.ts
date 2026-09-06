@@ -391,6 +391,12 @@ export function catchTiming(
   };
 }
 
+// A countdown is read against a wall clock, so it measures from the minute on that clock, not
+// from the current second. Without it, 10:42 to an 11:05 leave-by renders as 22 min.
+function minutesFromClock(target: number, now: number) {
+  return Math.floor((target - Math.floor(now / 60000) * 60000) / 60000);
+}
+
 export interface DisruptionWave {
   vesselId: number;
   vesselName: string;
@@ -423,8 +429,8 @@ function disruptionWave(vesselId: number, vesselName: string, landing: number, n
     landingAt: new Date(landing).toISOString(),
     disruptionAt: new Date(disruption).toISOString(),
     clearsAt: new Date(clears).toISOString(),
-    minutesAway: Math.floor((disruption - now) / 60000),
-    minutesLeft: Math.max(0, Math.ceil((clears - now) / 60000)),
+    minutesAway: minutesFromClock(disruption, now),
+    minutesLeft: Math.max(0, minutesFromClock(clears, now)),
     active: disruption <= now,
     ongoing: false,
   }];
@@ -553,6 +559,9 @@ export interface CatchWindow {
   delaySource: CatchDelaySource;
   leaveByAt: string;
   minutesAway: number;
+  estimatedLeaveByAt: string | null;
+  estimatedMinutesAway: number | null;
+  dimScheduled: boolean;
   vesselId: number | null;
   vesselName: string | null;
   spaceLabel: string | null;
@@ -575,9 +584,9 @@ export function catchSpaceLevel(percent: number | null, settings: FerrySettings 
 
 // A boat that is nearly full is as much of a problem as one you are nearly late for,
 // so the leave-by colour takes whichever of the two reads worse.
-export function catchWindowLevel(window: Pick<CatchWindow, 'minutesAway' | 'spacePercent'>, settings: FerrySettings = DEFAULT_SETTINGS) {
+export function catchWindowLevel(window: Pick<CatchWindow, 'minutesAway' | 'spacePercent'> & Partial<Pick<CatchWindow, 'estimatedMinutesAway'>>, settings: FerrySettings = DEFAULT_SETTINGS) {
   const rank = { clear: 0, soon: 1, imminent: 2 };
-  const byTime = catchLevel(window.minutesAway, settings);
+  const byTime = catchLevel(window.estimatedMinutesAway ?? window.minutesAway, settings);
   const bySpace = catchSpaceLevel(window.spacePercent, settings);
   return rank[bySpace] > rank[byTime] ? bySpace : byTime;
 }
@@ -585,9 +594,6 @@ export function catchWindowLevel(window: Pick<CatchWindow, 'minutesAway' | 'spac
 export function catchPillClass(level: 'clear' | 'soon' | 'imminent') {
   return level === 'clear' ? 'open' : level === 'soon' ? 'tight' : 'full';
 }
-
-// How far past leave-by a sailing still counts as catchable.
-export const CATCH_LATE_LIMIT_MINUTES = 15;
 
 export type CatchDelaySource = 'observed' | 'projected' | null;
 
@@ -646,6 +652,8 @@ export function catchDeparture(
   }
 
   if (vessel.atDock === false && vessel.arrivingTerminalId !== null && vessel.arrivingTerminalId === sailing.departingTerminalId) {
+    const updatedAt = vessel.updatedAt ? Date.parse(vessel.updatedAt) : NaN;
+    if (!Number.isFinite(updatedAt) || updatedAt > now || now - updatedAt > CATCH_FEED_FRESH_MINUTES * 60000) return onTime;
     const eta = vesselEta(vessel) ?? vessel.eta;
     if (!eta) return onTime;
     const arrivesAt = Date.parse(eta);
@@ -662,37 +670,45 @@ export function catchDeparture(
   return onTime;
 }
 
-// A boat still at the dock is worth showing once leave-by has passed, so minutesAway can run
-// negative, but only until it is 15 minutes gone or the deck is full.
+export interface CatchTiming {
+  trafficMinutes: number;
+  queueMinutes: number;
+}
+
 export function catchWindows(
   sailings: Array<Pick<SailingView, 'departingTime' | 'departingTerminalId' | 'vesselId' | 'vesselName' | 'isCancelled' | 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount'>>,
   now: number,
-  padMinutes: number = CATCH_DEFAULT_PAD_MINUTES,
+  timing: CatchTiming = { trafficMinutes: DEFAULT_SETTINGS.catchTrafficMinutes, queueMinutes: DEFAULT_SETTINGS.catchQueueMinutes },
   vessels: CatchVessel[] = [],
 ): CatchWindow[] {
-  const padMs = padMinutes * 60000;
+  const trafficMs = timing.trafficMinutes * 60000;
+  const padMs = (timing.trafficMinutes + timing.queueMinutes) * 60000;
   return sailings
     .flatMap((sailing) => {
       if (sailing.isCancelled) return [];
       const departure = catchDeparture(sailing, vessels, now);
       if (departure === null || departure.departed) return [];
       if (openSpaceCount(sailing) === 0) return [];
-      // A boat verifiably still at the dock is still boardable, so only the vessel feed or the
-      // staleness cap retires it. Everything else answers to the clock.
-      if (departure.delaySource !== 'observed') {
-        if (departure.departsAt <= now) return [];
-        if (Math.floor((departure.departsAt - padMs - now) / 60000) < -CATCH_LATE_LIMIT_MINUTES) return [];
-      }
-      // Leave-by stays on the timetable. A delay is never certain enough to buy anyone time, and
-      // guessing long is the one error that makes you miss the boat.
+      if (now > departure.departsAt - trafficMs) return [];
+      if (departure.delaySource !== 'observed' && departure.departsAt <= now) return [];
       const leaveBy = departure.scheduledAt - padMs;
+      const estimatedLeaveBy = departure.delaySource === null ? null : departure.departsAt - padMs;
+      const observedVessel = departure.delaySource === 'observed'
+        ? vessels.find((vessel) => vessel.id === sailing.vesselId)
+        : undefined;
+      const observedAt = observedVessel?.updatedAt ? Date.parse(observedVessel.updatedAt) : NaN;
       return [{
         departureAt: new Date(departure.scheduledAt).toISOString(),
-        expectedDepartureAt: departure.delaySource === 'projected' ? new Date(departure.departsAt).toISOString() : null,
+        expectedDepartureAt: departure.delaySource === null ? null : new Date(departure.departsAt).toISOString(),
         delayMinutes: departure.delayMinutes,
         delaySource: departure.delaySource,
         leaveByAt: new Date(leaveBy).toISOString(),
-        minutesAway: Math.floor((leaveBy - now) / 60000),
+        minutesAway: minutesFromClock(leaveBy, now),
+        estimatedLeaveByAt: estimatedLeaveBy === null ? null : new Date(estimatedLeaveBy).toISOString(),
+        estimatedMinutesAway: estimatedLeaveBy === null ? null : minutesFromClock(estimatedLeaveBy, now),
+        dimScheduled: now > departure.scheduledAt - trafficMs
+          && (departure.delaySource === 'projected'
+            || (Number.isFinite(observedAt) && observedAt <= now && now - observedAt <= CATCH_FEED_FRESH_MINUTES * 60000)),
         vesselId: sailing.vesselId,
         vesselName: sailing.vesselName ?? null,
         spaceLabel: sailing.spaceAvailable ? compactVehicleSpace(sailing) : null,

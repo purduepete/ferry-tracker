@@ -8,6 +8,7 @@
   --surface-3: #e5e7eb;
   --text: #111827;
   --muted: #64748b;
+  --catch-dimmed: #767676;
   --line: #d1d5db;
   --accent: #0f766e;
   --accent-soft: #ccfbf1;
@@ -34,6 +35,7 @@
   --surface-3: #374151;
   --text: #f9fafb;
   --muted: #aeb9c9;
+  --catch-dimmed: #8994a4;
   --line: #3d4a5e;
   --accent: #5eead4;
   --accent-soft: #134e4a;
@@ -55,6 +57,7 @@
   --surface-3: #1e293b;
   --text: #f8fafc;
   --muted: #a8b4c6;
+  --catch-dimmed: #7e8ba0;
   --line: #293548;
   --accent: #5eead4;
   --accent-soft: #134e4a;
@@ -266,6 +269,19 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .countdown-headline.is-soon .countdown-value { color: var(--warning); }
 .countdown-headline.is-imminent .countdown-value { color: var(--danger); }
 .countdown-at { color: var(--muted); font-size: 13px; }
+.catch-times { display: grid; gap: 12px 24px; min-width: 0; }
+.catch-times.has-estimate { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 600px; }
+.catch-time { display: grid; align-content: start; gap: 4px; min-width: 0; }
+.catch-time-label { color: var(--text); font-size: 12px; font-weight: 600; }
+.catch-leave-at { color: var(--muted); font-size: 13px; }
+.catch-time .countdown-value { color: var(--success); overflow-wrap: anywhere; }
+.catch-time.is-soon .countdown-value { color: var(--warning); }
+.catch-time.is-imminent .countdown-value { color: var(--danger); }
+.catch-time.is-muted .countdown-value, .catch-time.is-muted .catch-time-label, .catch-time.is-muted .catch-leave-at, .catch-time.is-muted .countdown-at { color: var(--catch-dimmed); font-weight: 400; }
+.catch-times.is-compact { margin: 4px 0; }
+.catch-times.is-compact .countdown-value { font-size: 14px; }
+.catch-times.is-compact .catch-leave-at { font-size: 12px; }
+.catch-departure-estimate { display: block; margin-top: 4px; }
 .countdown-detail { margin: 0; padding: 0 16px 8px; }
 .countdown-detail .field { gap: 12px; padding: 10px 0; font-size: 13px; }
 .countdown-detail .field:last-child { border-bottom: 0; }
