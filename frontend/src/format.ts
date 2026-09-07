@@ -97,7 +97,6 @@ export interface FerrySettings {
   catchTrafficMinutes: number;
   catchQueueMinutes: number;
   catchSoonMinutes: number;
-  catchImminentMinutes: number;
   spaceSoonPercent: number;
   spaceImminentPercent: number;
   disruptionLeadMinutes: number;
@@ -110,7 +109,6 @@ export const DEFAULT_SETTINGS: FerrySettings = {
   catchTrafficMinutes: CATCH_TRAFFIC_MINUTES,
   catchQueueMinutes: CATCH_QUEUE_MINUTES,
   catchSoonMinutes: 10,
-  catchImminentMinutes: 5,
   spaceSoonPercent: 50,
   spaceImminentPercent: 25,
   disruptionLeadMinutes: DISRUPTION_LEAD_MINUTES,
@@ -123,7 +121,6 @@ export const SETTING_CHOICES: Record<keyof FerrySettings, number[]> = {
   catchTrafficMinutes: CATCH_MINUTE_CHOICES,
   catchQueueMinutes: CATCH_MINUTE_CHOICES,
   catchSoonMinutes: THRESHOLD_MINUTE_CHOICES,
-  catchImminentMinutes: THRESHOLD_MINUTE_CHOICES,
   spaceSoonPercent: SPACE_SOON_PERCENT_CHOICES,
   spaceImminentPercent: SPACE_IMMINENT_PERCENT_CHOICES,
   disruptionLeadMinutes: DISRUPTION_LEAD_CHOICES,
@@ -149,7 +146,6 @@ export function normalizeSettings(raw: unknown): FerrySettings {
     settings.catchTrafficMinutes = pad;
     settings.catchQueueMinutes = 0;
   }
-  settings.catchImminentMinutes = Math.min(settings.catchImminentMinutes, settings.catchSoonMinutes);
   settings.disruptionImminentMinutes = Math.min(settings.disruptionImminentMinutes, settings.disruptionSoonMinutes);
   settings.spaceImminentPercent = Math.min(settings.spaceImminentPercent, settings.spaceSoonPercent);
   return settings;
@@ -559,8 +555,10 @@ export interface CatchWindow {
   delaySource: CatchDelaySource;
   leaveByAt: string;
   minutesAway: number;
+  queueMinutesRemaining: number | null;
   estimatedLeaveByAt: string | null;
   estimatedMinutesAway: number | null;
+  estimatedQueueMinutesRemaining: number | null;
   dimScheduled: boolean;
   vesselId: number | null;
   vesselName: string | null;
@@ -569,8 +567,8 @@ export interface CatchWindow {
   spaceTotal: number | null;
 }
 
-export function catchLevel(minutesAway: number, settings: FerrySettings = DEFAULT_SETTINGS) {
-  return minutesAway < settings.catchImminentMinutes ? 'imminent'
+export function catchLevel(minutesAway: number, settings: FerrySettings = DEFAULT_SETTINGS, queueRemaining: number | null = null) {
+  return queueRemaining !== null ? 'imminent'
     : minutesAway < settings.catchSoonMinutes ? 'soon'
     : 'clear';
 }
@@ -584,9 +582,10 @@ export function catchSpaceLevel(percent: number | null, settings: FerrySettings 
 
 // A boat that is nearly full is as much of a problem as one you are nearly late for,
 // so the leave-by colour takes whichever of the two reads worse.
-export function catchWindowLevel(window: Pick<CatchWindow, 'minutesAway' | 'spacePercent'> & Partial<Pick<CatchWindow, 'estimatedMinutesAway'>>, settings: FerrySettings = DEFAULT_SETTINGS) {
+export function catchWindowLevel(window: Pick<CatchWindow, 'minutesAway' | 'spacePercent'> & Partial<Pick<CatchWindow, 'estimatedMinutesAway' | 'queueMinutesRemaining' | 'estimatedQueueMinutesRemaining'>>, settings: FerrySettings = DEFAULT_SETTINGS) {
   const rank = { clear: 0, soon: 1, imminent: 2 };
-  const byTime = catchLevel(window.estimatedMinutesAway ?? window.minutesAway, settings);
+  const queueRemaining = window.estimatedMinutesAway != null ? window.estimatedQueueMinutesRemaining : window.queueMinutesRemaining;
+  const byTime = catchLevel(window.estimatedMinutesAway ?? window.minutesAway, settings, queueRemaining ?? null);
   const bySpace = catchSpaceLevel(window.spacePercent, settings);
   return rank[bySpace] > rank[byTime] ? bySpace : byTime;
 }
@@ -675,6 +674,11 @@ export interface CatchTiming {
   queueMinutes: number;
 }
 
+function queueMinutesRemaining(leaveBy: number, now: number, queueMinutes: number) {
+  return now < leaveBy ? null
+    : Math.max(0, Math.min(queueMinutes, minutesFromClock(leaveBy + queueMinutes * 60000, now)));
+}
+
 export function catchWindows(
   sailings: Array<Pick<SailingView, 'departingTime' | 'departingTerminalId' | 'vesselId' | 'vesselName' | 'isCancelled' | 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount'>>,
   now: number,
@@ -704,8 +708,10 @@ export function catchWindows(
         delaySource: departure.delaySource,
         leaveByAt: new Date(leaveBy).toISOString(),
         minutesAway: minutesFromClock(leaveBy, now),
+        queueMinutesRemaining: queueMinutesRemaining(leaveBy, now, timing.queueMinutes),
         estimatedLeaveByAt: estimatedLeaveBy === null ? null : new Date(estimatedLeaveBy).toISOString(),
         estimatedMinutesAway: estimatedLeaveBy === null ? null : minutesFromClock(estimatedLeaveBy, now),
+        estimatedQueueMinutesRemaining: estimatedLeaveBy === null ? null : queueMinutesRemaining(estimatedLeaveBy, now, timing.queueMinutes),
         dimScheduled: now > departure.scheduledAt - trafficMs
           && (departure.delaySource === 'projected'
             || (Number.isFinite(observedAt) && observedAt <= now && now - observedAt <= CATCH_FEED_FRESH_MINUTES * 60000)),

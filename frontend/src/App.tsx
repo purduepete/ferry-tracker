@@ -139,20 +139,22 @@ function CatchDelay({ window }: { window: CatchWindow }) {
 function CatchTimes({ window, settings, compact = false }: { window: CatchWindow; settings: FerrySettings; compact?: boolean }) {
   const estimatedLeaveByAt = window.estimatedLeaveByAt;
   const hasEstimate = window.estimatedMinutesAway !== null && estimatedLeaveByAt !== null;
-  const scheduledLevel = catchWindowLevel({ minutesAway: window.minutesAway, spacePercent: window.spacePercent }, settings);
+  const scheduledLevel = catchWindowLevel({ minutesAway: window.minutesAway, spacePercent: window.spacePercent, queueMinutesRemaining: window.queueMinutesRemaining }, settings);
   const estimateTitle = window.delaySource === 'observed'
     ? 'Based on the delay observed so far; departure could be now'
     : 'Based on the inbound vessel ETA; departure may change';
   return <div className={`catch-times${compact ? ' is-compact' : ''}${hasEstimate ? ' has-estimate' : ''}`}>
     <div className={`catch-time is-${scheduledLevel}${window.dimScheduled ? ' is-muted' : ''}`} role="group" aria-label="Scheduled leave by">
       {hasEstimate && <span className="catch-time-label">Scheduled</span>}
-      <strong className="countdown-value">{window.minutesAway} min</strong>
+      <strong className="countdown-value">{window.queueMinutesRemaining ?? window.minutesAway} min</strong>
+      {window.queueMinutesRemaining !== null && <span className="catch-leave-at">Queue remaining</span>}
       <span className="catch-leave-at">Leave by {clockTime(window.leaveByAt)}</span>
       {!compact && <span className="countdown-at">{clockTime(window.departureAt)} sailing</span>}
     </div>
     {hasEstimate && <div className={`catch-time is-${catchWindowLevel(window, settings)}`} role="group" aria-label="Estimated leave by" title={estimateTitle}>
       <span className="catch-time-label">Estimated{window.delaySource === 'observed' ? ' (delay so far)' : ''}</span>
-      <strong className="countdown-value">{window.estimatedMinutesAway} min</strong>
+      <strong className="countdown-value">{window.estimatedQueueMinutesRemaining ?? window.estimatedMinutesAway} min</strong>
+      {window.estimatedQueueMinutesRemaining !== null && <span className="catch-leave-at">Queue remaining</span>}
       <span className="catch-leave-at">Leave by {clockTime(estimatedLeaveByAt)}</span>
       {window.expectedDepartureAt && <span className="countdown-at">{clockTime(window.expectedDepartureAt)} sailing<CatchDelay window={window} /></span>}
     </div>}
@@ -772,7 +774,6 @@ export function App() {
               {catchPaddingOpen && <div className="catch-timing-controls">
                 <label><span>Traffic</span><FilterSelect ariaLabel="Catch traffic" value={timing.trafficMinutes} onChange={(value) => changeCatchOverride({ trafficMinutes: value })} options={minuteOptions} /></label>
                 <label><span>Queue</span><FilterSelect ariaLabel="Catch queue" value={timing.queueMinutes} onChange={(value) => changeCatchOverride({ queueMinutes: value })} options={minuteOptions} /></label>
-                <span className="catch-timing-total">{timing.padMinutes} min<span className="catch-timing-words"> padding{timing.overridden ? ' for this route' : ''}</span></span>
                 {timing.overridden && <button className="catch-timing-reset" type="button" title="Go back to the padding in Settings" onClick={resetCatchOverride}><RotateCcw size={13} aria-hidden="true" /><span className="catch-timing-words">Use settings</span></button>}
               </div>}
             </div>}
@@ -900,7 +901,6 @@ export function App() {
                 <span className="settings-subhead">Time left to leave</span>
                 <div className="settings-grid">
                   <SettingField label="Turns yellow below" ariaLabel="Catch yellow under" hint="Minutes left to leave" setting="catchSoonMinutes" unit="min" settings={settings} onChange={changeSetting} />
-                  <SettingField label="Turns red below" ariaLabel="Catch red under" hint="Minutes left to leave" setting="catchImminentMinutes" unit="min" settings={settings} onChange={changeSetting} />
                 </div>
               </div>
               <div className="settings-subgroup">

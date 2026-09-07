@@ -1228,8 +1228,8 @@ describe('Catching a ferry', () => {
   };
 
   it('colors the countdown at each threshold', () => {
-    expect(catchLevel(0)).toBe('imminent');
-    expect(catchLevel(4)).toBe('imminent');
+    expect(catchLevel(0)).toBe('soon');
+    expect(catchLevel(4)).toBe('soon');
     expect(catchLevel(5)).toBe('soon');
     expect(catchLevel(9)).toBe('soon');
     expect(catchLevel(10)).toBe('clear');
@@ -1239,7 +1239,7 @@ describe('Catching a ferry', () => {
     expect(catchWindowLevel({ minutesAway: 60, spacePercent: 50 })).toBe('clear');
     expect(catchWindowLevel({ minutesAway: 60, spacePercent: 49 })).toBe('soon');
     expect(catchWindowLevel({ minutesAway: 60, spacePercent: 24 })).toBe('imminent');
-    expect(catchWindowLevel({ minutesAway: 3, spacePercent: 100 })).toBe('imminent');
+    expect(catchWindowLevel({ minutesAway: 3, spacePercent: 100 })).toBe('soon');
     expect(catchWindowLevel({ minutesAway: 7, spacePercent: 20 })).toBe('imminent');
     expect(catchWindowLevel({ minutesAway: 60, spacePercent: null })).toBe('clear');
   });
@@ -1253,8 +1253,10 @@ describe('Catching a ferry', () => {
       delaySource: null,
       leaveByAt: '2026-09-01T17:30:00.000Z',
       minutesAway: 30,
+      queueMinutesRemaining: null,
       estimatedLeaveByAt: null,
       estimatedMinutesAway: null,
+      estimatedQueueMinutesRemaining: null,
       dimScheduled: false,
       vesselId: 18,
       vesselName: 'Tacoma',
@@ -1460,8 +1462,11 @@ describe('Catching a ferry', () => {
     const scheduled = screen.getByRole('group', { name: 'Scheduled leave by' });
     const estimated = screen.getByRole('group', { name: 'Estimated leave by' });
     expect(scheduled).toHaveClass('is-muted');
-    expect(scheduled).toHaveTextContent('-21 min');
-    expect(estimated).toHaveTextContent('-15 min');
+    expect(scheduled).toHaveTextContent('0 min');
+    expect(scheduled).toHaveTextContent('Queue remaining');
+    expect(estimated).toHaveTextContent('0 min');
+    expect(estimated).toHaveTextContent('Queue remaining');
+    expect(estimated).toHaveClass('is-imminent');
     expect(estimated).toHaveTextContent('Estimated (delay so far)');
     expect(estimated).not.toHaveClass('is-muted');
   });
@@ -1551,14 +1556,17 @@ describe('Catch padding overrides', () => {
     await user.click(screen.getByRole('option', { name: '30 min' }));
 
     expect(document.querySelector('.countdown-value')).toHaveTextContent('5 min');
-    expect(document.querySelector('.catch-timing-total')).toHaveTextContent('45 min padding for this route');
+    expect(screen.getByRole('button', { name: /Padding/ })).toHaveTextContent('45 min');
+    expect(document.querySelector('.catch-timing-total')).toBeNull();
+    expect(within(document.querySelector('.catch-timing') as HTMLElement).getAllByText('45 min')).toHaveLength(1);
     expect(JSON.parse(localStorage.getItem('ferry-tracker-catch-overrides') ?? '{}'))
       .toEqual({ '3-7': { trafficMinutes: 30, queueMinutes: null } });
 
     await user.click(screen.getByRole('button', { name: 'Use settings' }));
 
     expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min');
-    expect(document.querySelector('.catch-timing-total')).toHaveTextContent('30 min padding');
+    expect(screen.getByRole('button', { name: /Padding/ })).toHaveTextContent('30 min');
+    expect(within(document.querySelector('.catch-timing') as HTMLElement).getAllByText('30 min')).toHaveLength(1);
     expect(JSON.parse(localStorage.getItem('ferry-tracker-catch-overrides') ?? '{}')).toEqual({});
   });
 
@@ -1645,7 +1653,9 @@ describe('Routeless tabs', () => {
 describe('Settings', () => {
   it('keeps a stored value, rejects junk, and never lets red be looser than yellow', () => {
     expect(normalizeSettings({ spaceSoonPercent: 25, spaceImminentPercent: 50 })).toMatchObject({ spaceSoonPercent: 25, spaceImminentPercent: 25 });
-    expect(normalizeSettings({ catchSoonMinutes: 3, catchImminentMinutes: 10 })).toMatchObject({ catchSoonMinutes: 3, catchImminentMinutes: 3 });
+    const legacy = normalizeSettings({ catchSoonMinutes: 3, catchImminentMinutes: 10 });
+    expect(legacy).toMatchObject({ catchSoonMinutes: 3 });
+    expect(legacy).not.toHaveProperty('catchImminentMinutes');
     expect(normalizeSettings({ catchTrafficMinutes: 7 })).toMatchObject({ catchTrafficMinutes: DEFAULT_SETTINGS.catchTrafficMinutes });
     expect(normalizeSettings({ catchTrafficMinutes: '45' })).toMatchObject({ catchTrafficMinutes: DEFAULT_SETTINGS.catchTrafficMinutes });
     expect(normalizeSettings(null)).toEqual(DEFAULT_SETTINGS);
@@ -1667,6 +1677,7 @@ describe('Settings', () => {
   });
 
   it('changes the pad and the space threshold, and persists both', async () => {
+    localStorage.setItem('ferry-tracker-settings', JSON.stringify({ catchSoonMinutes: 7, catchImminentMinutes: 5 }));
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url.includes('/api/terminals')) return json(terminals);
@@ -1683,11 +1694,18 @@ describe('Settings', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Catch traffic default' }));
     await user.click(screen.getByRole('option', { name: '45 min' }));
+    expect(screen.queryByRole('button', { name: 'Catch red under' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Catch yellow under' })).toHaveTextContent('7 min');
+    expect(screen.getByRole('button', { name: 'Space red under' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Disruption red under' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Catch yellow under' }));
+    await user.click(screen.getByRole('option', { name: '3 min' }));
     await user.click(screen.getByRole('button', { name: 'Space yellow under' }));
     await user.click(screen.getByRole('option', { name: '45%' }));
 
     const stored = JSON.parse(localStorage.getItem('ferry-tracker-settings') ?? '{}');
-    expect(stored).toMatchObject({ catchTrafficMinutes: 45, spaceSoonPercent: 45 });
+    expect(stored).toMatchObject({ catchTrafficMinutes: 45, spaceSoonPercent: 45, catchSoonMinutes: 3 });
+    expect(stored).not.toHaveProperty('catchImminentMinutes');
   });
 
   it('resets every value back to the defaults', async () => {

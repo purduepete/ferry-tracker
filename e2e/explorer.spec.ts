@@ -156,28 +156,29 @@ test('overrides the Catch padding for one route and resets it back to the settin
   await openPadding();
 
   await expect(page.getByRole('button', { name: 'Catch traffic' })).toHaveText('15 min');
-  await expect(page.locator('.catch-timing-total')).toHaveText('30 min padding');
+  await expect(page.locator('.catch-timing-total')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Padding/ })).toContainText('30 min');
   await expect(page.getByRole('button', { name: 'Use settings' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Catch traffic' }).click();
   await page.getByRole('option', { name: '40 min' }).click();
   await page.getByRole('button', { name: 'Catch queue' }).click();
   await page.getByRole('option', { name: '5 min', exact: true }).click();
-  await expect(page.locator('.catch-timing-total')).toHaveText('45 min padding for this route');
+  await expect(page.getByRole('button', { name: /Padding/ })).toContainText('45 min');
   await expect(page.locator('.catch-timing-custom')).toHaveText('Custom');
 
   // The other favorite route is untouched by the one that was overridden.
   await page.getByRole('group', { name: 'Catch route' }).getByRole('button', { name: 'SEA → BI' }).click();
-  await expect(page.locator('.catch-timing-total')).toHaveText('30 min padding');
+  await expect(page.getByRole('button', { name: /Padding/ })).toContainText('30 min');
 
   await page.reload();
   await page.getByRole('tab', { name: 'Catch' }).click();
   await openPadding();
   await page.getByRole('group', { name: 'Catch route' }).getByRole('button', { name: 'BI → SEA' }).click();
-  await expect(page.locator('.catch-timing-total')).toHaveText('45 min padding for this route');
+  await expect(page.getByRole('button', { name: /Padding/ })).toContainText('45 min');
 
   await page.getByRole('button', { name: 'Use settings' }).click();
-  await expect(page.locator('.catch-timing-total')).toHaveText('30 min padding');
+  await expect(page.getByRole('button', { name: /Padding/ })).toContainText('30 min');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-catch-overrides'))).toBe('{}');
 });
 

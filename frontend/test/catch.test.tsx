@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { catchDeparture, catchWindowLevel, catchWindows } from '../src/format';
+import { catchDeparture, catchWindowLevel, catchWindows, normalizeSettings } from '../src/format';
 
 const at = (time: string) => Date.parse(`2026-09-06T${time}-07:00`);
 const sailing = {
@@ -16,6 +16,54 @@ const inbound = {
 };
 
 describe('Catch traffic cutoff', () => {
+  it.each([0, 7])('uses yellow below %i only before the raw queue boundary', (catchSoonMinutes) => {
+    const settings = normalizeSettings({ catchSoonMinutes, catchImminentMinutes: 30 });
+    const windowAt = (now: number) => catchWindows([sailing], now, timing)[0];
+    const leaveBy = at('11:05:00');
+    if (catchSoonMinutes > 0) {
+      expect(catchWindowLevel(windowAt(leaveBy - catchSoonMinutes * 60000), settings)).toBe('clear');
+      expect(catchWindowLevel(windowAt(leaveBy - (catchSoonMinutes - 1) * 60000), settings)).toBe('soon');
+    }
+    expect(catchWindowLevel(windowAt(leaveBy - 1), settings)).toBe(catchSoonMinutes ? 'soon' : 'clear');
+    expect(catchWindowLevel(windowAt(leaveBy), settings)).toBe('imminent');
+    expect(catchWindowLevel(windowAt(leaveBy + 60000), settings)).toBe('imminent');
+  });
+
+  it.each([0, 5, 15, 30])('starts the %i minute queue countdown at the raw leave-by boundary', (queueMinutes) => {
+    const options = { ...timing, queueMinutes };
+    const cutoff = at('11:20:00');
+    const leaveBy = cutoff - queueMinutes * 60000;
+    expect(catchWindows([sailing], leaveBy - 1, options)[0].queueMinutesRemaining).toBeNull();
+    expect(catchWindows([sailing], leaveBy, options)[0].queueMinutesRemaining).toBe(queueMinutes);
+    if (queueMinutes > 0) {
+      expect(catchWindows([sailing], leaveBy + 1, options)[0].queueMinutesRemaining).toBe(queueMinutes);
+      expect(catchWindows([sailing], leaveBy + 60000, options)[0].queueMinutesRemaining).toBe(queueMinutes - 1);
+    }
+    expect(catchWindows([sailing], cutoff, options)[0].queueMinutesRemaining).toBe(0);
+    expect(catchWindows([sailing], cutoff + 1, options)).toEqual([]);
+  });
+
+  it('keeps independent scheduled and estimated queue phases', () => {
+    const fresh = { ...inbound, updatedAt: new Date(at('11:10:00')).toISOString() };
+    expect(catchWindows([sailing], at('11:10:00'), timing, [fresh])[0]).toMatchObject({
+      queueMinutesRemaining: 10, estimatedQueueMinutesRemaining: null, estimatedMinutesAway: 7,
+    });
+    expect(catchWindowLevel(catchWindows([sailing], at('11:10:00'), timing, [fresh])[0])).toBe('soon');
+    expect(catchWindows([sailing], at('11:21:43'), timing, [inbound])[0]).toMatchObject({
+      queueMinutesRemaining: 0, estimatedQueueMinutesRemaining: 11, dimScheduled: true,
+    });
+    expect(catchWindowLevel(catchWindows([sailing], at('11:21:43'), timing, [inbound])[0])).toBe('imminent');
+  });
+
+  it('uses raw seconds for phase changes and clock minutes for display', () => {
+    const withSeconds = { ...sailing, departingTime: new Date(at('11:35:30')).toISOString() };
+    expect(catchWindows([withSeconds], at('11:05:30') - 1, timing)[0]).toMatchObject({ minutesAway: 0, queueMinutesRemaining: null });
+    expect(catchWindows([withSeconds], at('11:05:30'), timing)[0].queueMinutesRemaining).toBe(15);
+    expect(catchWindows([withSeconds], at('11:06:00'), timing)[0].queueMinutesRemaining).toBe(14);
+    expect(catchWindows([withSeconds], at('11:20:30'), timing)[0].queueMinutesRemaining).toBe(0);
+    expect(catchWindows([withSeconds], at('11:20:30') + 1, timing)).toEqual([]);
+  });
+
   it.each([0, 5, 15, 30])('consumes only the %i minute queue allowance', (queueMinutes) => {
     const options = { ...timing, queueMinutes };
     const cutoff = at('11:20:00');
@@ -64,7 +112,7 @@ describe('Catch traffic cutoff', () => {
     expect(catchWindows([sailing, later], now, timing, [docked]).map((window) => window.departureAt)).toEqual([later.departingTime]);
     expect(catchWindows([sailing], now, timing, [docked])).toEqual([]);
     expect(catchWindows([sailing], now, { trafficMinutes: 0, queueMinutes: 15 }, [docked])[0])
-      .toMatchObject({ minutesAway: -50, estimatedMinutesAway: -15, dimScheduled: true });
+      .toMatchObject({ minutesAway: -50, estimatedMinutesAway: -15, dimScheduled: true, queueMinutesRemaining: 0, estimatedQueueMinutesRemaining: 0 });
     expect(catchWindows([sailing], now, { trafficMinutes: 0, queueMinutes: 15 }, [{ ...docked, updatedAt: null }])[0].dimScheduled).toBe(false);
   });
 
