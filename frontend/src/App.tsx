@@ -217,6 +217,7 @@ export function App() {
   const [scheduleResponse, setScheduleResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
   const [catchResponse, setCatchResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
   const [inboundResponse, setInboundResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
+  const [inboundError, setInboundError] = useState<string | null>(null);
   const [catchLoading, setCatchLoading] = useState(false);
   const [catchError, setCatchError] = useState<string | null>(null);
   const [restoredRoute] = useState(loadLastRoute);
@@ -437,7 +438,8 @@ export function App() {
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const waves = disruptionWaves(vessels, countdownNow, settings, inboundResponse?.data ?? []);
   const [nextWave, ...laterWaves] = waves;
-  const nextLoad = nextWave ? disruptionLoad(inboundResponse?.data ?? [], nextWave.vesselId, nextWave.landingAt) : null;
+  const nextLoad = nextWave && nextWave.vesselId !== null && nextWave.source !== 'schedule'
+    ? disruptionLoad(inboundResponse?.data ?? [], nextWave.vesselId, nextWave.landingAt) : null;
   const catches = catchWindows(catchResponse?.data ?? [], countdownNow, timing, vessels);
   const [nextCatch, ...laterCatches] = catches;
   const minuteOptions = CATCH_MINUTE_CHOICES.map((minutes) => ({ value: minutes, label: `${minutes} min` }));
@@ -524,7 +526,7 @@ export function App() {
     };
   }, [catchOriginId, catchDestinationId, refreshVersion, tab]);
 
-  // Disruption needs the Seattle to Bainbridge leg, which carries how full the arriving boat was.
+  // Inbound sailings supply observed arrivals, scheduled fallback times, and recorded capacity.
   useEffect(() => {
     if (tab !== 'disruption') return;
     const controller = new AbortController();
@@ -533,9 +535,13 @@ export function App() {
       .then((schedule) => {
         if (!active) return;
         setInboundResponse(schedule);
+        setInboundError(null);
+        setCountdownNow(Date.now());
         setLastRefreshAt((current) => latestTimestamp(current, schedule.fetchedAt));
       })
-      .catch(() => { /* The card just leaves the capacity out. */ });
+      .catch(() => {
+        if (active) setInboundError('Schedule unavailable. Retrying on the next refresh.');
+      });
     return () => {
       active = false;
       controller.abort();
@@ -795,12 +801,14 @@ export function App() {
 
           {tab === 'disruption' && <div className="countdown-card">
             <div className="schedule-heading"><span className="node-type">Next disruption</span><h2>Bainbridge Island offload</h2></div>
+            {inboundError && <div className="empty" role="status">{inboundResponse ? 'Schedule refresh failed. Showing the last loaded schedule.' : inboundError}</div>}
             {nextWave ? <>
               <div className={`countdown-headline is-${disruptionLevel(nextWave.minutesAway, settings)}`}>
                 <strong className="countdown-value">{nextWave.active
                   ? (nextWave.ongoing ? 'Ongoing' : `${nextWave.minutesLeft} min left`)
                   : nextWave.minutesAway < 1 ? 'under 1 min' : `${nextWave.minutesAway} min`}</strong>
                 <span className="countdown-at">Traffic {nextWave.active ? 'since' : 'from'} {clockTime(nextWave.disruptionAt)}</span>
+                {nextWave.source === 'schedule' && <span className="countdown-at" title="Published arrival, or scheduled departure plus a 35-minute crossing when arrival is unavailable">Scheduled estimate</span>}
               </div>
               <dl className="countdown-detail">
                 <Field label="Vessel" value={<VesselLink vesselId={nextWave.vesselId} vesselName={nextWave.vesselName} vessels={vessels} onOpen={openRoute} />} />
@@ -808,8 +816,8 @@ export function App() {
                 <Field label="Disruption" value={nextWave.ongoing ? `${clockTime(nextWave.disruptionAt)} onward` : `${clockTime(nextWave.disruptionAt)} to ${clockTime(nextWave.clearsAt)}`} />
                 <Field label="Capacity" value={nextLoad && <CapacityPill openPercent={nextLoad.openPercent} total={nextLoad.totalSpace} />} />
               </dl>
-              {laterWaves.length > 0 && <div className="countdown-later"><span className="node-type">Behind it</span><ol className="sailing-list">{laterWaves.map((wave) => <li key={`${wave.vesselId}-${wave.disruptionAt}`}><strong>{clockTime(wave.disruptionAt)}<span className={`capacity-pill ${catchPillClass(disruptionLevel(wave.minutesAway, settings))}`}>{wave.active ? 'now' : `${wave.minutesAway} min`}</span></strong><span>{wave.vesselName} lands {clockTime(wave.landingAt)}</span></li>)}</ol></div>}
-            </> : <div className="empty">No vessel is inbound to Bainbridge Island right now.</div>}
+              {laterWaves.length > 0 && <div className="countdown-later"><span className="node-type">Behind it</span><ol className="sailing-list">{laterWaves.slice(0, 4).map((wave) => <li key={`${wave.vesselId}-${wave.disruptionAt}`}><strong>{clockTime(wave.disruptionAt)}<span className={`capacity-pill ${catchPillClass(disruptionLevel(wave.minutesAway, settings))}`}>{wave.active ? 'now' : `${wave.minutesAway} min`}</span></strong><span>{wave.vesselName} lands {clockTime(wave.landingAt)}{wave.source === 'schedule' ? ' (scheduled estimate)' : ''}</span></li>)}</ol></div>}
+            </> : !inboundError && <div className="empty">{inboundResponse === null ? 'Loading the inbound schedule...' : 'No upcoming arrival is available in the current schedule.'}</div>}
           </div>}
 
           {tab === 'settings' && <div className="countdown-card settings-card">

@@ -1028,6 +1028,7 @@ describe('Bainbridge disruption', () => {
     expect(disruptionWaves([inbound], now)).toEqual([{
       vesselId: 1,
       vesselName: 'Tacoma',
+      source: 'live',
       landingAt: '2026-09-01T17:20:00.000Z',
       disruptionAt: '2026-09-01T17:30:00.000Z',
       clearsAt: '2026-09-01T17:45:00.000Z',
@@ -1212,7 +1213,7 @@ describe('Bainbridge disruption', () => {
     await screen.findByRole('heading', { name: 'Seattle' });
     await userEvent.click(screen.getByRole('tab', { name: 'Disruption' }));
 
-    expect(screen.getByText('No vessel is inbound to Bainbridge Island right now.')).toBeInTheDocument();
+    expect(await screen.findByText('No upcoming arrival is available in the current schedule.')).toBeInTheDocument();
   });
 });
 
