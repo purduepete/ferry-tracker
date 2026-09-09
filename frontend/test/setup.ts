@@ -11,6 +11,12 @@ if (typeof window !== 'undefined' && !window.Element.prototype.scrollIntoView) {
   window.Element.prototype.scrollIntoView = () => {};
 }
 
+// jsdom's window.scrollTo exists but logs a "Not implemented" jsdomError; the tab-change
+// effect calls it on every render, so stub it to a no-op rather than let every test log it.
+if (typeof window !== 'undefined') {
+  window.scrollTo = () => {};
+}
+
 if (typeof window !== 'undefined') {
   beforeEach(() => {
     const storage = new Map<string, string>();
