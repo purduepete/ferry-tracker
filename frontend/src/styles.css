@@ -404,7 +404,7 @@ tbody tr.is-linked { cursor: pointer; }
   /* The Vessel column and the space breakdown are the two widest, least essential cells on a
      phone; dropping them is what lets the table fit without horizontal scroll. */
   .schedule-card table { min-width: 0; }
-  .schedule-card th, .schedule-card td { padding: 9px 6px; font-size: 12px; }
+  .schedule-card th, .schedule-card td { padding: 9px 6px; font-size: 12px; text-align: center; }
   .schedule-card .col-vessel { display: none; }
   .schedule-card .space-detail, .schedule-card .space-desktop-pill { display: none; }
   .schedule-card .space-percent-only { display: inline-flex; }
