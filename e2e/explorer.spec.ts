@@ -388,6 +388,12 @@ test('opens the Vessels tab from the compact schedule list on Routes', async ({ 
   await expect(page.locator('.data-card.is-highlighted')).toBeVisible();
 });
 
+test('opens the Sailings tab from the schedule card header on Routes', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Sailings schedule/ }).click();
+  await expect(page.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+});
+
 test('resets the scroll position after leaving a tab scrolled down by a highlight jump', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto('/');

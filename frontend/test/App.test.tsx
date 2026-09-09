@@ -765,6 +765,16 @@ describe('Card navigation', () => {
     expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
     expect(document.querySelector('.data-card.is-highlighted')).not.toBeNull();
   });
+
+  it('opens the Sailings tab from the schedule card header on Routes', async () => {
+    mockSchedule([{ vesselId: 2, vesselName: 'Wenatchee', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await userEvent.click(screen.getByRole('button', { name: /Sailings schedule/ }));
+
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+  });
 });
 
 describe('Recorded day browser', () => {
