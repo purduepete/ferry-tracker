@@ -348,6 +348,7 @@ th { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: upp
 tbody tr:hover { background: color-mix(in srgb, var(--surface) 92%, var(--accent-soft)); }
 tbody tr.current { background: color-mix(in srgb, var(--accent-soft) 48%, transparent); border-left: 3px solid var(--accent); }
 tbody tr.is-linked { cursor: pointer; }
+.space-percent-only { display: none; }
 
 @media (min-width: 768px) and (max-width: 1439px) {
   .header-inner { padding: 0 40px; }
@@ -400,6 +401,13 @@ tbody tr.is-linked { cursor: pointer; }
      aria-labelledby points back at its tab button for its accessible name. */
   .tabs button { flex: 1 1 0; min-width: 0; padding: 0; justify-content: center; }
   .tab-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+  /* The Vessel column and the space breakdown are the two widest, least essential cells on a
+     phone; dropping them is what lets the table fit without horizontal scroll. */
+  .schedule-card table { min-width: 0; }
+  .schedule-card th, .schedule-card td { padding: 9px 6px; font-size: 12px; }
+  .schedule-card .col-vessel { display: none; }
+  .schedule-card .space-detail, .schedule-card .space-desktop-pill { display: none; }
+  .schedule-card .space-percent-only { display: inline-flex; }
 }
 
 @media (max-width: 639px) {

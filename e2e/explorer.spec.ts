@@ -367,8 +367,9 @@ test('opens the Vessels tab and highlights the vessel when a Sailings row is cli
   await page.getByRole('option', { name: 'Seattle' }).click();
   await page.getByRole('tab', { name: 'Sailings' }).click();
 
-  // Click elsewhere in the row, not the vessel-name link itself, which still opens Routes on its own.
-  const row = page.locator('tbody tr', { has: page.getByRole('button', { name: 'Tacoma' }) }).first();
+  // The row's own aria-label finds it regardless of whether the Vessel column is visible
+  // (a phone hides that column, which would also hide the vessel-name button below it).
+  const row = page.getByRole('row', { name: 'View Tacoma on the Vessels tab' }).first();
   await row.locator('td').first().click();
 
   await expect(page.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
@@ -392,6 +393,23 @@ test('opens the Sailings tab from the schedule card header on Routes', async ({ 
   await page.goto('/');
   await page.getByRole('button', { name: /Sailings schedule/ }).click();
   await expect(page.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('trims the Sailings table to fit a phone without horizontal scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  // Only the Seattle -> Bainbridge Island fixture has sailings, so pick that route explicitly.
+  await page.getByRole('button', { name: 'Origin' }).click();
+  await page.getByRole('option', { name: 'Seattle' }).click();
+  await page.getByRole('tab', { name: 'Sailings' }).click();
+  await expect(page.locator('table')).toBeVisible();
+
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.locator('.col-vessel').first()).toBeHidden();
+  await expect(page.locator('.space-detail').first()).toBeHidden();
+  // Only a percentage (or a dash) shows in the space column, never the "drive-up" wording.
+  const spaceCellText = await page.locator('tbody tr td:last-child').first().innerText();
+  expect(spaceCellText).toMatch(/^(\d+%|—)$/);
 });
 
 test('resets the scroll position after leaving a tab scrolled down by a highlight jump', async ({ page }) => {
