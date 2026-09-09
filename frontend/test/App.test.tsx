@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
-import { addFavoriteRoute, capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, DEFAULT_FAVORITE_ROUTES, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, isPublishedRoute, loadCatchOverrides, loadFavoriteRoutes, loadSettings, normalizeCatchOverrides, normalizeFavoriteRoutes, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingTimeMinutes, serviceDayLabel, setCatchOverride, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
+import { addFavoriteRoute, capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, DEFAULT_FAVORITE_ROUTES, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, isPublishedRoute, loadCatchOverrides, loadFavoriteRoutes, loadSettings, normalizeCatchOverrides, normalizeFavoriteRoutes, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingDeparture, sailingTimeMinutes, serviceDayLabel, setCatchOverride, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
@@ -542,6 +542,44 @@ describe('Departure delay', () => {
     expect(departureDelayMinutes({ actualDeparture: left, departureDelayMinutes: -9 })).toBeNull();
   });
 
+  describe('sailingDeparture', () => {
+    const sailing = { actualDeparture: null, departureDelayMinutes: null, vesselId: 1, departingTime: '2026-09-01T17:00:00.000Z' };
+    const boat = { id: 1, atDock: false, speed: 14, leftDock: left, scheduledDeparture: '2026-09-01T17:00:00.000Z' };
+
+    it('prefers the recorded leg once the crossing has closed', () => {
+      expect(sailingDeparture({ ...sailing, actualDeparture: left, departureDelayMinutes: 6 }, [])).toEqual({ at: left, delayMinutes: 6 });
+    });
+
+    it('falls back to the live feed while the boat is still underway', () => {
+      expect(sailingDeparture(sailing, [boat])).toEqual({ at: left, delayMinutes: 6 });
+    });
+
+    it('counts a boat under two minutes late as on time, the same as vesselEta does', () => {
+      expect(sailingDeparture(sailing, [{ ...boat, leftDock: '2026-09-01T17:01:00.000Z' }]))
+        .toEqual({ at: '2026-09-01T17:00:00.000Z', delayMinutes: null });
+    });
+
+    it('ignores a boat sitting in a different slot', () => {
+      expect(sailingDeparture(sailing, [{ ...boat, scheduledDeparture: '2026-09-01T17:35:00.000Z' }])).toBeNull();
+      expect(sailingDeparture(sailing, [{ ...boat, id: 2 }])).toBeNull();
+      expect(sailingDeparture(sailing, [{ ...boat, leftDock: null }])).toBeNull();
+    });
+
+    it('never pairs a slotless sailing with a slotless vessel', () => {
+      expect(sailingDeparture({ ...sailing, departingTime: null }, [{ ...boat, scheduledDeparture: null }])).toBeNull();
+    });
+
+    it('waits for movement, since AtDock flapping drags LeftDock with it', () => {
+      expect(sailingDeparture(sailing, [{ ...boat, speed: 0.2 }])).toBeNull();
+      expect(sailingDeparture(sailing, [{ ...boat, atDock: true }])).toBeNull();
+      expect(sailingDeparture(sailing, [{ ...boat, speed: null }])).toEqual({ at: left, delayMinutes: 6 });
+    });
+
+    it('rejects a left-dock time before the slot, which pairs the wrong crossing', () => {
+      expect(sailingDeparture(sailing, [{ ...boat, leftDock: '2026-09-01T16:45:00.000Z' }])).toBeNull();
+    });
+  });
+
   it('renders the delay beside the sailing', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
@@ -904,6 +942,11 @@ describe('Sailing time', () => {
 
   it('marks a crossing built on the live ETA as estimated', () => {
     const boat = { id: 18, atDock: false, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:46:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
+    expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true });
+  });
+
+  it('measures a late crossing from the live departure, so the delay never inflates it', () => {
+    const boat = { id: 18, atDock: false, speed: 14, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:56:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
     expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true });
   });
 

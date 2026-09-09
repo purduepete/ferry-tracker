@@ -487,6 +487,34 @@ export function disruptionWaves(
   return waves;
 }
 
+// The recorded leg only lands once the crossing closes, so a boat still underway gets its
+// departure from the live vessel feed instead.
+export function sailingDeparture(
+  sailing: Pick<SailingView, 'actualDeparture' | 'departureDelayMinutes' | 'vesselId' | 'departingTime'>,
+  vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'leftDock' | 'scheduledDeparture'> & Partial<Pick<VesselView, 'speed'>>> = [],
+): { at: string; delayMinutes: number | null } | null {
+  if (sailing.actualDeparture) return { at: sailing.actualDeparture, delayMinutes: departureDelayMinutes(sailing) };
+  if (sailing.departingTime === null) return null;
+  // Matched on the scheduled departure so a boat that runs the route twice cannot lend its
+  // left-dock time to the wrong row.
+  const underway = vessels.find((vessel) =>
+    vessel.id === sailing.vesselId && vessel.atDock === false && vessel.scheduledDeparture === sailing.departingTime);
+  if (!underway?.leftDock) return null;
+  const scheduled = Date.parse(sailing.departingTime);
+  const left = Date.parse(underway.leftDock);
+  if (Number.isNaN(scheduled) || Number.isNaN(left)) return null;
+  // AtDock flaps either side of a real departure and drags LeftDock with it, so the stamp is
+  // believed only once the boat is independently moving. Same two signals catchDeparture uses.
+  const speed = underway.speed ?? null;
+  if (!(speed !== null && speed > UNDERWAY_KNOTS) && !(speed === null && left >= scheduled)) return null;
+  const delay = vesselDelayMinutes(underway);
+  // A ferry never leaves early, so a negative delay means the feed paired the wrong slot. Under
+  // LATE_MINUTES the boat counts as on time, matching vesselEta, which keeps a crossing measured
+  // between the two free of the delay at either threshold.
+  if (delay === null || delay < 0) return null;
+  return delay < LATE_MINUTES ? { at: sailing.departingTime, delayMinutes: null } : { at: underway.leftDock, delayMinutes: delay };
+}
+
 // WSDOT publishes a scheduled arrival on almost no route, so the observed dock arrival is
 // the usual answer and the live ETA covers the one crossing still in progress.
 export function sailingArrival(
@@ -506,11 +534,11 @@ export function sailingArrival(
 // Measured against the actual departure when there is one, so the crossing never absorbs
 // time the boat spent late at the dock.
 export function sailingTimeMinutes(
-  sailing: Pick<SailingView, 'actualArrival' | 'arrivingTime' | 'vesselId' | 'departingTime' | 'actualDeparture'>,
-  vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'>>,
+  sailing: Pick<SailingView, 'actualArrival' | 'arrivingTime' | 'vesselId' | 'departingTime' | 'actualDeparture' | 'departureDelayMinutes'>,
+  vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'> & Partial<Pick<VesselView, 'speed'>>>,
 ): { minutes: number; estimated: boolean } | null {
   const arrival = sailingArrival(sailing, vessels);
-  const departure = sailing.actualDeparture ?? sailing.departingTime;
+  const departure = sailingDeparture(sailing, vessels)?.at ?? sailing.departingTime;
   if (arrival === null || departure === null) return null;
   const minutes = (Date.parse(arrival.at) - Date.parse(departure)) / 60000;
   if (Number.isNaN(minutes) || minutes <= 0) return null;
