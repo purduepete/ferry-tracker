@@ -388,6 +388,21 @@ test('opens the Vessels tab from the compact schedule list on Routes', async ({ 
   await expect(page.locator('.data-card.is-highlighted')).toBeVisible();
 });
 
+test('resets the scroll position after leaving a tab scrolled down by a highlight jump', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Origin' }).click();
+  await page.getByRole('option', { name: 'Seattle' }).click();
+
+  const item = page.locator('.sailing-list li', { hasText: 'Tacoma' }).first();
+  await item.click();
+  await expect(page.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  await page.getByRole('tab', { name: 'Catch' }).click();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+});
+
 test('switches tabs with bare letter keyboard shortcuts', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');

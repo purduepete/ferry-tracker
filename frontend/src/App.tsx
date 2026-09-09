@@ -652,6 +652,11 @@ export function App() {
     };
   });
 
+  // A switched tab starts at the top; the highlight effect below re-scrolls down when it applies.
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [tab]);
+
   // Scrolls to and briefly highlights the vessel a sailing row jumped here for.
   useEffect(() => {
     if (tab !== 'vessels' || highlightedVesselId === null) return;
