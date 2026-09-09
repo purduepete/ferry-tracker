@@ -44,7 +44,7 @@ describe('Ferry data explorer', () => {
     expect(screen.getByText(/Seattle to Bainbridge Island/)).toBeInTheDocument();
     expect(screen.getByText(new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short', hour12: false }).format(new Date('2026-09-01T16:30:00.000Z')))).toBeInTheDocument();
     expect(screen.queryByText(/TerminalID|VesselID/)).not.toBeInTheDocument();
-    expect(await screen.findByText(/176 drive-up \/ 202/)).toBeInTheDocument();
+    expect(await screen.findByText(/176 drv \/ 202/)).toBeInTheDocument();
     expect(screen.queryByText('Current vehicle-space reports')).not.toBeInTheDocument();
     expect(document.querySelector('time[datetime="2026-09-01T16:00:00.000Z"]')).toBeInTheDocument();
 
@@ -286,16 +286,16 @@ describe('Ferry data explorer', () => {
     });
 
     render(<ThemeProvider><App /></ThemeProvider>);
-    expect(await screen.findByText(/176 drive-up \/ 202/)).toBeInTheDocument();
+    expect(await screen.findByText(/176 drv \/ 202/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Reverse route' }));
 
-    expect(screen.getByText(/176 drive-up \/ 202/)).toBeInTheDocument();
+    expect(screen.getByText(/176 drv \/ 202/)).toBeInTheDocument();
     expect(screen.getByRole('status', { name: 'Loading updated ferry data' })).toBeInTheDocument();
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-busy', 'true');
 
     resolveChangedRoute(await json([{ vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T18:00:00.000Z', arrivingTime: '2026-09-01T18:35:00.000Z', departingTerminalId: 3, arrivingTerminalId: 7, isCancelled: false, driveUpSpaceCount: 95, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]));
     await waitFor(() => expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-busy', 'false'));
-    expect(screen.getByText(/95 drive-up \/ 202/)).toBeInTheDocument();
+    expect(screen.getByText(/95 drv \/ 202/)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('status', { name: 'Loading updated ferry data' })).not.toBeInTheDocument());
   });
 
@@ -514,7 +514,7 @@ describe('Recorded vehicle space', () => {
     const marks = await screen.findAllByLabelText(`Last recorded at ${at}, 3 min before departure`);
     expect(marks[0]).toHaveClass('recorded-mark');
     expect(document.querySelectorAll('.space-count.is-recorded')).toHaveLength(1);
-    expect(await screen.findByText(/40 drive-up \/ 202/)).toBeInTheDocument();
+    expect(await screen.findByText(/40 drv \/ 202/)).toBeInTheDocument();
   });
 });
 
@@ -570,7 +570,7 @@ describe('Departure delay', () => {
     });
 
     render(<ThemeProvider><App /></ThemeProvider>);
-    expect(await screen.findByText(/40 drive-up/)).toBeInTheDocument();
+    expect(await screen.findByText(/40 drv/)).toBeInTheDocument();
     expect(screen.queryByText(`Left ${at}`)).not.toBeInTheDocument();
     expect(document.querySelector('.departure-delay')).toBeNull();
   });
@@ -591,7 +591,7 @@ describe('Unreported vehicle space', () => {
     });
 
     render(<ThemeProvider><App /></ThemeProvider>);
-    expect(await screen.findByText(/40 drive-up/)).toBeInTheDocument();
+    expect(await screen.findByText(/40 drv/)).toBeInTheDocument();
     expect(document.querySelectorAll('.sailing-list li')).toHaveLength(2);
     expect(document.querySelectorAll('.sailing-list .space-count')).toHaveLength(1);
   });
@@ -800,12 +800,12 @@ describe('Recorded day browser', () => {
     mockDay(['2026-08-30']);
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
-    expect(await screen.findByText(/176 drive-up \/ 202/)).toBeInTheDocument();
+    expect(await screen.findByText(/176 drv \/ 202/)).toBeInTheDocument();
 
     await user.click(await screen.findByRole('button', { name: 'Day' }));
     await user.click(screen.getByRole('option', { name: serviceDayLabel('2026-08-30') }));
 
-    expect(await screen.findByText(/3 drive-up \/ 139/)).toBeInTheDocument();
+    expect(await screen.findByText(/3 drv \/ 139/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Day' }).querySelector('.recorded-mark')).toBeInTheDocument();
     expect(document.querySelector('.vessel-stack.is-dimmed')).toBeInTheDocument();
     expect(document.querySelector('.app-header.is-recorded')).toBeInTheDocument();
@@ -827,7 +827,7 @@ describe('Recorded day browser', () => {
     mockDay(['2026-08-30', '2026-08-29']);
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
-    await screen.findByText(/176 drive-up \/ 202/);
+    await screen.findByText(/176 drv \/ 202/);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).not.toBeDisabled());
 
     await user.click(screen.getByRole('tab', { name: 'Sailings' }));

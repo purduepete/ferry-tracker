@@ -23,7 +23,7 @@ test('shows the terminal to ferry to schedule routes view without external netwo
   await expect(tacomaVessel.getByText('Updated')).toBeVisible();
   await expect(page.getByText(/TerminalID|VesselID/)).toHaveCount(0);
   await expect(page.locator('.schedule-node h2')).toHaveText('Seattle to Bainbridge Island');
-  await expect(page.getByText('176 drive-up / 202')).toBeVisible();
+  await expect(page.getByText('176 drv / 202')).toBeVisible();
   await expect(page.getByText('Current vehicle-space reports')).toHaveCount(0);
   await expect(page.locator('.refresh-time')).toContainText('Last refresh');
   expect(sailingSpaceRequests).toBe(0);
@@ -33,7 +33,7 @@ test('shows the terminal to ferry to schedule routes view without external netwo
   await expect(page.getByRole('button', { name: 'Destination' })).toContainText('Seattle');
   await expect(page.getByRole('status', { name: 'Loading updated ferry data' })).toBeAttached();
   await expect(page.locator('.view-loading-cover')).toBeVisible();
-  await expect(page.getByText('176 drive-up / 202')).toBeAttached();
+  await expect(page.getByText('176 drv / 202')).toBeAttached();
   releaseChangedRoute();
   const opacitySamples = await page.evaluate(() => new Promise<Array<{ cover: number; content: number }>>((resolve) => {
     const samples: Array<{ cover: number; content: number }> = [];
@@ -330,7 +330,7 @@ for (const width of [390, 767, 768, 1024, 1440]) {
     const columns = await page.locator('.relationship-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
     expect(columns).toBe(width < 1024 ? 1 : 5);
 
-    const wrappedSailingRows = await page.locator('.sailing-list li > span').evaluateAll((elements) => elements.filter((element) => {
+    const wrappedSailingRows = await page.locator('.sailing-list .sailing-row > span').evaluateAll((elements) => elements.filter((element) => {
       const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
       return element.getBoundingClientRect().height > lineHeight * 1.5;
     }).map((element) => element.textContent ?? ''));

@@ -553,9 +553,9 @@ export function isCurrentSailing(sailing: Pick<CurrentSailing, 'departingTime'>,
   return sailing.departingTime === currentSailing.departingTime;
 }
 
-export function spaceCounts(space: Pick<SailingView, 'driveUpSpaceCount' | 'reservableSpaceCount'>) {
-  const values: string[] = [];  if (space.driveUpSpaceCount !== null) values.push(`${space.driveUpSpaceCount} drive-up`);
-  if (space.reservableSpaceCount !== null) values.push(`${space.reservableSpaceCount} reservable`);
+export function spaceCounts(space: Pick<SailingView, 'driveUpSpaceCount' | 'reservableSpaceCount'>, compact = false) {
+  const values: string[] = [];  if (space.driveUpSpaceCount !== null) values.push(`${space.driveUpSpaceCount} ${compact ? 'drv' : 'drive-up'}`);
+  if (space.reservableSpaceCount !== null) values.push(`${space.reservableSpaceCount} ${compact ? 'res' : 'reservable'}`);
   return values.length ? values.join(', ') : 'Count hidden';
 }
 
@@ -569,6 +569,13 @@ export function vehicleSpace(sailing: SailingView) {
 export function compactVehicleSpace(sailing: Pick<SailingView, 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount'>) {
   if (!sailing.spaceAvailable) return '—';
   const counts = spaceCounts(sailing);
+  return sailing.maxSpaceCount === null ? counts : `${counts} / ${sailing.maxSpaceCount}`;
+}
+
+// The Routes-tab schedule list is the tightest space of all, so it drops to "up"/"res".
+export function phoneVehicleSpace(sailing: Pick<SailingView, 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount'>) {
+  if (!sailing.spaceAvailable) return '—';
+  const counts = spaceCounts(sailing, true);
   return sailing.maxSpaceCount === null ? counts : `${counts} / ${sailing.maxSpaceCount}`;
 }
 
