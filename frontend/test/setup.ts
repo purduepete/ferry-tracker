@@ -6,6 +6,11 @@ import { cleanup, configure } from '@testing-library/react';
 // render lose the race on hardware that is merely slow.
 configure({ asyncUtilTimeout: 5000 });
 
+// jsdom has no scrollIntoView; the sailing-row -> Vessels highlight effect calls it.
+if (typeof window !== 'undefined' && !window.Element.prototype.scrollIntoView) {
+  window.Element.prototype.scrollIntoView = () => {};
+}
+
 if (typeof window !== 'undefined') {
   beforeEach(() => {
     const storage = new Map<string, string>();

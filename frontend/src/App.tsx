@@ -1,5 +1,5 @@
 import { isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, Clock3, ExternalLink, GripVertical, History, ListFilter, MapPin, Plus, RefreshCw, RotateCcw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
+import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, Clock3, ExternalLink, GripVertical, History, ListFilter, Plus, RefreshCw, RotateCcw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
 import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, compactVehicleSpace, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshTime, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingTimeMinutes, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CatchOverride, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
@@ -8,14 +8,14 @@ import { ThemeMenu } from './theme/ThemeMenu';
 
 type Tab = 'routes' | 'terminals' | 'vessels' | 'schedule' | 'catch' | 'disruption' | 'settings';
 
-const tabs: Array<{ id: Tab; label: string; icon: typeof Waypoints }> = [
-  { id: 'routes', label: 'Routes', icon: Waypoints },
-  { id: 'catch', label: 'Catch', icon: Timer },
-  { id: 'disruption', label: 'Disruption', icon: TrafficCone },
-  { id: 'schedule', label: 'Sailings', icon: Clock3 },
-  { id: 'vessels', label: 'Vessels', icon: Ship },
-  { id: 'terminals', label: 'Terminals', icon: MapPin },
-  { id: 'settings', label: 'Settings', icon: Settings },
+const tabs: Array<{ id: Tab; label: string; icon: typeof Waypoints; shortcut: string }> = [
+  { id: 'routes', label: 'Routes', icon: Waypoints, shortcut: 'r' },
+  { id: 'catch', label: 'Catch', icon: Timer, shortcut: 'c' },
+  { id: 'disruption', label: 'Disruption', icon: TrafficCone, shortcut: 'd' },
+  { id: 'schedule', label: 'Sailings', icon: Clock3, shortcut: 's' },
+  { id: 'vessels', label: 'Vessels', icon: Ship, shortcut: 'v' },
+  // Settings takes its 2nd letter since Sailings already claims "s".
+  { id: 'settings', label: 'Settings', icon: Settings, shortcut: 'a' },
 ];
 const COUNTDOWN_TICK_MS = 15_000;
 const BACKGROUND_REFRESH_MS = 60_000;
@@ -192,7 +192,8 @@ function SettingField({ label, ariaLabel, hint, setting, unit, settings, onChang
 function VesselLink({ vesselId, vesselName, vessels, onOpen }: { vesselId: number | null; vesselName: string; vessels: VesselView[]; onOpen: (terminalId: number | null, destination: number | null) => void }) {
   const live = vessels.find((vessel) => vessel.id === vesselId);
   if (!live || live.departingTerminalId === null) return <>{vesselName}</>;
-  return <button className="card-link" type="button" title={`Show ${vesselName}'s current route in the routes view`} onClick={() => onOpen(live.departingTerminalId, live.arrivingTerminalId)}>{vesselName}</button>;
+  // Stops both click and keydown from bubbling to an ancestor row's own navigation handler.
+  return <button className="card-link" type="button" title={`Show ${vesselName}'s current route in the routes view`} onClick={(event) => { event.stopPropagation(); onOpen(live.departingTerminalId, live.arrivingTerminalId); }} onKeyDown={(event) => event.stopPropagation()}>{vesselName}</button>;
 }
 
 function SailingVessel({ sailing, vessels, onOpen }: { sailing: SailingView; vessels: VesselView[]; onOpen: (terminalId: number | null, destination: number | null) => void }) {
@@ -256,7 +257,9 @@ export function App() {
   const vesselStackRef = useRef<HTMLDivElement>(null);
   const favoriteListRef = useRef<HTMLUListElement>(null);
   const favoriteRouteListRef = useRef<HTMLUListElement>(null);
+  const vesselCardRefs = useRef<Record<number, HTMLElement | null>>({});
   const [vesselStackHeight, setVesselStackHeight] = useState(0);
+  const [highlightedVesselId, setHighlightedVesselId] = useState<number | null>(null);
   const previousTabRef = useRef<Tab>(tab);
   const historyDatesRef = useRef<string[]>(historyDates);
   const serviceDateRef = useRef(serviceDate);
@@ -582,9 +585,21 @@ export function App() {
   };
 
   // The band sits on Routes and Sailings alike, so a chip there changes the route in place.
-  const pickRoute = (terminalId: number, destination: number) => {
+  const pickRoute = (terminalId: number | null, destination: number | null) => {
+    if (terminalId === null) return;
     setSelectedTerminalId(terminalId);
     setDestinationId(destination);
+  };
+
+  // Only a vessel the live feed still knows about has a card to jump to.
+  const sailingRowVesselId = (sailing: SailingView): number | null => (
+    sailing.vesselId !== null && vessels.some((vessel) => vessel.id === sailing.vesselId) ? sailing.vesselId : null
+  );
+
+  const showVesselOnVesselsTab = (vesselId: number | null) => {
+    if (vesselId === null) return;
+    setHighlightedVesselId(vesselId);
+    setTab('vessels');
   };
 
   const toggleFavoriteTerminal = (terminalId: number) => {
@@ -636,6 +651,32 @@ export function App() {
       window.removeEventListener('pointercancel', stop);
     };
   });
+
+  // Scrolls to and briefly highlights the vessel a sailing row jumped here for.
+  useEffect(() => {
+    if (tab !== 'vessels' || highlightedVesselId === null) return;
+    vesselCardRefs.current[highlightedVesselId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const timeout = window.setTimeout(() => setHighlightedVesselId(null), 2000);
+    return () => window.clearTimeout(timeout);
+  }, [tab, highlightedVesselId]);
+
+  // A bare letter key jumps tabs from anywhere, unless it would instead type into a field or a menu is open.
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable || target.getAttribute('aria-expanded') === 'true')) return;
+      const key = event.key.toLowerCase();
+      const index = tabs.findIndex((entry) => entry.shortcut === key);
+      if (index === -1) return;
+      event.preventDefault();
+      setTab(tabs[index].id);
+      // Switches the view only; moving real DOM focus here would steal it from wherever the
+      // user was and show a stray focus ring, since the shortcut is meant to work from anywhere.
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const changeFavoriteRoutes = (next: FavoriteRoute[]) => {
     setFavoriteRoutes(next);
@@ -744,20 +785,20 @@ export function App() {
           {tab === 'routes' && <div className={`relationship-grid${sailingsOnly ? ' is-sailings-only' : ''}`} style={vesselStackHeight ? { '--vessel-stack-height': `${vesselStackHeight}px` } as CSSProperties : undefined}>
             <article className="relationship-node terminal-node"><span className="node-type">Terminal</span><h2>{selectedTerminal?.name ?? 'No terminal'}</h2><div className="field"><dt>City</dt><dd>{selectedTerminal?.city}{selectedTerminal?.latitude && selectedTerminal?.longitude ? <> <a href={`https://maps.google.com/?q=${selectedTerminal.latitude},${selectedTerminal.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Coordinates" value={selectedTerminal ? `${selectedTerminal.latitude}, ${selectedTerminal.longitude}` : null} /></article>
             <div className="relationship-link"><span>{associatedVessels.length} associated</span><ArrowRight /></div>
-            <div className={`vessel-stack${recordedDay ? ' is-dimmed' : ''}`} ref={vesselStackRef}>{recordedDay && <p className="vessel-live-note">Live positions only.</p>}{associatedVessels.length ? associatedVessels.map((vessel) => <article className="relationship-node vessel-node" key={vessel.id}><span className="node-type">Vessel</span><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.name}</h2><p>{vessel.departingTerminalName ?? '—'} <ArrowRight size={14} /> {vessel.arrivingTerminalName ?? '—'}</p><Field label="Class" value={vessel.vesselClass} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Speed" value={vessel.speed === null ? null : `${vessel.speed} knots`} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></article>) : <div className="empty">No vessel currently references this terminal.</div>}</div>
+            <div className={`vessel-stack${recordedDay ? ' is-dimmed' : ''}`} ref={vesselStackRef}>{recordedDay && <p className="vessel-live-note">Live positions only.</p>}{associatedVessels.length ? associatedVessels.map((vessel) => { const clickable = vessel.departingTerminalId !== null; return <article className={`relationship-node vessel-node${clickable ? ' is-clickable' : ''}`} key={vessel.id} {...(clickable ? { role: 'button', tabIndex: 0, 'aria-label': `Show ${vessel.name}'s route in the routes view`, onClick: () => pickRoute(vessel.departingTerminalId, vessel.arrivingTerminalId), onKeyDown: (event: KeyboardEvent<HTMLElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pickRoute(vessel.departingTerminalId, vessel.arrivingTerminalId); } } } : {})}><span className="node-type">Vessel</span><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.name}</h2><p>{vessel.departingTerminalName ?? '—'} <ArrowRight size={14} /> {vessel.arrivingTerminalName ?? '—'}</p><Field label="Class" value={vessel.vesselClass} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Speed" value={vessel.speed === null ? null : `${vessel.speed} knots`} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></article>; }) : <div className="empty">No vessel currently references this terminal.</div>}</div>
             <div className="relationship-link"><span>{scheduleResponse?.data.length ?? 0} sailings</span><ArrowRight /></div>
             <article className="relationship-node schedule-node">
               <span className="node-type">Sailings schedule</span>
               <h2>{selectedTerminal?.name ?? '—'} to {destination?.name ?? '—'}</h2>
-              {scheduleResponse?.data.length ? <ol className="sailing-list">{scheduleResponse.data.map((sailing, index) => <li key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><strong>{localTime(sailing.departingTime)}</strong><span>{sailing.vesselName ?? 'Vessel unassigned'}</span>{sailing.spaceAvailable && <span className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`} title={recordedSpaceLabel(sailing) ?? undefined}><Car className="space-icon" size={13} role="img" aria-label="Vehicle space" />{compactVehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></span>}<DepartureDelay sailing={sailing} /></li>)}</ol> : scheduleLoading ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div> : <div className="empty">No sailings in this 14-hour window.</div>}
+              {scheduleResponse?.data.length ? <ol className="sailing-list">{scheduleResponse.data.map((sailing, index) => { const linkedVesselId = sailingRowVesselId(sailing); const itemClasses = [isCurrentSailing(sailing, currentSailing) ? 'current' : '', linkedVesselId !== null ? 'is-linked' : ''].filter(Boolean).join(' '); return <li key={`${sailing.departingTime}-${index}`} className={itemClasses || undefined} {...(linkedVesselId !== null ? { tabIndex: 0, 'aria-label': `View ${sailing.vesselName} on the Vessels tab`, onClick: () => showVesselOnVesselsTab(linkedVesselId), onKeyDown: (event: KeyboardEvent<HTMLLIElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showVesselOnVesselsTab(linkedVesselId); } } } : {})}><strong>{localTime(sailing.departingTime)}</strong><span>{sailing.vesselName ?? 'Vessel unassigned'}</span>{sailing.spaceAvailable && <span className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`} title={recordedSpaceLabel(sailing) ?? undefined}><Car className="space-icon" size={13} role="img" aria-label="Vehicle space" />{compactVehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></span>}<DepartureDelay sailing={sailing} /></li>; })}</ol> : scheduleLoading ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div> : <div className="empty">No sailings in this 14-hour window.</div>}
             </article>
           </div>}
 
           {tab === 'terminals' && <div className="data-grid">{terminals.map((terminal) => <article className="data-card" key={terminal.id}><h2><button className="card-link" type="button" title={`Show ${terminal.name} in the routes view`} onClick={() => openRoute(terminal.id, null)}>{terminal.name}</button></h2><dl><div className="field"><dt>City</dt><dd>{terminal.city}{terminal.latitude && terminal.longitude ? <> <a href={`https://maps.google.com/?q=${terminal.latitude},${terminal.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Latitude" value={terminal.latitude} /><Field label="Longitude" value={terminal.longitude} /></dl></article>)}</div>}
 
-          {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className="data-card" key={vessel.id}><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.departingTerminalId === null ? vessel.name : <button className="card-link" type="button" title={`Show ${vessel.name}'s route in the routes view`} onClick={() => openRoute(vessel.departingTerminalId, vessel.arrivingTerminalId)}>{vessel.name}</button>}</h2><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></dl></article>)}</div>}
+          {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className={`data-card${vessel.id === highlightedVesselId ? ' is-highlighted' : ''}`} key={vessel.id} ref={(element) => { if (element) vesselCardRefs.current[vessel.id] = element; else delete vesselCardRefs.current[vessel.id]; }}><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.departingTerminalId === null ? vessel.name : <button className="card-link" type="button" title={`Show ${vessel.name}'s route in the routes view`} onClick={() => openRoute(vessel.departingTerminalId, vessel.arrivingTerminalId)}>{vessel.name}</button>}</h2><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></dl></article>)}</div>}
 
-          {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings schedule</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Sailing time</th><th>Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => <tr key={`${sailing.departingTime}-${index}`} className={isCurrentSailing(sailing, currentSailing) ? 'current' : ''}><td>{localTime(sailing.departingTime)}</td><td>{departureDelayMinutes(sailing) === null ? '—' : <DepartureDelay sailing={sailing} />}</td><td><SailingArrival sailing={sailing} vessels={vessels} /></td><td><SailingTime sailing={sailing} vessels={vessels} /></td><td><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRoute} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}>{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></td></tr>)}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
+          {tab === 'schedule' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Sailings schedule</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Sailing time</th><th>Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => { const linkedVesselId = sailingRowVesselId(sailing); const rowClasses = [isCurrentSailing(sailing, currentSailing) ? 'current' : '', linkedVesselId !== null ? 'is-linked' : ''].filter(Boolean).join(' '); return <tr key={`${sailing.departingTime}-${index}`} className={rowClasses || undefined} {...(linkedVesselId !== null ? { tabIndex: 0, 'aria-label': `View ${sailing.vesselName} on the Vessels tab`, onClick: () => showVesselOnVesselsTab(linkedVesselId), onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showVesselOnVesselsTab(linkedVesselId); } } } : {})}><td>{localTime(sailing.departingTime)}</td><td>{departureDelayMinutes(sailing) === null ? '—' : <DepartureDelay sailing={sailing} />}</td><td><SailingArrival sailing={sailing} vessels={vessels} /></td><td><SailingTime sailing={sailing} vessels={vessels} /></td><td><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRoute} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}>{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></td></tr>; })}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
 
           {tab === 'catch' && <div className="countdown-card">
             <div className="schedule-heading catch-heading has-switcher">

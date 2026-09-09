@@ -343,3 +343,65 @@ for (const width of [390, 767, 768, 1024, 1440]) {
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
   });
 }
+
+test('changes the route in place when a vessel card on Routes is clicked', async ({ page }) => {
+  await page.goto('/');
+  // The default origin is alphabetically first (Bainbridge Island), so pick Seattle explicitly.
+  await page.getByRole('button', { name: 'Origin' }).click();
+  await page.getByRole('option', { name: 'Seattle' }).click();
+  await expect(page.locator('.terminal-node h2')).toHaveText('Seattle');
+
+  const chimacumCard = page.locator('.vessel-node', { has: page.getByRole('heading', { name: 'Chimacum' }) });
+  // The whole card is the click target, not just the vessel name.
+  await chimacumCard.click();
+
+  await expect(page.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('button', { name: 'Origin' })).toContainText('Bremerton');
+  await expect(page.getByRole('button', { name: 'Destination' })).toContainText('Seattle');
+});
+
+test('opens the Vessels tab and highlights the vessel when a Sailings row is clicked', async ({ page }) => {
+  await page.goto('/');
+  // Only the Seattle -> Bainbridge Island fixture has sailings, so pick that route explicitly.
+  await page.getByRole('button', { name: 'Origin' }).click();
+  await page.getByRole('option', { name: 'Seattle' }).click();
+  await page.getByRole('tab', { name: 'Sailings' }).click();
+
+  // Click elsewhere in the row, not the vessel-name link itself, which still opens Routes on its own.
+  const row = page.locator('tbody tr', { has: page.getByRole('button', { name: 'Tacoma' }) }).first();
+  await row.locator('td').first().click();
+
+  await expect(page.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.data-card.is-highlighted')).toBeVisible();
+});
+
+test('opens the Vessels tab from the compact schedule list on Routes', async ({ page }) => {
+  await page.goto('/');
+  // Only the Seattle -> Bainbridge Island fixture has sailings, so pick that route explicitly.
+  await page.getByRole('button', { name: 'Origin' }).click();
+  await page.getByRole('option', { name: 'Seattle' }).click();
+
+  const item = page.locator('.sailing-list li', { hasText: 'Tacoma' }).first();
+  await item.click();
+
+  await expect(page.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.data-card.is-highlighted')).toBeVisible();
+});
+
+test('switches tabs with bare letter keyboard shortcuts', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+
+  await page.keyboard.press('c');
+  await expect(page.getByRole('tabpanel', { name: 'Catch' })).toBeVisible();
+
+  await page.keyboard.press('s');
+  await expect(page.getByRole('tabpanel', { name: 'Sailings' })).toBeVisible();
+
+  // Settings takes its 2nd letter since Sailings already claims "s".
+  await page.keyboard.press('a');
+  await expect(page.getByRole('tabpanel', { name: 'Settings' })).toBeVisible();
+
+  await page.keyboard.press('r');
+  await expect(page.getByRole('tabpanel', { name: 'Routes' })).toBeVisible();
+});

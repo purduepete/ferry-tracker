@@ -111,6 +111,89 @@ describe('Ferry data explorer', () => {
     expect(screen.getByRole('tab', { name: 'Settings' })).toHaveFocus();
   });
 
+  it('switches tabs from a bare letter key pressed anywhere on the page', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    // Focus lands on the body, not a tab button, to prove the shortcut is not tab-bar-scoped.
+    document.body.focus();
+
+    await user.keyboard('c');
+    expect(screen.getByRole('tab', { name: 'Catch' })).toHaveAttribute('aria-selected', 'true');
+    // The shortcut only switches the view; it must not steal DOM focus and show a stray ring.
+    expect(document.activeElement?.tagName).not.toBe('BUTTON');
+    await user.keyboard('d');
+    expect(screen.getByRole('tab', { name: 'Disruption' })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('s');
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('v');
+    expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
+    // Settings takes its 2nd letter since Sailings already claims "s".
+    await user.keyboard('a');
+    expect(screen.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('r');
+    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('leaves typing in the favorite-route label alone even though it contains shortcut letters', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([
+        { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
+        { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
+      ]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await user.click(screen.getByRole('tab', { name: 'Settings' }));
+    await user.click(await screen.findByRole('button', { name: /Favorite routes/ }));
+    const label = screen.getByRole('textbox', { name: 'Label for Seattle to Bainbridge Island' });
+    await user.clear(label);
+    await user.type(label, 'sacred commute');
+
+    expect(label).toHaveValue('sacred commute');
+    expect(screen.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('leaves an open dropdown alone when a shortcut letter is pressed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    const origin = screen.getByRole('button', { name: 'Origin' });
+    await user.click(origin);
+    expect(origin).toHaveAttribute('aria-expanded', 'true');
+
+    await user.keyboard('c');
+    expect(origin).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('returns to the routes tab from the brand', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
@@ -344,7 +427,7 @@ describe('Sailings only', () => {
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
 
-    await user.click(screen.getByRole('tab', { name: 'Terminals' }));
+    await user.click(screen.getByRole('tab', { name: 'Vessels' }));
     expect(screen.queryByRole('button', { name: 'Sailings only' })).not.toBeInTheDocument();
     expect(document.querySelector('.selection-band')).not.toHaveClass('is-sailings-only');
   });
@@ -534,16 +617,35 @@ describe('Card navigation', () => {
     });
   }
 
-  it('opens the routes view on the terminal that was clicked', async () => {
+  it('changes the route in place when the vessel card on Routes is clicked', async () => {
     mockOverview();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Terminals' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Bainbridge Island' }));
+    // The whole card is the click target, not just the vessel name.
+    await userEvent.click(await screen.findByRole('button', { name: "Show Wenatchee's route in the routes view" }));
 
     expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
+    expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
+  });
+
+  it('leaves the vessel card inert when its terminal is not yet published', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json([{ ...returning, departingTerminalId: null, arrivingTerminalId: 7 }]);
+      if (url.includes('/api/terminal-mates')) return json([
+        { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
+      ]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    expect(screen.queryByRole('button', { name: /Show Wenatchee's route/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Wenatchee')).toBeInTheDocument();
   });
 
   it('opens the routes view on the route the clicked vessel is running', async () => {
@@ -581,6 +683,87 @@ describe('Card navigation', () => {
     expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
     expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
+  });
+
+  function mockSchedule(sailings: unknown[]) {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json([...vessels, returning]);
+      if (url.includes('/api/terminal-mates')) return json([
+        { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
+        { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
+      ]);
+      if (url.includes('/api/history')) return json([]);
+      return json(sailings);
+    });
+  }
+
+  it('switches to the Vessels tab and highlights the vessel when a sailing row is clicked', async () => {
+    mockSchedule([{ vesselId: 2, vesselName: 'Wenatchee', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+    const row = (await screen.findByRole('button', { name: 'Wenatchee' })).closest('tr');
+    if (!row) throw new Error('expected the vessel link to sit inside a table row');
+    await userEvent.click(row);
+
+    expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
+    expect(document.querySelector('.data-card.is-highlighted')).not.toBeNull();
+  });
+
+  it('leaves a sailing row inert when its vessel is not currently live', async () => {
+    mockSchedule([{ vesselId: 99, vesselName: 'Ghost', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+    const row = (await screen.findByText('Ghost')).closest('tr');
+    if (!row) throw new Error('expected a table row');
+    await userEvent.click(row);
+
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('activates a linked sailing row from the keyboard without also firing the nested vessel link', async () => {
+    mockSchedule([{ vesselId: 2, vesselName: 'Wenatchee', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+
+    const vesselLink = await screen.findByRole('button', { name: 'Wenatchee' });
+    const row = vesselLink.closest('tr');
+    if (!row) throw new Error('expected the vessel link to sit inside a table row');
+    row.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+    vesselLink.focus();
+    await userEvent.keyboard('{Enter}');
+    // Enter on the nested link must not bubble up and also switch to Vessels.
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('switches to the Vessels tab from the compact schedule list on Routes', async () => {
+    mockSchedule([{ vesselId: 2, vesselName: 'Wenatchee', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    // 'Wenatchee' also names a vessel-node card on this tab, so scope the lookup to the list.
+    const list = await waitFor(() => {
+      const element = document.querySelector('.sailing-list');
+      if (!element) throw new Error('compact sailing list has not rendered yet');
+      return element as HTMLElement;
+    });
+    const item = within(list).getByText('Wenatchee').closest('li');
+    if (!item) throw new Error('expected the sailing to sit inside a list item');
+    await userEvent.click(item);
+
+    expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
+    expect(document.querySelector('.data-card.is-highlighted')).not.toBeNull();
   });
 });
 
@@ -1639,11 +1822,8 @@ describe('Routeless tabs', () => {
     await user.click(screen.getByRole('tab', { name: 'Settings' }));
     expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
 
-    // Vessels and Terminals list everything, so their band goes at every width, not just on a phone.
+    // Vessels lists everything, so its band goes at every width, not just on a phone.
     await user.click(screen.getByRole('tab', { name: 'Vessels' }));
-    expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
-
-    await user.click(screen.getByRole('tab', { name: 'Terminals' }));
     expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
 
     await user.click(screen.getByRole('tab', { name: 'Sailings' }));
