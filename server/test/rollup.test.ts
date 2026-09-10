@@ -134,6 +134,76 @@ describe('leg state machine', () => {
     expect(rows[1].load_exclusion_reason).toBe('short_dock');
   });
 
+  it('adopts a settled left dock stamp instead of splitting the crossing', () => {
+    observe([
+      { minute: 0, atDock: 1, scheduledDeparture: at(5) },
+      { minute: 10, atDock: 0, leftDock: at(10), scheduledDeparture: at(5) },
+      { minute: 10.5, atDock: 0, leftDock: at(10.5), scheduledDeparture: at(5) },
+      { minute: 20, atDock: 0, leftDock: at(10.5), scheduledDeparture: at(5) },
+      { minute: 40, atDock: 1 },
+    ]);
+
+    runLegRollup(db, options);
+    const rows = legs();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].departed_at).toBe(at(10.5));
+    expect(rows[0].dock_arrival_at).toBe(at(40));
+    expect(rows[0].confidence).toBe('high');
+    expect(rows[0].exclusion_reason).toBeNull();
+  });
+
+  it('still splits when the left dock stamp jumps a turnaround ahead on the same route', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 40, atDock: 0, leftDock: at(38) },
+      { minute: 70, atDock: 1 },
+    ]);
+
+    runLegRollup(db, options);
+    const rows = legs();
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].exclusion_reason).toBe('short_dock');
+    expect(rows[0].dock_arrival_at).toBe(at(38));
+    expect(rows[1].departed_at).toBe(at(38));
+  });
+
+  it('keeps the original departure when the left dock stamp moves backward', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 20, atDock: 0, leftDock: at(2) },
+      { minute: 30, atDock: 0, leftDock: at(2) },
+      { minute: 40, atDock: 1 },
+    ]);
+
+    runLegRollup(db, options);
+    const rows = legs();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].departed_at).toBe(at(10));
+    expect(rows[0].exclusion_reason).toBeNull();
+  });
+
+  it('takes a forward correction that follows a backward one', () => {
+    observe([
+      { minute: 0, atDock: 1 },
+      { minute: 10, atDock: 0, leftDock: at(10) },
+      { minute: 20, atDock: 0, leftDock: at(2) },
+      { minute: 30, atDock: 0, leftDock: at(12) },
+      { minute: 40, atDock: 1 },
+    ]);
+
+    runLegRollup(db, options);
+    const rows = legs();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].departed_at).toBe(at(12));
+    expect(rows[0].exclusion_reason).toBeNull();
+  });
+
   it('breaks continuity across an out of service gap', () => {
     observe([
       { minute: 0, atDock: 1 },

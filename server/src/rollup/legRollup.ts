@@ -58,6 +58,10 @@ interface Leg {
 
 const SLOT_LOOKBACK_MINUTES = 15;
 
+// The shortest WSF crossing runs about 15 minutes, so nothing under this can be a boat that
+// crossed, docked and left again between two polls.
+const MIN_TURNAROUND_MS = 5 * 60_000;
+
 interface DockRun {
   state: number;
   segment: number;
@@ -239,18 +243,28 @@ function buildLegs(
     }
 
     if (open) {
+      const current: Leg = open;
       const pairChanged =
-        open.departingTerminalId !== observation.departing_terminal_id ||
-        open.arrivingTerminalId !== observation.arriving_terminal_id;
-      const leftDockChanged =
-        observation.left_dock !== null && open.leftDock !== null && observation.left_dock !== open.leftDock;
+        current.departingTerminalId !== observation.departing_terminal_id ||
+        current.arrivingTerminalId !== observation.arriving_terminal_id;
+      const movedLeftDock =
+        observation.left_dock !== null && current.leftDock !== null && observation.left_dock !== current.leftDock
+          ? observation.left_dock
+          : null;
+      const shift = movedLeftDock === null ? 0 : Date.parse(movedLeftDock) - Date.parse(current.departedAt);
 
-      // A dock visit shorter than the poll interval leaves at_dock = 0 across both polls.
-      if (pairChanged || leftDockChanged) {
+      // A dock visit shorter than the poll interval leaves at_dock = 0 across both polls. WSDOT
+      // also settles LeftDock a poll or two after a real departure, and that revision moves the
+      // stamp by seconds, so only a jump a turnaround ahead is a second departure.
+      if (pairChanged || shift >= MIN_TURNAROUND_MS) {
         const departedAt = observation.left_dock ?? observation.ts;
-        legs.push({ ...finish(open, departedAt, open.arrivingTerminalId), confidence: 'low', exclusionReason: 'short_dock' });
-        lastArrival = { terminalId: open.arrivingTerminalId, at: departedAt, origin: 'observed' };
+        legs.push({ ...finish(current, departedAt, current.arrivingTerminalId), confidence: 'low', exclusionReason: 'short_dock' });
+        lastArrival = { terminalId: current.arrivingTerminalId, at: departedAt, origin: 'observed' };
         open = start(db, vesselId, observation, previous, lastArrival, options, 'short_dock');
+      } else if (movedLeftDock !== null && shift >= 0) {
+        // A stamp that moves backward is never a correction worth taking: it would shift the leg
+        // onto an earlier slot and read as leaving early.
+        open = { ...current, leftDock: movedLeftDock, departedAt: movedLeftDock };
       }
       previous = observation;
       continue;
