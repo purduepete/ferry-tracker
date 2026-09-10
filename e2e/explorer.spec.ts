@@ -412,6 +412,14 @@ test('folds the route selectors behind a chevron on a phone and remembers the ch
     return Math.abs(toggle - chip) < 1;
   })).toBe(true);
 
+  // Folded, it points right; a thumb landing just above the box still hits it and never a chip.
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.route-toggle svg')!).transform)).toBe('matrix(0, -1, 1, 0, 0, 0)');
+  await expect.poll(() => page.evaluate(() => {
+    const box = document.querySelector('.route-toggle')!.getBoundingClientRect();
+    const above = document.elementFromPoint(box.left + box.width / 2, box.top - 5);
+    return box.width >= 44 && !!above?.closest('.route-toggle');
+  })).toBe(true);
+
   // Collapsed, the band costs one control row: the chevron and the chips beside it.
   const bandHeight = () => page.evaluate(() => Math.round(document.querySelector('.selection-band')!.getBoundingClientRect().height));
   const collapsed = await bandHeight();
@@ -420,6 +428,8 @@ test('folds the route selectors behind a chevron on a phone and remembers the ch
   await toggle.click();
   await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Destination' })).toBeVisible();
+  // Open, it points down at the selects it just revealed.
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.route-toggle svg')!).transform)).toBe('matrix(1, 0, 0, 1, 0, 0)');
   // Day belongs to Historical alone, so it stays out of the way on Sailings even when opened.
   await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
   expect(await bandHeight()).toBeGreaterThan(collapsed);

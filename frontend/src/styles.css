@@ -422,11 +422,14 @@ tbody tr.is-linked { cursor: pointer; }
   .day-field.is-inactive { display: none; }
   /* The selects fold behind the chevron so the band costs one row until the route changes. */
   /* Stretching rather than a fixed height keeps the chevron level with the chips beside it. */
-  .route-toggle { width: 28px; min-height: 26px; align-self: stretch; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+  .route-toggle { position: relative; width: 44px; min-height: 26px; align-self: stretch; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); background: var(--surface); color: var(--muted); touch-action: manipulation; }
+  /* The box has to stay chip-height, so the finger target grows into the band padding instead. */
+  .route-toggle::after { content: ''; position: absolute; inset: -8px 0; }
   .route-toggle:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
-  .route-toggle svg { transition: transform .2s ease; }
-  .route-toggle svg.open { transform: rotate(180deg); }
-  .route-chips-row { order: -1; }
+  /* Right while the selects are folded, down once they are open. */
+  .route-toggle svg { transition: transform .2s ease; transform: rotate(-90deg); }
+  .route-toggle svg.open { transform: rotate(0deg); }
+  .route-chips-row { order: -1; gap: 10px; }
   .route-chips-row.is-empty { display: flex; }
   .route-controls.is-collapsed .selectors { display: none; }
   .theme-popover { position: fixed; top: calc(var(--navbar-height) + 8px); right: max(12px, var(--safe-area-right)); left: max(12px, var(--safe-area-left)); width: auto; }
