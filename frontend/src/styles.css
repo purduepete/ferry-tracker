@@ -28,28 +28,6 @@
   color-scheme: light;
 }
 
-:root[data-theme='dark'] {
-  --bg: #111827;
-  --surface: #1f2937;
-  --surface-2: #273449;
-  --surface-3: #374151;
-  --text: #f9fafb;
-  --muted: #aeb9c9;
-  --catch-dimmed: #8994a4;
-  --line: #3d4a5e;
-  --accent: #5eead4;
-  --accent-soft: #134e4a;
-  --success: #4ade80;
-  --warning: #fdba74;
-  --warning-soft: #7c2d12;
-  --danger: #fca5a5;
-  --shadow: 0 8px 24px rgb(0 0 0 / 22%);
-  --scrollbar-track: #182235;
-  --scrollbar-thumb: #526078;
-  --scrollbar-thumb-hover: #718096;
-  color-scheme: dark;
-}
-
 :root[data-theme='midnight'] {
   --bg: #020617;
   --surface: #0f172a;
@@ -116,7 +94,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .segmented button:hover { background: var(--surface-3); }
 .segmented button[aria-checked='true'] { border-color: var(--accent); background: var(--accent-soft); }
 .source-badge { padding: 5px 9px; border: 1px solid var(--line); font: 11px 'Cascadia Code', 'Consolas', monospace; text-transform: uppercase; }
-.source-badge.live { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 48%, var(--line)); }
 .source-badge.fixture { color: var(--warning); background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 48%, var(--line)); }
 
 main { max-width: 1440px; margin: 0 auto; padding: 0 24px calc(48px + var(--safe-area-bottom)); display: flex; flex-direction: column; }
@@ -418,11 +395,6 @@ tbody tr.is-linked { cursor: pointer; }
   .header-inner { padding: 0 14px; }
   .brand div span { display: none; }
   main { padding: 0 14px calc(36px + var(--safe-area-bottom)); }
-  /* Sailings only means live data, so the Day picker goes and the two route selects share a row. */
-  .selection-band.is-sailings-only .day-field { display: none; }
-  /* The favorite chips carry the route here, which buys back the selector row. They are the only
-     control left, so a user with no favorites keeps the selects. */
-  .selection-band.is-sailings-only:not(.is-chipless) .selectors { display: none; }
   /* Every tab gets the compact band, pinned below the tab bar so the route can be changed from anywhere in a long list. */
   .selection-band { position: sticky; top: calc(var(--navbar-height) + 44px); padding: 10px 0; }
   /* Off screen instead of display:none, so the h1 still answers its IDREF. */

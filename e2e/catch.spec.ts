@@ -128,7 +128,7 @@ test('Catch dims docked Scheduled values with readable contrast across themes an
   await expect(headline.getByRole('group', { name: 'Estimated leave by' })).toContainText('Estimated (delay so far)');
   await expect(headline.getByRole('group', { name: 'Estimated leave by' })).toContainText('0 min');
   await page.getByRole('button', { name: /Padding/ }).click();
-  for (const theme of ['light', 'dark', 'midnight']) {
+  for (const theme of ['light', 'midnight']) {
     await page.getByRole('button', { name: 'Appearance' }).click();
     await page.getByRole('radio', { name: new RegExp(`^${theme}$`, 'i') }).click();
     await page.keyboard.press('Escape');

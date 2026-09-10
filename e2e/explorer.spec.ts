@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('shows the terminal to ferry to schedule routes view without external network', async ({ page }) => {
+test('shows the terminal to ferry to schedule sailings view without external network', async ({ page }) => {
   let sailingSpaceRequests = 0;
   let scheduleRequests = 0;
   let releaseChangedRoute!: () => void;
@@ -18,14 +18,17 @@ test('shows the terminal to ferry to schedule routes view without external netwo
   await expect.poll(() => page.getByRole('listbox', { name: 'Origin' }).evaluate((element) => getComputedStyle(element).scrollbarWidth)).toBe('thin');
   await page.getByRole('option', { name: 'Seattle' }).click();
   await expect(page.locator('.terminal-node h2')).toHaveText('Seattle');
-  const tacomaVessel = page.locator('.vessel-node', { has: page.getByRole('heading', { name: 'Tacoma' }) });
-  await expect(tacomaVessel).toBeVisible();
-  await expect(tacomaVessel.getByText('Updated')).toBeVisible();
+  // The vessel stack is collapsed out of this view, so it is out of the a11y tree: match markup.
+  const tacomaVessel = page.locator('.vessel-node').filter({ hasText: 'Tacoma' });
+  await expect(tacomaVessel).toBeAttached();
+  await expect(tacomaVessel).toContainText('Updated');
   await expect(page.getByText(/TerminalID|VesselID/)).toHaveCount(0);
   await expect(page.locator('.schedule-node h2')).toHaveText('Seattle to Bainbridge Island');
   await expect(page.getByText('176 drv / 202')).toBeVisible();
   await expect(page.getByText('Current vehicle-space reports')).toHaveCount(0);
   await expect(page.locator('.refresh-time')).toContainText('Last refresh');
+  // The badge is the only warning that this is canned data, and a live server never renders it.
+  await expect(page.locator('.source-badge')).toHaveText('fixture');
   expect(sailingSpaceRequests).toBe(0);
 
   await page.getByRole('button', { name: 'Reverse route' }).click();
@@ -86,8 +89,8 @@ test('persists a selected theme and exposes semantic keyboard tabs', async ({ pa
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
-  const routes = page.getByRole('tab', { name: 'Routes' });
-  await routes.focus();
+  const sailings = page.getByRole('tab', { name: 'Sailings' });
+  await sailings.focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: 'Catch' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('tabpanel', { name: 'Catch' })).toBeVisible();
@@ -205,11 +208,14 @@ test('reopens on the terminal and destination chosen before the reload', async (
   await expect(page.locator('.schedule-node h2')).toHaveText('Bainbridge Island to Seattle');
 });
 
-test('collapses the routes view to the sailings schedule at any width', async ({ page }) => {
+test('shows only the sailings schedule at any width', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  const toggle = page.getByRole('button', { name: 'Sailings only' });
-  await expect(page.locator('.terminal-node')).toBeVisible();
+  await expect(page.locator('.schedule-node')).toBeVisible();
+  await expect(page.locator('.terminal-node')).toBeHidden();
+  await expect(page.locator('.vessel-stack')).toBeHidden();
+  await expect(page.locator('.relationship-link').first()).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Sailings only' })).toHaveCount(0);
 
   // "Bainbridge Island" is the longest terminal name, so it decides whether the compact row clips.
   await page.getByRole('button', { name: 'Origin' }).click();
@@ -218,15 +224,10 @@ test('collapses the routes view to the sailings schedule at any width', async ({
   const clipped = await page.locator('.selectors .filter-select-trigger span').evaluateAll((spans) => spans.filter((span) => span.scrollWidth > span.clientWidth + 1).map((span) => span.textContent ?? ''));
   expect(clipped).toEqual([]);
 
-  await toggle.click();
-  await expect(page.locator('.schedule-node')).toBeVisible();
-  await expect(page.locator('.terminal-node')).toBeHidden();
-  await expect(page.locator('.vessel-stack')).toBeHidden();
-  await expect(page.locator('.relationship-link').first()).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
-  // The favorite chips replace the selectors on a phone, which is the whole point of the mode.
-  await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Destination' })).toBeHidden();
+  // There is no wide view to fall back to, so the phone keeps every control the band offers.
+  await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Destination' })).toBeVisible();
   await expect(page.locator('.route-chip').first()).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
@@ -242,30 +243,24 @@ test('collapses the routes view to the sailings schedule at any width', async ({
   })).toBe(true);
   await expect(page.getByRole('tab', { name: 'Catch' })).toBeInViewport();
   await expect(page.locator('.route-chip').first()).toBeInViewport();
-  await expect(page.getByRole('heading', { name: 'Sailings and vessel positions' })).toBeAttached();
+  await expect(page.getByRole('heading', { name: 'Departures and vehicle space' })).toBeAttached();
   // The title goes off screen rather than away, so its IDREF still resolves. The tab bar stays.
   await expect.poll(() => page.evaluate(() => document.querySelector('.route-title')!.getBoundingClientRect().height)).toBeLessThan(2);
   await expect.poll(() => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().height)).toBeGreaterThan(40);
   await page.evaluate(() => window.scrollTo(0, 0));
 
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Sailings only' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.terminal-node')).toBeHidden();
 
-  // A desktop width keeps the collapse, the toggle and the selectors; only the phone concessions go.
+  // A desktop width collapses the same way; only the phone label concessions differ.
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.locator('.terminal-node')).toBeHidden();
   await expect(page.locator('.vessel-stack')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Sailings only' })).toBeVisible();
-  // The card runs the full page width in this mode, the same as the Catch and Disruption cards.
+  // The card runs the full page width, the same as the Catch and Disruption cards.
   await expect.poll(async () => (await page.locator('.schedule-node').boundingBox())?.width ?? 0).toBeGreaterThan(720);
   await expect.poll(() => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().height)).toBeGreaterThan(40);
-
-  await page.getByRole('button', { name: 'Sailings only' }).click();
-  await expect(page.locator('.terminal-node')).toBeVisible();
-  await expect(page.locator('.schedule-node')).toBeVisible();
 });
 
 test('reflows the collapsed sailing list into columns as the page widens', async ({ page }) => {
@@ -288,7 +283,6 @@ test('reflows the collapsed sailing list into columns as the page widens', async
   });
 
   await page.goto('/');
-  await page.getByRole('button', { name: 'Sailings only' }).click();
   await expect(page.locator('.sailing-list li')).toHaveCount(16);
 
   // getComputedStyle().columnCount reads 'auto' under the columns: <width> shorthand, so measure
@@ -349,10 +343,10 @@ test('drops the tab labels and the route selectors on a phone', async ({ page })
   await page.getByRole('tab', { name: 'Disruption' }).click();
   await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
 
-  await page.getByRole('tab', { name: 'Routes' }).click();
+  await page.getByRole('tab', { name: 'Sailings' }).click();
   await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
 
-  // Every phone tab that shows the selectors shows the compact ones, not only sailings-only Routes.
+  // Every phone tab that shows the selectors shows the compact ones, not only the Sailings tab.
   const compactSelectors = () => page.evaluate(() => {
     const trigger = document.querySelector('.selectors .filter-select-trigger')!.getBoundingClientRect().height;
     const label = document.querySelector('.selectors label > span')!.getBoundingClientRect().height;
@@ -360,7 +354,7 @@ test('drops the tab labels and the route selectors on a phone', async ({ page })
     return { trigger: Math.round(trigger), labelShown: label > 1, titleShown: title > 1 };
   });
   expect(await compactSelectors()).toEqual({ trigger: 36, labelShown: false, titleShown: false });
-  await page.getByRole('tab', { name: 'Sailings' }).click();
+  await page.getByRole('tab', { name: 'Historical' }).click();
   await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
   expect(await compactSelectors()).toEqual({ trigger: 36, labelShown: false, titleShown: false });
 
@@ -375,7 +369,7 @@ test('drops the tab labels and the route selectors on a phone', async ({ page })
   await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
   await expect.poll(() => catchTab.locator('.tab-label').evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(20);
 
-  await page.getByRole('tab', { name: 'Routes' }).click();
+  await page.getByRole('tab', { name: 'Sailings' }).click();
   await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
   await expect.poll(tabsLeadTheBand).toBe(true);
 });
@@ -386,8 +380,9 @@ for (const width of [390, 767, 768, 1024, 1440]) {
     await page.goto('/');
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
+    // The grid is collapsed to the schedule alone, so it is one track at every width.
     const columns = await page.locator('.relationship-grid:not(.placeholder-grid)').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
-    expect(columns).toBe(width < 1024 ? 1 : 5);
+    expect(columns).toBe(1);
 
     const wrappedSailingRows = await page.locator('.sailing-list .sailing-row > span').evaluateAll((elements) => elements.filter((element) => {
       const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
@@ -403,28 +398,12 @@ for (const width of [390, 767, 768, 1024, 1440]) {
   });
 }
 
-test('changes the route in place when a vessel card on Routes is clicked', async ({ page }) => {
-  await page.goto('/');
-  // The default origin is alphabetically first (Bainbridge Island), so pick Seattle explicitly.
-  await page.getByRole('button', { name: 'Origin' }).click();
-  await page.getByRole('option', { name: 'Seattle' }).click();
-  await expect(page.locator('.terminal-node h2')).toHaveText('Seattle');
-
-  const chimacumCard = page.locator('.vessel-node', { has: page.getByRole('heading', { name: 'Chimacum' }) });
-  // The whole card is the click target, not just the vessel name.
-  await chimacumCard.click();
-
-  await expect(page.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('button', { name: 'Origin' })).toContainText('Bremerton');
-  await expect(page.getByRole('button', { name: 'Destination' })).toContainText('Seattle');
-});
-
-test('opens the Vessels tab and highlights the vessel when a Sailings row is clicked', async ({ page }) => {
+test('opens the Vessels tab and highlights the vessel when a Historical row is clicked', async ({ page }) => {
   await page.goto('/');
   // Only the Seattle -> Bainbridge Island fixture has sailings, so pick that route explicitly.
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Seattle' }).click();
-  await page.getByRole('tab', { name: 'Sailings' }).click();
+  await page.getByRole('tab', { name: 'Historical' }).click();
 
   // The row's own aria-label finds it regardless of whether the Vessel column is visible
   // (a phone hides that column, which would also hide the vessel-name button below it).
@@ -435,7 +414,7 @@ test('opens the Vessels tab and highlights the vessel when a Sailings row is cli
   await expect(page.locator('.data-card.is-highlighted')).toBeVisible();
 });
 
-test('opens the Vessels tab from the compact schedule list on Routes', async ({ page }) => {
+test('opens the Vessels tab from the compact schedule list on Sailings', async ({ page }) => {
   await page.goto('/');
   // Only the Seattle -> Bainbridge Island fixture has sailings, so pick that route explicitly.
   await page.getByRole('button', { name: 'Origin' }).click();
@@ -448,19 +427,19 @@ test('opens the Vessels tab from the compact schedule list on Routes', async ({ 
   await expect(page.locator('.data-card.is-highlighted')).toBeVisible();
 });
 
-test('opens the Sailings tab from the schedule card header on Routes', async ({ page }) => {
+test('opens the Historical tab from the schedule card header on Sailings', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Sailings schedule/ }).click();
-  await expect(page.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Historical' })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('trims the Sailings table to fit a phone without horizontal scroll', async ({ page }) => {
+test('trims the Historical table to fit a phone without horizontal scroll', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   // Only the Seattle -> Bainbridge Island fixture has sailings, so pick that route explicitly.
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Seattle' }).click();
-  await page.getByRole('tab', { name: 'Sailings' }).click();
+  await page.getByRole('tab', { name: 'Historical' }).click();
   await expect(page.locator('table')).toBeVisible();
 
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -490,18 +469,18 @@ test('resets the scroll position after leaving a tab scrolled down by a highligh
 
 test('switches tabs with bare letter keyboard shortcuts', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
 
   await page.keyboard.press('c');
   await expect(page.getByRole('tabpanel', { name: 'Catch' })).toBeVisible();
 
-  await page.keyboard.press('s');
-  await expect(page.getByRole('tabpanel', { name: 'Sailings' })).toBeVisible();
+  await page.keyboard.press('h');
+  await expect(page.getByRole('tabpanel', { name: 'Historical' })).toBeVisible();
 
   // Settings takes its 2nd letter since Sailings already claims "s".
   await page.keyboard.press('a');
   await expect(page.getByRole('tabpanel', { name: 'Settings' })).toBeVisible();
 
-  await page.keyboard.press('r');
-  await expect(page.getByRole('tabpanel', { name: 'Routes' })).toBeVisible();
+  await page.keyboard.press('s');
+  await expect(page.getByRole('tabpanel', { name: 'Sailings' })).toBeVisible();
 });

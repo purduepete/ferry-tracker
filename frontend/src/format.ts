@@ -39,10 +39,6 @@ export function sailingColumnBreaks(count: number, columns: number) {
   return breaks;
 }
 
-export function refreshTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value));
-}
-
 export function clockTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
 }
@@ -677,7 +673,7 @@ export function compactVehicleSpace(sailing: Pick<SailingView, 'spaceAvailable' 
   return sailing.maxSpaceCount === null ? counts : `${counts} / ${sailing.maxSpaceCount}`;
 }
 
-// The Routes-tab schedule list is the tightest space of all, so it drops to "up"/"res".
+// The Sailings-tab schedule list is the tightest space of all, so it drops to "up"/"res".
 export function phoneVehicleSpace(sailing: Pick<SailingView, 'spaceAvailable' | 'driveUpSpaceCount' | 'reservableSpaceCount' | 'maxSpaceCount'>) {
   if (!sailing.spaceAvailable) return '—';
   const counts = spaceCounts(sailing, true);

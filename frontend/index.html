@@ -11,16 +11,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,100..1000&display=swap" rel="stylesheet" />
     <script>
       (() => {
-        const allowed = ['system', 'light', 'dark', 'midnight'];
+        const allowed = ['light', 'midnight'];
         let preference = 'midnight';
         try {
           const stored = localStorage.getItem('ferry-tracker-theme');
           if (allowed.includes(stored)) preference = stored;
         } catch {}
-        const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-        const theme = preference === 'system' ? (systemDark ? 'midnight' : 'light') : preference;
-        document.documentElement.dataset.theme = theme;
-        document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = preference;
+        document.documentElement.style.colorScheme = preference === 'light' ? 'light' : 'dark';
       })();
     </script>
     <title>Ferry Tracker</title>

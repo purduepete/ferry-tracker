@@ -54,7 +54,7 @@ describe('ThemeMenu', () => {
     const midnight = screen.getByRole('radio', { name: 'Midnight' });
     midnight.focus();
     await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true');
     expect(localStorage.getItem('ferry-tracker-accent')).toBeNull();
   });
 

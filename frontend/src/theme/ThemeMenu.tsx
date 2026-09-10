@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Monitor, Moon, Palette, Sparkles, Sun } from 'lucide-react';
+import { Palette, Sparkles, Sun } from 'lucide-react';
 import { THEME_PREFERENCES, type ThemePreference } from '@ferry-tracker/shared';
 import { useTheme } from './ThemeProvider';
 
 const labels: Record<ThemePreference, string> = {
-  system: 'System',
   light: 'Light',
-  dark: 'Dark',
   midnight: 'Midnight',
 };
 
@@ -53,7 +51,7 @@ export function ThemeMenu() {
         <div className="segmented" role="radiogroup" aria-label="Theme">
           {THEME_PREFERENCES.map((value) => (
             <button key={value} data-theme-option={value} tabIndex={preference === value ? 0 : -1} type="button" role="radio" aria-checked={preference === value} onClick={() => setPreference(value)}>
-              {value === 'system' ? <Monitor size={15} /> : value === 'light' ? <Sun size={15} /> : value === 'midnight' ? <Sparkles size={15} /> : <Moon size={15} />}
+              {value === 'light' ? <Sun size={15} /> : <Sparkles size={15} />}
               {labels[value]}
             </button>
           ))}

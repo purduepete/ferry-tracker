@@ -2,21 +2,17 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import {
   DEFAULT_THEME_PREFERENCE,
   isThemePreference,
-  resolveTheme,
-  type ResolvedTheme,
   type ThemePreference,
 } from '@ferry-tracker/shared';
 
 interface ThemeContextValue {
   preference: ThemePreference;
-  theme: ResolvedTheme;
   setPreference: (preference: ThemePreference) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 const themeKey = 'ferry-tracker-theme';
 const legacyAccentKey = 'ferry-tracker-accent';
-const darkQuery = '(prefers-color-scheme: dark)';
 
 function storedPreference(): ThemePreference {
   try {
@@ -29,32 +25,23 @@ function storedPreference(): ThemePreference {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>(storedPreference);
-  const [systemDark, setSystemDark] = useState(() => window.matchMedia(darkQuery).matches);
-  const theme = resolveTheme(preference, systemDark);
 
   useEffect(() => {
     try { localStorage.removeItem(legacyAccentKey); } catch { /* Legacy cleanup can fail without blocking themes. */ }
   }, []);
 
   useEffect(() => {
-    const query = window.matchMedia(darkQuery);
-    const update = (event: MediaQueryListEvent) => setSystemDark(event.matches);
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
-    const themeColors: Record<ResolvedTheme, string> = { light: '#f9fafb', dark: '#111827', midnight: '#020617' };
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColors[theme]);
-  }, [theme]);
+    document.documentElement.dataset.theme = preference;
+    document.documentElement.style.colorScheme = preference === 'light' ? 'light' : 'dark';
+    const themeColors: Record<ThemePreference, string> = { light: '#f9fafb', midnight: '#020617' };
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColors[preference]);
+  }, [preference]);
 
   const setPreference = (value: ThemePreference) => {
     setPreferenceState(value);
     try { localStorage.setItem(themeKey, value); } catch { /* The setting remains active for this tab. */ }
   };
-  return <ThemeContext.Provider value={{ preference, theme, setPreference }}>{children}</ThemeContext.Provider>;
+  return <ThemeContext.Provider value={{ preference, setPreference }}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {

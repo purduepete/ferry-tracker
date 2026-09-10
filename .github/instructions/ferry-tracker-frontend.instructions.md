@@ -11,7 +11,7 @@ applyTo: ["frontend/**/*.{tsx,css,html}", "e2e/**/*.ts"]
 - Preserve the compact operational explorer. Keep information dense, easy to scan, and centered on terminals, routes, vessels, schedules, and vehicle space.
 - Use Roboto Flex and the existing typography scale. Reserve large type for the page title; use compact headings inside panels and controls.
 - Keep the square geometry. Controls, panels, menus, and table surfaces use small or zero corner radii as established in `frontend/src/styles.css`.
-- Use the existing slate light, dark, and midnight themes. Add colors through the current CSS custom properties so every theme remains complete.
+- Use the existing slate light and midnight themes. Add colors through the current CSS custom properties so both themes remain complete.
 - Preserve the sticky navigation, compact spacing, thin borders, and restrained shadows.
 - Avoid decorative cards, oversized marketing sections, ornamental gradients, floating shapes, and a palette dominated by one accent color.
 

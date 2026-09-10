@@ -57,7 +57,7 @@ describe('Ferry data explorer', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Refresh data' }));
     await waitFor(() => expect(scheduleCalls).toBeGreaterThan(callsBeforeRefresh));
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
     expect(screen.queryByRole('tab', { name: 'Raw JSON' })).not.toBeInTheDocument();
   });
 
@@ -102,8 +102,8 @@ describe('Ferry data explorer', () => {
 
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
-    const routes = await screen.findByRole('tab', { name: 'Routes' });
-    routes.focus();
+    const sailings = await screen.findByRole('tab', { name: 'Sailings' });
+    sailings.focus();
     await user.keyboard('{ArrowRight}');
     expect(screen.getByRole('tab', { name: 'Catch' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tabpanel', { name: 'Catch' })).toBeInTheDocument();
@@ -133,15 +133,15 @@ describe('Ferry data explorer', () => {
     expect(document.activeElement?.tagName).not.toBe('BUTTON');
     await user.keyboard('d');
     expect(screen.getByRole('tab', { name: 'Disruption' })).toHaveAttribute('aria-selected', 'true');
-    await user.keyboard('s');
-    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('h');
+    expect(screen.getByRole('tab', { name: 'Historical' })).toHaveAttribute('aria-selected', 'true');
     await user.keyboard('v');
     expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
     // Settings takes its 2nd letter since Sailings already claims "s".
     await user.keyboard('a');
     expect(screen.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
-    await user.keyboard('r');
-    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('s');
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('leaves typing in the favorite-route label alone even though it contains shortcut letters', async () => {
@@ -191,10 +191,10 @@ describe('Ferry data explorer', () => {
 
     await user.keyboard('c');
     expect(origin).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('returns to the routes tab from the brand', async () => {
+  it('returns to the sailings tab from the brand', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url.includes('/api/terminals')) return json(terminals);
@@ -206,12 +206,12 @@ describe('Ferry data explorer', () => {
 
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
-    await screen.findByRole('tab', { name: 'Routes' });
+    await screen.findByRole('tab', { name: 'Sailings' });
     await user.click(screen.getByRole('tab', { name: 'Vessels' }));
     expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
 
     await user.click(screen.getByRole('button', { name: /Ferry Tracker/ }));
-    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('lists persisted favorites first in the saved order and manages them from Settings', async () => {
@@ -258,7 +258,7 @@ describe('Ferry data explorer', () => {
     await user.keyboard('{ArrowUp}');
     expect(JSON.parse(localStorage.getItem('ferry-tracker-favorite-terminals') ?? '[]')).toEqual([3, 7, 999, 1]);
 
-    await user.click(screen.getByRole('tab', { name: 'Routes' }));
+    await user.click(screen.getByRole('tab', { name: 'Sailings' }));
     await user.click(screen.getByRole('button', { name: 'Origin' }));
     expect(screen.getAllByRole('option').map((option) => option.textContent?.trim())).toEqual([
       'Bainbridge Island',
@@ -373,7 +373,7 @@ describe('Remembered route', () => {
   });
 });
 
-describe('Sailings only', () => {
+describe('Sailings view', () => {
   function mockRoute() {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
@@ -386,37 +386,24 @@ describe('Sailings only', () => {
     });
   }
 
-  it('collapses the routes grid to the schedule and stores the choice', async () => {
+  it('collapses to the schedule with no way back to the wide grid', async () => {
     mockRoute();
 
-    const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
 
-    const toggle = screen.getByRole('button', { name: 'Sailings only' });
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    expect(document.querySelector('.relationship-grid')).not.toHaveClass('is-sailings-only');
-
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: 'Sailings only' })).not.toBeInTheDocument();
     expect(document.querySelector('.relationship-grid')).toHaveClass('is-sailings-only');
-    expect(document.querySelector('.selection-band')).toHaveClass('is-sailings-only');
-    expect(localStorage.getItem('ferry-tracker-sailings-only')).toBe('true');
-
-    await user.click(toggle);
-    expect(document.querySelector('.relationship-grid')).not.toHaveClass('is-sailings-only');
     expect(document.querySelector('.selection-band')).not.toHaveClass('is-sailings-only');
-    expect(localStorage.getItem('ferry-tracker-sailings-only')).toBe('false');
   });
 
-  it('reopens collapsed when the choice was stored', async () => {
+  it('drops the retired sailings-only preference on load', async () => {
     localStorage.setItem('ferry-tracker-sailings-only', 'true');
     mockRoute();
 
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
-    expect(screen.getByRole('button', { name: 'Sailings only' })).toHaveAttribute('aria-pressed', 'true');
-    expect(document.querySelector('.relationship-grid')).toHaveClass('is-sailings-only');
+    expect(localStorage.getItem('ferry-tracker-sailings-only')).toBeNull();
   });
 
   it('links the collapsed schedule back to its origin terminal card', async () => {
@@ -425,9 +412,7 @@ describe('Sailings only', () => {
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
-    expect(screen.queryByRole('button', { name: 'Show the Seattle terminal card' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Sailings only' }));
     await user.click(screen.getByRole('button', { name: 'Show the Seattle terminal card' }));
 
     expect(screen.getByRole('tab', { name: 'Terminals' })).toHaveAttribute('aria-selected', 'true');
@@ -443,19 +428,6 @@ describe('Sailings only', () => {
     expect([...sailingColumnBreaks(16, 1)]).toEqual([]);
     expect([...sailingColumnBreaks(2, 3)]).toEqual([1]);
     expect([...sailingColumnBreaks(0, 3)]).toEqual([]);
-  });
-
-  it('leaves the other tabs alone', async () => {
-    localStorage.setItem('ferry-tracker-sailings-only', 'true');
-    mockRoute();
-
-    const user = userEvent.setup();
-    render(<ThemeProvider><App /></ThemeProvider>);
-    await screen.findByRole('heading', { name: 'Seattle' });
-
-    await user.click(screen.getByRole('tab', { name: 'Vessels' }));
-    expect(screen.queryByRole('button', { name: 'Sailings only' })).not.toBeInTheDocument();
-    expect(document.querySelector('.selection-band')).not.toHaveClass('is-sailings-only');
   });
 });
 
@@ -681,20 +653,20 @@ describe('Card navigation', () => {
     });
   }
 
-  it('changes the route in place when the vessel card on Routes is clicked', async () => {
+  it('changes the route in place when the vessel card on Sailings is clicked', async () => {
     mockOverview();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
 
     // The whole card is the click target, not just the vessel name.
-    await userEvent.click(await screen.findByRole('button', { name: "Show Wenatchee's route in the routes view" }));
+    await userEvent.click(await screen.findByRole('button', { name: "Show Wenatchee's route in the sailings view" }));
 
-    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
     expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
   });
 
-  it('switches to the Terminals tab and highlights the terminal when the Routes terminal card is clicked', async () => {
+  it('switches to the Terminals tab and highlights the terminal when the Sailings terminal card is clicked', async () => {
     mockOverview();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
@@ -706,7 +678,7 @@ describe('Card navigation', () => {
     expect(card).toHaveClass('is-highlighted');
   });
 
-  it('opens the routes view on the terminal clicked from the Terminals tab', async () => {
+  it('opens the sailings view on the terminal clicked from the Terminals tab', async () => {
     mockOverview();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
@@ -714,7 +686,7 @@ describe('Card navigation', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Terminals' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Bainbridge Island' }));
 
-    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
   });
 
@@ -736,7 +708,7 @@ describe('Card navigation', () => {
     expect(screen.getByText('Wenatchee')).toBeInTheDocument();
   });
 
-  it('opens the routes view on the route the clicked vessel is running', async () => {
+  it('opens the sailings view on the route the clicked vessel is running', async () => {
     mockOverview();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
@@ -744,12 +716,12 @@ describe('Card navigation', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Vessels' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Wenatchee' }));
 
-    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
     expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
   });
 
-  it('opens the routes view from a vessel in the sailings table', async () => {
+  it('opens the sailings view from a vessel in the historical table', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url.includes('/api/terminals')) return json(terminals);
@@ -765,10 +737,10 @@ describe('Card navigation', () => {
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Wenatchee' }));
 
-    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
     expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
   });
@@ -792,7 +764,7 @@ describe('Card navigation', () => {
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
     const row = (await screen.findByRole('button', { name: 'Wenatchee' })).closest('tr');
     if (!row) throw new Error('expected the vessel link to sit inside a table row');
     await userEvent.click(row);
@@ -806,19 +778,19 @@ describe('Card navigation', () => {
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
     const row = (await screen.findByText('Ghost')).closest('tr');
     if (!row) throw new Error('expected a table row');
     await userEvent.click(row);
 
-    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Historical' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('activates a linked sailing row from the keyboard without also firing the nested vessel link', async () => {
     mockSchedule([{ vesselId: 2, vesselName: 'Wenatchee', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
-    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
 
     const vesselLink = await screen.findByRole('button', { name: 'Wenatchee' });
     const row = vesselLink.closest('tr');
@@ -827,15 +799,15 @@ describe('Card navigation', () => {
     await userEvent.keyboard('{Enter}');
     expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
     vesselLink.focus();
     await userEvent.keyboard('{Enter}');
     // Enter on the nested link must not bubble up and also switch to Vessels.
-    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Historical' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'false');
   });
 
-  it('switches to the Vessels tab from the compact schedule list on Routes', async () => {
+  it('switches to the Vessels tab from the compact schedule list on Sailings', async () => {
     mockSchedule([{ vesselId: 2, vesselName: 'Wenatchee', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
@@ -854,14 +826,14 @@ describe('Card navigation', () => {
     expect(document.querySelector('.data-card.is-highlighted')).not.toBeNull();
   });
 
-  it('opens the Sailings tab from the schedule card header on Routes', async () => {
+  it('opens the Historical tab from the schedule card header on Sailings', async () => {
     mockSchedule([{ vesselId: 2, vesselName: 'Wenatchee', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
 
     await userEvent.click(screen.getByRole('button', { name: /Sailings schedule/ }));
 
-    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Historical' })).toHaveAttribute('aria-selected', 'true');
   });
 });
 
@@ -890,12 +862,12 @@ describe('Recorded day browser', () => {
     render(<ThemeProvider><App /></ThemeProvider>);
     expect(await screen.findByText(/176 drv \/ 202/)).toBeInTheDocument();
 
+    await user.click(screen.getByRole('tab', { name: 'Historical' }));
     await user.click(await screen.findByRole('button', { name: 'Day' }));
     await user.click(screen.getByRole('option', { name: serviceDayLabel('2026-08-30') }));
 
-    expect(await screen.findByText(/3 drv \/ 139/)).toBeInTheDocument();
+    expect(await screen.findByText(/3 drive-up of 139 spaces/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Day' }).querySelector('.recorded-mark')).toBeInTheDocument();
-    expect(document.querySelector('.vessel-stack.is-dimmed')).toBeInTheDocument();
     expect(document.querySelector('.app-header.is-recorded')).toBeInTheDocument();
 
     // Catch is always live, so the day it is browsing must not colour the header.
@@ -905,24 +877,36 @@ describe('Recorded day browser', () => {
 
   it('offers only today when nothing was recorded', async () => {
     mockDay([]);
+    const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
 
+    await user.click(await screen.findByRole('tab', { name: 'Historical' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Day' })).toHaveTextContent('Today, live');
   });
 
-  it('jumps to the most recent recorded day when opening Sailings, and back to live when leaving it', async () => {
+  it('keeps the day picker inert away from Historical, since every other view is live', async () => {
+    mockDay(['2026-08-30']);
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByText(/176 drv \/ 202/);
+
+    expect(screen.getByRole('button', { name: 'Day' })).toBeDisabled();
+    await user.click(screen.getByRole('tab', { name: 'Historical' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).not.toBeDisabled());
+  });
+
+  it('jumps to the most recent recorded day when opening Historical, and back to live when leaving it', async () => {
     mockDay(['2026-08-30', '2026-08-29']);
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByText(/176 drv \/ 202/);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).not.toBeDisabled());
 
-    await user.click(screen.getByRole('tab', { name: 'Sailings' }));
+    await user.click(screen.getByRole('tab', { name: 'Historical' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).toHaveTextContent(serviceDayLabel('2026-08-30')));
     expect(document.querySelector('.app-header.is-recorded')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: 'Routes' }));
+    await user.click(screen.getByRole('tab', { name: 'Sailings' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Day' })).toHaveTextContent('Today, live'));
     expect(document.querySelector('.app-header.is-recorded')).not.toBeInTheDocument();
   });
@@ -1215,16 +1199,16 @@ describe('Favorite routes in the app', () => {
     expect(screen.getByRole('button', { name: 'BI → SEA' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('stays on the Sailings tab when a favorite route is picked there', async () => {
+  it('stays on the Historical tab when a favorite route is picked there', async () => {
     mockApp();
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Seattle' });
 
-    await user.click(screen.getByRole('tab', { name: 'Sailings' }));
+    await user.click(screen.getByRole('tab', { name: 'Historical' }));
     await user.click(screen.getByRole('button', { name: 'BI → SEA' }));
 
-    expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Historical' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island');
   });
 
