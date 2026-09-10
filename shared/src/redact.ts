@@ -1,4 +1,5 @@
-const ACCESS_CODE_PARAM = /([?&](?:apiaccesscode)=)[^&\s"']+/gi;
+// The ferries feeds spell it apiaccesscode; the traveler information feeds spell it AccessCode.
+const ACCESS_CODE_PARAM = /([?&](?:api)?accesscode=)[^&\s"']+/gi;
 
 /**
  * Strips the WSDOT access code from anything that leaves the process or lands on disk.

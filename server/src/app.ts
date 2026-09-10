@@ -23,6 +23,7 @@ export function createApp(
 ) {
   const app = express();
   const service = new FerryDataService(new WsdotClient(config), now, history);
+  service.warmCameras();
 
   const send = <T>(response: Response, result: { data: T; raw: unknown }) => {
     const envelope: ApiEnvelope<T> = {

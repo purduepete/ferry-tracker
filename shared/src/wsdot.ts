@@ -133,7 +133,54 @@ export interface TerminalView {
   latitude: number | null;
   longitude: number | null;
   city: string | null;
+  cameras: TerminalCameraView[];
   raw: SourceRecord[];
+}
+
+export const highwayCameraSchema = z.looseObject({
+  CameraID: z.number(),
+  Title: nullableString,
+  Description: nullableString,
+  ImageURL: nullableString,
+  ImageWidth: nullableNumber,
+  ImageHeight: nullableNumber,
+  IsActive: z.boolean().nullable().optional(),
+  SortOrder: nullableNumber,
+  DisplayLatitude: nullableNumber,
+  DisplayLongitude: nullableNumber,
+  CameraLocation: z.looseObject({
+    Latitude: nullableNumber,
+    Longitude: nullableNumber,
+    RoadName: nullableString,
+  }).nullable().optional(),
+});
+
+export type HighwayCamera = z.infer<typeof highwayCameraSchema>;
+
+export interface TerminalCameraView {
+  id: number;
+  title: string;
+  description: string | null;
+  imageUrl: string;
+  width: number | null;
+  height: number | null;
+}
+
+export const CAMERA_IMAGE_HOST = 'images.wsdot.wa.gov';
+
+// The statewide camera feed carries third-party image hosts, so only WSDOT's own host is trusted.
+export function cameraImageUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === CAMERA_IMAGE_HOST ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isFerryCamera(camera: HighwayCamera): boolean {
+  return camera.CameraLocation?.RoadName === 'Ferries';
 }
 
 export interface VesselView {

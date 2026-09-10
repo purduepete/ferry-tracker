@@ -7,8 +7,8 @@ import { addFavoriteRoute, capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel,
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
-  { id: 7, name: 'Seattle', subjectName: 'seattle', latitude: 47.6, longitude: -122.3, city: 'Seattle', raw: [] },
-  { id: 3, name: 'Bainbridge Island', subjectName: 'bainbridge', latitude: 47.62, longitude: -122.5, city: 'Bainbridge Island', raw: [] },
+  { id: 7, name: 'Seattle', subjectName: 'seattle', latitude: 47.6, longitude: -122.3, city: 'Seattle', cameras: [], raw: [] },
+  { id: 3, name: 'Bainbridge Island', subjectName: 'bainbridge', latitude: 47.62, longitude: -122.5, city: 'Bainbridge Island', cameras: [], raw: [] },
 ];
 const vessels = [{
   id: 1, name: 'Tacoma', vesselClass: 'Jumbo Mark II', departingTerminalId: 7, arrivingTerminalId: 3,
@@ -218,7 +218,7 @@ describe('Ferry data explorer', () => {
     const favoriteTerminals = [
       terminals[0],
       terminals[1],
-      { id: 1, name: 'Anacortes', subjectName: 'anacortes', latitude: 48.5, longitude: -122.6, city: 'Anacortes', raw: [] },
+      { id: 1, name: 'Anacortes', subjectName: 'anacortes', latitude: 48.5, longitude: -122.6, city: 'Anacortes', cameras: [], raw: [] },
     ];
     localStorage.setItem('ferry-tracker-favorite-terminals', JSON.stringify([7, 1, 999]));
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {

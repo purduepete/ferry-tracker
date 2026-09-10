@@ -15,6 +15,7 @@ import {
   type VesselView,
 } from '@ferry-tracker/shared';
 import { z } from 'zod';
+import { assignCameras, CameraDirectory } from './cameras.js';
 import type { RecordedLeg, RecordedSpace, SailingHistory } from './history/sailingHistory.js';
 import type { WsdotClient } from './wsdotClient.js';
 
@@ -66,17 +67,37 @@ function backfill(
 }
 
 export class FerryDataService {
+  private readonly cameras: CameraDirectory;
+
   constructor(
     private readonly client: WsdotClient,
     private readonly now: () => number = Date.now,
     private readonly history?: SailingHistory,
-  ) {}
+  ) {
+    this.cameras = new CameraDirectory(client, now);
+  }
+
+  /** Pulls the camera inventory at startup so the first terminal request does not wait on it. */
+  warmCameras(): void {
+    this.cameras.warm();
+  }
 
   async terminals(): Promise<{ data: TerminalView[]; raw: unknown }> {
-    const [basicsRaw, locationsRaw] = await Promise.all([this.client.getTerminalBasics(), this.client.getTerminalLocations()]);
+    const [basicsRaw, locationsRaw, cameras] = await Promise.all([
+      this.client.getTerminalBasics(),
+      this.client.getTerminalLocations(),
+      this.cameras.list(),
+    ]);
     const basics = z.array(terminalBasicSchema).parse(basicsRaw);
     const locations = z.array(terminalLocationSchema).parse(locationsRaw);
     const locationsById = new Map(locations.map((location) => [location.TerminalID, location]));
+    const positions = basics.map((basic) => ({
+      id: basic.TerminalID,
+      name: basic.TerminalName,
+      latitude: locationsById.get(basic.TerminalID)?.Latitude ?? null,
+      longitude: locationsById.get(basic.TerminalID)?.Longitude ?? null,
+    }));
+    const camerasByTerminal = assignCameras(cameras, positions);
     const data = basics.map<TerminalView>((basic) => {
       const location = locationsById.get(basic.TerminalID);
       return {
@@ -86,6 +107,7 @@ export class FerryDataService {
         latitude: location?.Latitude ?? null,
         longitude: location?.Longitude ?? null,
         city: location?.City ?? null,
+        cameras: camerasByTerminal.get(basic.TerminalID) ?? [],
         raw: [basic, ...(location ? [location] : [])] as SourceRecord[],
       };
     }).sort((left, right) => left.name.localeCompare(right.name));

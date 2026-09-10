@@ -17,6 +17,11 @@ describe('redactSecrets', () => {
     expect(redacted).toBe('https://www.wsdot.wa.gov/Ferries/API/Vessels/rest/vessellocations?apiaccesscode=[redacted]');
   });
 
+  it('strips the traveler information spelling of the parameter', () => {
+    const url = `https://www.wsdot.wa.gov/Traffic/api/HighwayCameras/HighwayCamerasREST.svc/GetCamerasAsJson?AccessCode=${ACCESS_CODE}`;
+    expect(redactSecrets(url)).toBe('https://www.wsdot.wa.gov/Traffic/api/HighwayCameras/HighwayCamerasREST.svc/GetCamerasAsJson?AccessCode=[redacted]');
+  });
+
   it('strips the code from an Error stack', () => {
     const error = new Error(`fetch failed for https://example.com/x?apiaccesscode=${ACCESS_CODE}&foo=1`);
     const redacted = redactSecrets(error, ACCESS_CODE);

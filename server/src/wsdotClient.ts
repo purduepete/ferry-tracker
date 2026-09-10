@@ -40,6 +40,16 @@ export class WsdotClient {
       : this.get('Schedule', `terminalsandmates/${pacificDate()}`);
   }
 
+  // Cameras live in the traveler information API, which has a different path and spells the key AccessCode.
+  // Caching is left to the caller because the inventory changes on the order of months, not seconds.
+  async getHighwayCameras(): Promise<unknown> {
+    if (this.config.dataSource === 'fixture') return this.readFixture('highwaycameras.json');
+    if (!this.config.apiAccessCode) throw new Error('WSDOT_API_ACCESS_CODE is required in live mode.');
+    const url = new URL('https://www.wsdot.wa.gov/Traffic/api/HighwayCameras/HighwayCamerasREST.svc/GetCamerasAsJson');
+    url.searchParams.set('AccessCode', this.config.apiAccessCode);
+    return this.fetchJson(url);
+  }
+
   getTerminalSailingSpaces(bypassCache = false): Promise<unknown> {
     return this.get('Terminals', 'terminalsailingspace', 'terminalsailingspace.json', bypassCache);
   }
@@ -83,7 +93,10 @@ export class WsdotClient {
     if (!this.config.apiAccessCode) throw new Error('WSDOT_API_ACCESS_CODE is required in live mode.');
     const url = new URL(`https://www.wsdot.wa.gov/Ferries/API/${service}/rest/${operation}`);
     url.searchParams.set('apiaccesscode', this.config.apiAccessCode);
+    return this.fetchJson(url);
+  }
 
+  private async fetchJson(url: URL): Promise<unknown> {
     let lastError: unknown;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {

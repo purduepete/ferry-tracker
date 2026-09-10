@@ -1,4 +1,4 @@
-import type { SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
+import type { SailingView, TerminalCameraView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 
 // Floored, not rounded: a boat 40 seconds late still shows the same clock minute as its
 // slot, so rounding up would contradict the times either side of the pill.
@@ -6,6 +6,29 @@ export const LATE_MINUTES = 2;
 
 export function localTime(value: string | null) {
   return value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short', hour12: false }).format(new Date(value)) : '—';
+}
+
+// Parsed rather than concatenated so a camera URL that already carries a query keeps working.
+export function cacheBusted(imageUrl: string, stamp: number) {
+  try {
+    const url = new URL(imageUrl);
+    url.searchParams.set('t', String(stamp));
+    return url.toString();
+  } catch {
+    return imageUrl;
+  }
+}
+
+export function cameraAlt(camera: Pick<TerminalCameraView, 'title'>, terminalName: string) {
+  return camera.title.trim() || `${terminalName} terminal camera`;
+}
+
+// WSDOT answers a dead camera with HTTP 200 and a fixed 320x250 "image currently unavailable"
+// graphic. The host sends no CORS header, so intrinsic size is the only thing the browser will
+// give up about the pixels. Comparing against the declared size does not work: six live cameras
+// have stale dimensions in the feed.
+export function isOfflinePlaceholder(width: number, height: number) {
+  return width === 320 && height === 250;
 }
 
 export function refreshTime(value: string) {
@@ -224,6 +247,58 @@ export function reorderFavoriteTerminals(favoriteIds: number[], visibleIds: numb
 
 export function toggleFavoriteTerminalId(favoriteIds: number[], id: number): number[] {
   return favoriteIds.includes(id) ? favoriteIds.filter((value) => value !== id) : [...favoriteIds, id];
+}
+
+export const cameraOrderKey = 'ferry-tracker-camera-order';
+export type CameraOrder = Record<string, number[]>;
+const CAMERA_ORDER_LIMIT = 64;
+
+export function loadCameraOrder(): CameraOrder {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(cameraOrderKey) ?? '{}');
+    if (stored === null || typeof stored !== 'object' || Array.isArray(stored)) return {};
+    const order: CameraOrder = {};
+    for (const [terminalId, ids] of Object.entries(stored).slice(0, CAMERA_ORDER_LIMIT)) {
+      if (!Array.isArray(ids)) continue;
+      const clean = [...new Set(ids.filter((value): value is number => Number.isInteger(value)))].slice(0, CAMERA_ORDER_LIMIT);
+      if (clean.length > 0) order[terminalId] = clean;
+    }
+    return order;
+  } catch {
+    return {};
+  }
+}
+
+export function saveCameraOrder(order: CameraOrder) {
+  try {
+    localStorage.setItem(cameraOrderKey, JSON.stringify(order));
+  } catch { /* The order remains active for this tab. */ }
+}
+
+// A camera WSDOT adds later has no stored slot, so it lands after the ones that do.
+export function orderCameras<T extends { id: number }>(cameras: T[], ids: number[] | undefined): T[] {
+  if (!ids || ids.length === 0) return cameras;
+  const chosen = ids
+    .map((id) => cameras.find((camera) => camera.id === id))
+    .filter((camera): camera is T => camera !== undefined);
+  const rest = cameras.filter((camera) => !ids.includes(camera.id));
+  return [...chosen, ...rest];
+}
+
+// Moves the dragged camera to where the target sits. A camera serving the offline graphic is
+// not on screen to drop onto, so only the visible ids are rewritten and their slots stay put.
+export function reorderCameras(orderedIds: number[], visibleIds: number[], id: number, targetId: number): number[] {
+  const from = visibleIds.indexOf(id);
+  const to = visibleIds.indexOf(targetId);
+  if (from === -1 || to === -1 || from === to) return orderedIds;
+  const moved = [...visibleIds];
+  moved.splice(to, 0, ...moved.splice(from, 1));
+  const next = [...orderedIds];
+  let taken = 0;
+  for (const [index, value] of orderedIds.entries()) {
+    if (visibleIds.includes(value)) next[index] = moved[taken++];
+  }
+  return next;
 }
 
 export const favoriteRoutesKey = 'ferry-tracker-favorite-routes';
