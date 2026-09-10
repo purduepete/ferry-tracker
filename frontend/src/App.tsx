@@ -1,8 +1,8 @@
-import { isValidElement, useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, ChevronLeft, ChevronRight, Clock3, ExternalLink, GripVertical, History, ListFilter, MapPin, Plus, RefreshCw, RotateCcw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalCameraView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, cacheBusted, cameraAlt, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, DEFAULT_SETTINGS, departureDelayLabel, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isOfflinePlaceholder, isPublishedRoute, LATE_MINUTES, loadCameraOrder, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderCameras, orderTerminals, phoneVehicleSpace, recordedSpaceLabel, refreshTime, removeFavoriteRoute, renameFavoriteRoute, reorderCameras, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingDeparture, sailingTimeMinutes, saveCameraOrder, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CameraOrder, type CatchOverride, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
+import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, cacheBusted, cameraAlt, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, DEFAULT_SETTINGS, departureDelayLabel, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCameraOrder, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderCameras, orderTerminals, phoneVehicleSpace, recordedSpaceLabel, refreshTime, removeFavoriteRoute, renameFavoriteRoute, reorderCameras, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingDeparture, sailingTimeMinutes, saveCameraOrder, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CameraOrder, type CatchOverride, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -219,11 +219,11 @@ interface CameraSortable {
   nudge: (id: number, direction: -1 | 1) => void;
 }
 
-function CameraThumb({ camera, terminalName, stamp, sortable, dragging, dropTarget, onOpen, onOffline }: { camera: TerminalCameraView; terminalName: string; stamp: number; sortable: CameraSortable | null; dragging: boolean; dropTarget: boolean; onOpen: (camera: TerminalCameraView, opener: HTMLButtonElement) => void; onOffline: (id: number, offline: boolean) => void }) {
+function CameraThumb({ camera, terminalName, stamp, sortable, dragging, dropTarget, onOpen }: { camera: TerminalCameraView; terminalName: string; stamp: number; sortable: CameraSortable | null; dragging: boolean; dropTarget: boolean; onOpen: (camera: TerminalCameraView, opener: HTMLButtonElement) => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined');
   const [src, setSrc] = useState(camera.imageUrl);
-  const [state, setState] = useState<'ok' | 'failed' | 'offline'>('ok');
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const element = ref.current;
@@ -237,23 +237,18 @@ function CameraThumb({ camera, terminalName, stamp, sortable, dragging, dropTarg
   // does not multiply one refresh into fifty requests.
   useEffect(() => {
     if (stamp === 0 || !visible) return;
-    setState('ok');
-    onOffline(camera.id, false);
+    setFailed(false);
     setSrc(cacheBusted(camera.imageUrl, stamp));
-  }, [stamp, visible, camera.id, camera.imageUrl, onOffline]);
-
-  // A camera serving the offline graphic is worse than no camera, so it leaves the strip until
-  // the next refresh brings a real frame back.
-  if (state === 'offline') return null;
+  }, [stamp, visible, camera.imageUrl]);
 
   const alt = cameraAlt(camera, terminalName);
   const classes = ['camera-cell', dragging ? 'is-dragging' : '', dropTarget ? 'is-drop-target' : ''].filter(Boolean).join(' ');
   return (
     <div className={classes} data-camera-id={camera.id}>
       <button ref={ref} className="camera-thumb" type="button" aria-label={`Enlarge ${alt}`} title={`Enlarge ${alt}`} onClick={() => { if (ref.current) onOpen(camera, ref.current); }}>
-        {state === 'failed'
+        {failed
           ? <span className="camera-offline">Camera unavailable</span>
-          : <img src={src} alt={alt} loading="lazy" decoding="async" referrerPolicy="no-referrer" width={camera.width ?? undefined} height={camera.height ?? undefined} onError={() => setState('failed')} onLoad={(event) => { if (isOfflinePlaceholder(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)) { setState('offline'); onOffline(camera.id, true); } }} />}
+          : <img src={src} alt={alt} loading="lazy" decoding="async" referrerPolicy="no-referrer" width={camera.width ?? undefined} height={camera.height ?? undefined} onError={() => setFailed(true)} />}
         <span className="camera-caption" aria-hidden="true">{alt}</span>
       </button>
       {sortable && <button
@@ -282,33 +277,22 @@ function CameraThumb({ camera, terminalName, stamp, sortable, dragging, dropTarg
 
 function TerminalCameras({ terminalName, cameras, stamp, onReorder, onOpen }: { terminalName: string; cameras: TerminalCameraView[]; stamp: number; onReorder: (ids: number[]) => void; onOpen: (camera: TerminalCameraView, opener: HTMLButtonElement) => void }) {
   const stripRef = useRef<HTMLDivElement>(null);
-  const [hidden, setHidden] = useState<ReadonlySet<number>>(() => new Set());
   const [drag, setDrag] = useState<{ id: number; overId: number | null } | null>(null);
   const [announcement, setAnnouncement] = useState('');
 
-  const markOffline = useCallback((id: number, offline: boolean) => {
-    setHidden((previous) => {
-      if (previous.has(id) === offline) return previous;
-      const next = new Set(previous);
-      if (offline) next.add(id); else next.delete(id);
-      return next;
-    });
-  }, []);
-
-  const visible = cameras.filter((camera) => !hidden.has(camera.id));
-  const visibleIds = visible.map((camera) => camera.id);
+  const ids = cameras.map((camera) => camera.id);
 
   const move = (id: number, targetId: number) => {
     if (id === targetId) return;
     const camera = cameras.find((entry) => entry.id === id);
-    const slot = visibleIds.indexOf(targetId);
+    const slot = ids.indexOf(targetId);
     if (!camera || slot === -1) return;
-    onReorder(reorderCameras(cameras.map((entry) => entry.id), visibleIds, id, targetId));
-    setAnnouncement(`Moved ${cameraAlt(camera, terminalName)} to position ${slot + 1} of ${visibleIds.length}`);
+    onReorder(reorderCameras(ids, id, targetId));
+    setAnnouncement(`Moved ${cameraAlt(camera, terminalName)} to position ${slot + 1} of ${ids.length}`);
   };
 
   // Rects are read live on every move: nothing reorders until the pointer is released, so
-  // scrolling, a resize, or a camera dropping out mid-drag all correct themselves.
+  // scrolling or a resize mid-drag corrects itself.
   const cameraUnder = (clientX: number, clientY: number): number | null => {
     for (const cell of stripRef.current?.querySelectorAll<HTMLElement>('.camera-cell') ?? []) {
       const box = cell.getBoundingClientRect();
@@ -318,7 +302,7 @@ function TerminalCameras({ terminalName, cameras, stamp, onReorder, onOpen }: { 
     return null;
   };
 
-  const sortable: CameraSortable | null = visible.length > 1 ? {
+  const sortable: CameraSortable | null = cameras.length > 1 ? {
     start: (event, id) => {
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -337,7 +321,7 @@ function TerminalCameras({ terminalName, cameras, stamp, onReorder, onOpen }: { 
     },
     cancel: () => setDrag(null),
     nudge: (id, direction) => {
-      const target = visibleIds[visibleIds.indexOf(id) + direction];
+      const target = ids[ids.indexOf(id) + direction];
       if (target !== undefined) move(id, target);
     },
   } : null;
@@ -345,7 +329,7 @@ function TerminalCameras({ terminalName, cameras, stamp, onReorder, onOpen }: { 
   if (cameras.length === 0) return null;
   return (
     <div ref={stripRef} className={`camera-strip${drag ? ' is-sorting' : ''}`}>
-      {cameras.map((camera) => <CameraThumb key={camera.id} camera={camera} terminalName={terminalName} stamp={stamp} sortable={sortable} dragging={drag?.id === camera.id} dropTarget={drag !== null && drag.overId === camera.id && drag.id !== camera.id} onOpen={onOpen} onOffline={markOffline} />)}
+      {cameras.map((camera) => <CameraThumb key={camera.id} camera={camera} terminalName={terminalName} stamp={stamp} sortable={sortable} dragging={drag?.id === camera.id} dropTarget={drag !== null && drag.overId === camera.id && drag.id !== camera.id} onOpen={onOpen} />)}
       <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
     </div>
   );
@@ -355,11 +339,9 @@ function CameraDialog({ cameras, index, terminalName, onMove, onClose }: { camer
   const surfaceRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const activeThumbRef = useRef<HTMLButtonElement>(null);
-  const [offline, setOffline] = useState(false);
   const camera = cameras[index];
 
   useEffect(() => { closeRef.current?.focus(); }, []);
-  useEffect(() => { setOffline(false); }, [index]);
   useEffect(() => { activeThumbRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [index]);
 
   useEffect(() => {
@@ -407,9 +389,7 @@ function CameraDialog({ cameras, index, terminalName, onMove, onClose }: { camer
           <button ref={closeRef} className="camera-close" type="button" aria-label="Close camera view" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="camera-stage">
-          {offline
-            ? <p className="camera-stage-offline">This camera is offline right now.</p>
-            : <img key={camera.id} src={cacheBusted(camera.imageUrl, Date.now())} alt={alt} referrerPolicy="no-referrer" onLoad={(event) => setOffline(isOfflinePlaceholder(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight))} />}
+          <img key={camera.id} src={cacheBusted(camera.imageUrl, Date.now())} alt={alt} referrerPolicy="no-referrer" />
         </div>
         {camera.description && <p className="camera-description">{camera.description}</p>}
         {many && <div className="camera-filmstrip" role="tablist" aria-label={`${terminalName} cameras`}>

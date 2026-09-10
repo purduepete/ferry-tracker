@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
-import { cacheBusted, cameraAlt, cameraOrderKey, isOfflinePlaceholder, loadCameraOrder, orderCameras, reorderCameras, saveCameraOrder } from '../src/format';
+import { cacheBusted, cameraAlt, cameraOrderKey, loadCameraOrder, orderCameras, reorderCameras, saveCameraOrder } from '../src/format';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const cameras = [
@@ -42,22 +42,6 @@ describe('terminal cameras', () => {
     expect(image).toHaveAttribute('loading', 'lazy');
     // Bainbridge has no cameras, so its card shows no strip at all.
     expect(document.querySelectorAll('.camera-strip')).toHaveLength(1);
-  });
-
-  it('drops a camera that answers with the WSDOT offline graphic', async () => {
-    mockApi();
-    const user = userEvent.setup();
-    render(<ThemeProvider><App /></ThemeProvider>);
-
-    await user.click(await screen.findByRole('tab', { name: 'Terminals' }));
-    const image = await screen.findByAltText('WSF Seattle Ferry Holding');
-    // WSDOT serves the placeholder with HTTP 200, so only its intrinsic size gives it away.
-    Object.defineProperty(image, 'naturalWidth', { value: 320 });
-    Object.defineProperty(image, 'naturalHeight', { value: 250 });
-    fireEvent.load(image);
-
-    await waitFor(() => expect(screen.queryByAltText('WSF Seattle Ferry Holding')).not.toBeInTheDocument());
-    expect(screen.getByAltText('WSF Seattle Ferry Bremerton Holding')).toBeInTheDocument();
   });
 
   it('opens an enlarged view that traps focus, closes on Escape, and returns focus', async () => {
@@ -130,26 +114,6 @@ describe('terminal cameras', () => {
     await screen.findByAltText('WSF Seattle Ferry Holding');
     expect(stripOrder()).toEqual(['9042', '9041', '9043']);
   });
-
-  it('leaves an offline camera in its stored slot while the visible ones move', async () => {
-    localStorage.setItem('ferry-tracker-camera-order', JSON.stringify({ 7: [9041, 9042, 9043] }));
-    mockApi();
-    const user = userEvent.setup();
-    render(<ThemeProvider><App /></ThemeProvider>);
-
-    await user.click(await screen.findByRole('tab', { name: 'Terminals' }));
-    const middle = await screen.findByAltText('WSF Seattle Ferry Bremerton Holding');
-    Object.defineProperty(middle, 'naturalWidth', { value: 320 });
-    Object.defineProperty(middle, 'naturalHeight', { value: 250 });
-    fireEvent.load(middle);
-    await waitFor(() => expect(screen.queryByAltText('WSF Seattle Ferry Bremerton Holding')).not.toBeInTheDocument());
-
-    screen.getByRole('button', { name: 'Reorder WSF Seattle Ferry Holding' }).focus();
-    await user.keyboard('{ArrowRight}');
-
-    // The hidden camera keeps slot 2, so it comes back where it was left.
-    expect(JSON.parse(localStorage.getItem('ferry-tracker-camera-order') ?? '{}')).toEqual({ 7: [9043, 9042, 9041] });
-  });
 });
 
 describe('camera order storage', () => {
@@ -160,12 +124,11 @@ describe('camera order storage', () => {
     expect(orderCameras(list, [9, 2]).map((camera) => camera.id)).toEqual([2, 1, 3]);
   });
 
-  it('rewrites only the visible slots when reordering', () => {
-    expect(reorderCameras([1, 2, 3], [1, 2, 3], 1, 3)).toEqual([2, 3, 1]);
-    // 2 is offline, so it holds slot 2 while 1 and 3 swap around it.
-    expect(reorderCameras([1, 2, 3], [1, 3], 1, 3)).toEqual([3, 2, 1]);
-    expect(reorderCameras([1, 2, 3], [1, 3], 1, 1)).toEqual([1, 2, 3]);
-    expect(reorderCameras([1, 2, 3], [1, 3], 4, 3)).toEqual([1, 2, 3]);
+  it('moves the dragged camera to the target slot', () => {
+    expect(reorderCameras([1, 2, 3], 1, 3)).toEqual([2, 3, 1]);
+    expect(reorderCameras([1, 2, 3], 3, 1)).toEqual([3, 1, 2]);
+    expect(reorderCameras([1, 2, 3], 1, 1)).toEqual([1, 2, 3]);
+    expect(reorderCameras([1, 2, 3], 4, 3)).toEqual([1, 2, 3]);
   });
 
   it('discards junk rather than trusting whatever is in storage', () => {
@@ -199,12 +162,5 @@ describe('camera helpers', () => {
   it('never leaves the alt text empty', () => {
     expect(cameraAlt({ title: '  ' }, 'Seattle')).toBe('Seattle terminal camera');
     expect(cameraAlt({ title: 'WSF Kingston Terminal' }, 'Kingston')).toBe('WSF Kingston Terminal');
-  });
-
-  it('recognises the offline graphic only at its exact size', () => {
-    expect(isOfflinePlaceholder(320, 250)).toBe(true);
-    // Six live cameras report a size the feed disagrees with, so a mismatch alone means nothing.
-    expect(isOfflinePlaceholder(480, 352)).toBe(false);
-    expect(isOfflinePlaceholder(400, 245)).toBe(false);
   });
 });

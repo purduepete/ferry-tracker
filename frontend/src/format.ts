@@ -23,14 +23,6 @@ export function cameraAlt(camera: Pick<TerminalCameraView, 'title'>, terminalNam
   return camera.title.trim() || `${terminalName} terminal camera`;
 }
 
-// WSDOT answers a dead camera with HTTP 200 and a fixed 320x250 "image currently unavailable"
-// graphic. The host sends no CORS header, so intrinsic size is the only thing the browser will
-// give up about the pixels. Comparing against the declared size does not work: six live cameras
-// have stale dimensions in the feed.
-export function isOfflinePlaceholder(width: number, height: number) {
-  return width === 320 && height === 250;
-}
-
 export function refreshTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value));
 }
@@ -285,19 +277,13 @@ export function orderCameras<T extends { id: number }>(cameras: T[], ids: number
   return [...chosen, ...rest];
 }
 
-// Moves the dragged camera to where the target sits. A camera serving the offline graphic is
-// not on screen to drop onto, so only the visible ids are rewritten and their slots stay put.
-export function reorderCameras(orderedIds: number[], visibleIds: number[], id: number, targetId: number): number[] {
-  const from = visibleIds.indexOf(id);
-  const to = visibleIds.indexOf(targetId);
+// Moves the dragged camera to where the target sits.
+export function reorderCameras(orderedIds: number[], id: number, targetId: number): number[] {
+  const from = orderedIds.indexOf(id);
+  const to = orderedIds.indexOf(targetId);
   if (from === -1 || to === -1 || from === to) return orderedIds;
-  const moved = [...visibleIds];
-  moved.splice(to, 0, ...moved.splice(from, 1));
   const next = [...orderedIds];
-  let taken = 0;
-  for (const [index, value] of orderedIds.entries()) {
-    if (visibleIds.includes(value)) next[index] = moved[taken++];
-  }
+  next.splice(to, 0, ...next.splice(from, 1));
   return next;
 }
 

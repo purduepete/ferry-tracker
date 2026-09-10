@@ -279,7 +279,6 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .camera-close:hover, .camera-close:focus-visible { color: var(--text); background: var(--surface-2); }
 .camera-stage { position: relative; display: grid; place-items: center; background: var(--surface-3); }
 .camera-stage img { display: block; width: 100%; height: auto; }
-.camera-stage-offline { margin: 0; padding: 48px 16px; color: var(--muted); font-size: 13px; }
 .camera-step { width: 26px; height: 26px; padding: 0; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .2s ease, background-color .2s ease; }
 .camera-step:hover, .camera-step:focus-visible { color: var(--text); background: var(--surface-2); }
 .camera-filmstrip { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); overflow-x: auto; }
