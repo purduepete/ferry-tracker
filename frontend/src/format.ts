@@ -23,6 +23,22 @@ export function cameraAlt(camera: Pick<TerminalCameraView, 'title'>, terminalNam
   return camera.title.trim() || `${terminalName} terminal camera`;
 }
 
+// Multicolumn balances by height, which strands the remainder in the last column. A reader
+// scanning a schedule expects the leftmost column to be the fullest, so the indexes returned
+// here get a forced `break-before: column` to override the browser's own split.
+export function sailingColumnBreaks(count: number, columns: number) {
+  const breaks = new Set<number>();
+  if (columns < 2) return breaks;
+  const base = Math.floor(count / columns);
+  const extra = count % columns;
+  let index = 0;
+  for (let column = 0; column < columns - 1; column += 1) {
+    index += base + (column < extra ? 1 : 0);
+    if (index > 0 && index < count) breaks.add(index);
+  }
+  return breaks;
+}
+
 export function refreshTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value));
 }

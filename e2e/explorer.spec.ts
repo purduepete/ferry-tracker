@@ -259,11 +259,59 @@ test('collapses the routes view to the sailings schedule at any width', async ({
   await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sailings only' })).toBeVisible();
+  // The card runs the full page width in this mode, the same as the Catch and Disruption cards.
+  await expect.poll(async () => (await page.locator('.schedule-node').boundingBox())?.width ?? 0).toBeGreaterThan(720);
   await expect.poll(() => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().height)).toBeGreaterThan(40);
 
   await page.getByRole('button', { name: 'Sailings only' }).click();
   await expect(page.locator('.terminal-node')).toBeVisible();
   await expect(page.locator('.schedule-node')).toBeVisible();
+});
+
+test('reflows the collapsed sailing list into columns as the page widens', async ({ page }) => {
+  // The shared schedule fixture only holds 2 sailings, which can never fill 3 columns. 16 is the
+  // count that separates the leftmost-first split (6/5/5) from the browser's own (6/6/4).
+  await page.route('**/api/schedule*', async (route) => {
+    const start = Date.now() + 45 * 60_000;
+    // Every third sailing carries a capacity pill, which is the taller row shape. The dividers
+    // still have to land on the same line in every column.
+    const data = Array.from({ length: 16 }, (_, index) => ({
+      vesselId: 1, vesselName: 'Tacoma',
+      departingTime: new Date(start + index * 30 * 60_000).toISOString(),
+      arrivingTime: null, departingTerminalId: 7, arrivingTerminalId: 3,
+      isCancelled: false,
+      driveUpSpaceCount: index % 3 === 0 ? 40 : null, reservableSpaceCount: null, maxSpaceCount: index % 3 === 0 ? 200 : null,
+      spaceAvailable: index % 3 === 0, spaceSource: null, spaceObservedAt: null, spaceLeadSeconds: null,
+      actualDeparture: null, actualArrival: null, departureDelayMinutes: null, raw: {},
+    }));
+    await route.fulfill({ json: { data, fetchedAt: new Date().toISOString(), source: 'fixture', raw: null } });
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Sailings only' }).click();
+  await expect(page.locator('.sailing-list li')).toHaveCount(16);
+
+  // getComputedStyle().columnCount reads 'auto' under the columns: <width> shorthand, so measure
+  // the rendered rows instead. A .current row bleeds 8px, so merge lefts that sit within 16px.
+  const layout = () => page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.sailing-list li')];
+    const box = (li: Element) => li.getBoundingClientRect();
+    const lefts = [...new Set(rows.map((li) => Math.round(box(li).left)))].sort((a, b) => a - b);
+    const columns = lefts.filter((left, index) => index === 0 || left - lefts[index - 1] > 16);
+    const tops = columns.map((left) => rows.filter((li) => Math.abs(box(li).left - left) <= 16).map((li) => Math.round(box(li).top)));
+    return {
+      counts: tops.map((column) => column.length),
+      // Row n starts at the same y in every column, so the dividers read as one line across.
+      aligned: tops.every((column) => column.every((top, index) => top === tops[0][index])),
+      fits: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  });
+
+  for (const [width, counts] of [[390, [16]], [768, [16]], [1024, [8, 8]], [1440, [6, 5, 5]]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(async () => (await layout()).counts).toEqual([...counts]);
+    expect(await layout()).toMatchObject({ aligned: true, fits: true });
+  }
 });
 
 test('drops the tab labels and the route selectors on a phone', async ({ page }) => {

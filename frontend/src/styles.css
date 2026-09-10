@@ -199,7 +199,7 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 
 .relationship-grid { display: grid; grid-template-columns: minmax(210px, 1fr) 90px minmax(210px, 1fr) 90px minmax(210px, 1fr); align-items: center; gap: 12px; }
 /* The schedule is the last grid child, which collapses the loading skeleton the same way. */
-.relationship-grid.is-sailings-only { grid-template-columns: minmax(0, 720px); justify-content: center; }
+.relationship-grid.is-sailings-only { grid-template-columns: minmax(0, 1fr); }
 .relationship-grid.is-sailings-only > :not(:last-child) { display: none; }
 .relationship-node { align-self: stretch; padding: 17px; border: 1px solid var(--line); border-top: 3px solid var(--accent); background: var(--surface); box-shadow: var(--shadow); min-width: 0; position: relative; }
 .vessel-node.is-clickable, .terminal-node.is-clickable { cursor: pointer; }
@@ -218,6 +218,12 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 .field dd { margin: 0; overflow-wrap: anywhere; }
 .null { color: #b05d36; font-family: 'Cascadia Code', 'Consolas', monospace; font-style: italic; }
 .sailing-list { margin: 12px 0 0; padding: 0; list-style: none; }
+/* Scoped: .countdown-later .sailing-list on Catch and Disruption shares the class. */
+.relationship-grid.is-sailings-only .sailing-list { columns: 340px; column-gap: 28px; }
+.relationship-grid.is-sailings-only .sailing-list li { break-inside: avoid; }
+/* 20px is the capacity pill's own height, so a row that has one is no taller than one that
+   does not and the dividers stay on the same line across every column. */
+.relationship-grid.is-sailings-only .sailing-row { min-height: 20px; }
 .sailing-list li { padding: 9px 0; border-top: 1px solid var(--line); display: grid; gap: 2px; }
 .sailing-list li.current { background: color-mix(in srgb, var(--accent-soft) 48%, transparent); padding: 9px 8px; margin: 0 -8px; border-left: 3px solid var(--accent); border-top-color: var(--accent); }
 .sailing-list li.is-linked { cursor: pointer; }
@@ -244,8 +250,12 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .schedule-node-header { display: block; width: 100%; padding: 6px; margin: -6px; border: 0; border-radius: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .schedule-node-header:hover, .schedule-node-header:focus-visible { background: color-mix(in srgb, var(--surface) 92%, var(--accent-soft)); }
 .schedule-node-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 12px clears the header's -6px margin bleed so the two hit boxes never touch. */
+.schedule-node-terminal { margin-top: 12px; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
 .sailing-placeholder { min-height: 180px; padding-top: 20px; display: grid; align-content: start; gap: 28px; }
 .sailing-placeholder i { width: 100%; }
+/* min() keeps the track from overflowing the 326px card inner width at 390px. */
+.relationship-grid.is-sailings-only .sailing-placeholder { grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
 
 .data-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 12px; }
 .data-card { padding: 16px; border: 1px solid var(--line); border-radius: 0; background: var(--surface); position: relative; }

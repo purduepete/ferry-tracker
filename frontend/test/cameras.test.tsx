@@ -37,7 +37,9 @@ describe('terminal cameras', () => {
 
     await user.click(await screen.findByRole('tab', { name: 'Terminals' }));
     const image = await screen.findByAltText('WSF Seattle Ferry Holding');
-    expect(image).toHaveAttribute('src', 'https://images.wsdot.wa.gov/wsf/colman/colman.jpg');
+    const src = new URL(image.getAttribute('src') ?? '');
+    expect(`${src.origin}${src.pathname}`).toBe('https://images.wsdot.wa.gov/wsf/colman/colman.jpg');
+    expect(Number(src.searchParams.get('t'))).toBeGreaterThan(0);
     expect(image).toHaveAttribute('referrerpolicy', 'no-referrer');
     expect(image).toHaveAttribute('loading', 'lazy');
     // Bainbridge has no cameras, so its card shows no strip at all.
@@ -84,6 +86,14 @@ describe('terminal cameras', () => {
 
     await user.click(within(dialog).getByRole('tab', { name: 'WSF Seattle Ferry Bremerton Holding' }));
     expect(within(dialog).getByText('2 of 3')).toBeInTheDocument();
+
+    // A bare filmstrip URL lets the browser answer from cache, which is how a thumbnail ends up
+    // showing WSDOT's "image unavailable" frame while the enlarged view shows the live one.
+    const thumbs = [...dialog.querySelectorAll<HTMLImageElement>('.camera-filmstrip img')];
+    expect(thumbs).toHaveLength(3);
+    for (const thumb of thumbs) {
+      expect(Number(new URL(thumb.src).searchParams.get('t'))).toBeGreaterThan(0);
+    }
   });
 
   it('pages the enlarged view with a sideways swipe', async () => {

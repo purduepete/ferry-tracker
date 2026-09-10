@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
-import { addFavoriteRoute, capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, DEFAULT_FAVORITE_ROUTES, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, isPublishedRoute, loadCatchOverrides, loadFavoriteRoutes, loadSettings, normalizeCatchOverrides, normalizeFavoriteRoutes, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingDeparture, sailingTimeMinutes, serviceDayLabel, setCatchOverride, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
+import { addFavoriteRoute, capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, DEFAULT_FAVORITE_ROUTES, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, isPublishedRoute, loadCatchOverrides, loadFavoriteRoutes, loadSettings, normalizeCatchOverrides, normalizeFavoriteRoutes, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingColumnBreaks, sailingDeparture, sailingTimeMinutes, serviceDayLabel, setCatchOverride, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
@@ -417,6 +417,32 @@ describe('Sailings only', () => {
     await screen.findByRole('heading', { name: 'Seattle' });
     expect(screen.getByRole('button', { name: 'Sailings only' })).toHaveAttribute('aria-pressed', 'true');
     expect(document.querySelector('.relationship-grid')).toHaveClass('is-sailings-only');
+  });
+
+  it('links the collapsed schedule back to its origin terminal card', async () => {
+    mockRoute();
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    expect(screen.queryByRole('button', { name: 'Show the Seattle terminal card' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Sailings only' }));
+    await user.click(screen.getByRole('button', { name: 'Show the Seattle terminal card' }));
+
+    expect(screen.getByRole('tab', { name: 'Terminals' })).toHaveAttribute('aria-selected', 'true');
+    const card = (await screen.findByRole('button', { name: 'Seattle' })).closest('.data-card');
+    expect(card).toHaveClass('is-highlighted');
+  });
+
+  it('splits the collapsed schedule so the leftmost column holds the most', () => {
+    // The browser's own balancer strands the remainder in the last column (6/6/4 for 16).
+    expect([...sailingColumnBreaks(16, 3)]).toEqual([6, 11]);
+    expect([...sailingColumnBreaks(17, 3)]).toEqual([6, 12]);
+    expect([...sailingColumnBreaks(16, 2)]).toEqual([8]);
+    expect([...sailingColumnBreaks(16, 1)]).toEqual([]);
+    expect([...sailingColumnBreaks(2, 3)]).toEqual([1]);
+    expect([...sailingColumnBreaks(0, 3)]).toEqual([]);
   });
 
   it('leaves the other tabs alone', async () => {

@@ -2,7 +2,7 @@ import { isValidElement, useEffect, useRef, useState, type CSSProperties, type K
 import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, ChevronLeft, ChevronRight, Clock3, ExternalLink, GripVertical, History, ListFilter, MapPin, Plus, RefreshCw, RotateCcw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalCameraView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, cacheBusted, cameraAlt, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, DEFAULT_SETTINGS, departureDelayLabel, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCameraOrder, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderCameras, orderTerminals, phoneVehicleSpace, recordedSpaceLabel, refreshTime, removeFavoriteRoute, renameFavoriteRoute, reorderCameras, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingDeparture, sailingTimeMinutes, saveCameraOrder, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CameraOrder, type CatchOverride, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
+import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, cacheBusted, cameraAlt, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, DEFAULT_SETTINGS, departureDelayLabel, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCameraOrder, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderCameras, orderTerminals, phoneVehicleSpace, recordedSpaceLabel, refreshTime, removeFavoriteRoute, renameFavoriteRoute, reorderCameras, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingColumnBreaks, sailingDeparture, sailingTimeMinutes, saveCameraOrder, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CameraOrder, type CatchOverride, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -21,6 +21,8 @@ const tabs: Array<{ id: Tab; label: string; icon: typeof Waypoints; shortcut: st
 const COUNTDOWN_TICK_MS = 15_000;
 const BACKGROUND_REFRESH_MS = 60_000;
 const CAMERA_REFRESH_MS = 120_000;
+const SAILING_COLUMN_WIDTH = 340;
+const SAILING_COLUMN_GAP = 28;
 const MINIMUM_SKELETON_MS = 500;
 const SKELETON_EXIT_MS = 520;
 const LIVE_DATE = 'live';
@@ -66,6 +68,28 @@ function loadCatchPaddingOpen() {
   } catch {
     return false;
   }
+}
+
+// Mirrors the `columns: 340px` / `column-gap: 28px` rule on the sailings-only list. The count
+// cannot be read back off the DOM: the `columns` shorthand resolves `column-count` to `auto`.
+// A callback ref, not a ref object, because the list mounts after the schedule count settles.
+function useSailingColumns(enabled: boolean, count: number) {
+  const [element, setElement] = useState<HTMLOListElement | null>(null);
+  const [columns, setColumns] = useState(1);
+
+  useEffect(() => {
+    if (!enabled || !element || typeof ResizeObserver === 'undefined') {
+      setColumns(1);
+      return;
+    }
+    const measure = () => setColumns(Math.max(1, Math.floor((element.clientWidth + SAILING_COLUMN_GAP) / (SAILING_COLUMN_WIDTH + SAILING_COLUMN_GAP))));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [enabled, element]);
+
+  return { ref: setElement, breaks: sailingColumnBreaks(count, columns) };
 }
 
 function RecordedSpaceMark({ sailing }: { sailing: SailingView }) {
@@ -222,7 +246,10 @@ interface CameraSortable {
 function CameraThumb({ camera, terminalName, stamp, sortable, dragging, dropTarget, onOpen }: { camera: TerminalCameraView; terminalName: string; stamp: number; sortable: CameraSortable | null; dragging: boolean; dropTarget: boolean; onOpen: (camera: TerminalCameraView, opener: HTMLButtonElement) => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined');
-  const [src, setSrc] = useState(camera.imageUrl);
+  // The first paint busts too. On the bare URL the browser reuses a cached frame, which is how
+  // a thumbnail ends up showing WSDOT's "image unavailable" picture while the enlarged view,
+  // which always busts, shows the live one.
+  const [src, setSrc] = useState(() => cacheBusted(camera.imageUrl, Date.now()));
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -340,6 +367,9 @@ function CameraDialog({ cameras, index, terminalName, onMove, onClose }: { camer
   const closeRef = useRef<HTMLButtonElement>(null);
   const activeThumbRef = useRef<HTMLButtonElement>(null);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  // One stamp for the whole dialog: fresh enough to skip a stale cached frame, stable enough
+  // that stepping between cameras does not refetch every thumbnail.
+  const [stamp] = useState(() => Date.now());
   const camera = cameras[index];
 
   useEffect(() => { closeRef.current?.focus(); }, []);
@@ -411,12 +441,12 @@ function CameraDialog({ cameras, index, terminalName, onMove, onClose }: { camer
           }}
           onTouchCancel={() => { swipeStart.current = null; }}
         >
-          <img key={camera.id} src={cacheBusted(camera.imageUrl, Date.now())} alt={alt} referrerPolicy="no-referrer" />
+          <img key={camera.id} src={cacheBusted(camera.imageUrl, stamp)} alt={alt} referrerPolicy="no-referrer" />
         </div>
         {camera.description && <p className="camera-description">{camera.description}</p>}
         {many && <div className="camera-filmstrip" role="tablist" aria-label={`${terminalName} cameras`}>
           {cameras.map((entry, position) => <button key={entry.id} ref={position === index ? activeThumbRef : undefined} role="tab" aria-selected={position === index} className={position === index ? 'active' : undefined} type="button" onClick={() => onMove(position)}>
-            <img src={entry.imageUrl} alt="" referrerPolicy="no-referrer" loading="lazy" />
+            <img src={cacheBusted(entry.imageUrl, stamp)} alt="" referrerPolicy="no-referrer" loading="lazy" />
             <span>{cameraAlt(entry, terminalName)}</span>
           </button>)}
         </div>}
@@ -675,6 +705,7 @@ export function App() {
 
   const destination = terminals.find((terminal) => terminal.id === effectiveDestinationId) ?? null;
   const currentSailing = scheduleResponse?.data ? getCurrentSailing(scheduleResponse.data, vessels) : null;
+  const sailingColumns = useSailingColumns(sailingsOnly && tab === 'routes', scheduleResponse?.data.length ?? 0);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const waves = disruptionWaves(vessels, countdownNow, settings, inboundResponse?.data ?? []);
   const [nextWave, ...laterWaves] = waves;
@@ -1087,7 +1118,9 @@ export function App() {
                 <span className="node-type">Sailings schedule</span>
                 <h2>{selectedTerminal?.name ?? '—'} to {destination?.name ?? '—'}</h2>
               </button>
-              {scheduleResponse?.data.length ? <ol className="sailing-list">{scheduleResponse.data.map((sailing, index) => { const linkedVesselId = sailingRowVesselId(sailing); const itemClasses = [isCurrentSailing(sailing, currentSailing) ? 'current' : '', linkedVesselId !== null ? 'is-linked' : ''].filter(Boolean).join(' '); return <li key={`${sailing.departingTime}-${index}`} className={itemClasses || undefined} {...(linkedVesselId !== null ? { tabIndex: 0, 'aria-label': `View ${sailing.vesselName} on the Vessels tab`, onClick: () => showVesselOnVesselsTab(linkedVesselId), onKeyDown: (event: KeyboardEvent<HTMLLIElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showVesselOnVesselsTab(linkedVesselId); } } } : {})}><div className="sailing-row"><strong>{localTime(sailing.departingTime)}</strong><DepartureDelay sailing={sailing} vessels={vessels} /></div><div className="sailing-row"><span>{sailing.vesselName ?? 'Vessel unassigned'}</span>{sailing.spaceAvailable && <span className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`} title={recordedSpaceLabel(sailing) ?? undefined}><Car className="space-icon" size={13} role="img" aria-label="Vehicle space" />{phoneVehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></span>}</div></li>; })}</ol> : scheduleLoading ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div> : <div className="empty">No sailings in this 14-hour window.</div>}
+              {/* Sailings-only mode hides the terminal card, so this is the only way back to it. */}
+              {sailingsOnly && selectedTerminal && <button type="button" className="card-link schedule-node-terminal" aria-label={`Show the ${selectedTerminal.name} terminal card`} title={`Show the ${selectedTerminal.name} terminal card`} onClick={() => showTerminalOnTerminalsTab(selectedTerminal.id)}><MapPin size={13} />{selectedTerminal.name}</button>}
+              {scheduleResponse?.data.length ? <ol className="sailing-list" ref={sailingColumns.ref}>{scheduleResponse.data.map((sailing, index) => { const linkedVesselId = sailingRowVesselId(sailing); const itemClasses = [isCurrentSailing(sailing, currentSailing) ? 'current' : '', linkedVesselId !== null ? 'is-linked' : ''].filter(Boolean).join(' '); return <li key={`${sailing.departingTime}-${index}`} className={itemClasses || undefined} style={sailingColumns.breaks.has(index) ? { breakBefore: 'column' } : undefined} {...(linkedVesselId !== null ? { tabIndex: 0, 'aria-label': `View ${sailing.vesselName} on the Vessels tab`, onClick: () => showVesselOnVesselsTab(linkedVesselId), onKeyDown: (event: KeyboardEvent<HTMLLIElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showVesselOnVesselsTab(linkedVesselId); } } } : {})}><div className="sailing-row"><strong>{localTime(sailing.departingTime)}</strong><DepartureDelay sailing={sailing} vessels={vessels} /></div><div className="sailing-row"><span>{sailing.vesselName ?? 'Vessel unassigned'}</span>{sailing.spaceAvailable && <span className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`} title={recordedSpaceLabel(sailing) ?? undefined}><Car className="space-icon" size={13} role="img" aria-label="Vehicle space" />{phoneVehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /> <CapacityMeter sailing={sailing} /></span>}</div></li>; })}</ol> : scheduleLoading ? <div className="sailing-placeholder" aria-hidden="true"><i /><i /><i /></div> : <div className="empty">No sailings in this 14-hour window.</div>}
             </article>
           </div>}
 
