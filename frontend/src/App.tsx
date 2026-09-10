@@ -399,15 +399,17 @@ function CameraDialog({ cameras, index, terminalName, onMove, onClose }: { camer
       <div ref={surfaceRef} className="camera-dialog" role="dialog" aria-modal="true" aria-label={`${terminalName} cameras`} onClick={(event) => event.stopPropagation()}>
         <div className="camera-dialog-head">
           <h2>{alt}</h2>
-          {many && <span className="camera-count">{index + 1} of {cameras.length}</span>}
+          {many && <div className="camera-nav">
+            <button className="camera-step" type="button" aria-label="Previous camera" onClick={() => onMove((index - 1 + cameras.length) % cameras.length)}><ChevronLeft size={16} /></button>
+            <span className="camera-count">{index + 1} of {cameras.length}</span>
+            <button className="camera-step" type="button" aria-label="Next camera" onClick={() => onMove((index + 1) % cameras.length)}><ChevronRight size={16} /></button>
+          </div>}
           <button ref={closeRef} className="camera-close" type="button" aria-label="Close camera view" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="camera-stage">
-          {many && <button className="camera-step" type="button" aria-label="Previous camera" onClick={() => onMove((index - 1 + cameras.length) % cameras.length)}><ChevronLeft size={20} /></button>}
           {offline
             ? <p className="camera-stage-offline">This camera is offline right now.</p>
             : <img key={camera.id} src={cacheBusted(camera.imageUrl, Date.now())} alt={alt} referrerPolicy="no-referrer" onLoad={(event) => setOffline(isOfflinePlaceholder(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight))} />}
-          {many && <button className="camera-step" type="button" aria-label="Next camera" onClick={() => onMove((index + 1) % cameras.length)}><ChevronRight size={20} /></button>}
         </div>
         {camera.description && <p className="camera-description">{camera.description}</p>}
         {many && <div className="camera-filmstrip" role="tablist" aria-label={`${terminalName} cameras`}>
@@ -482,8 +484,10 @@ export function App() {
   const favoriteListRef = useRef<HTMLUListElement>(null);
   const favoriteRouteListRef = useRef<HTMLUListElement>(null);
   const vesselCardRefs = useRef<Record<number, HTMLElement | null>>({});
+  const terminalCardRefs = useRef<Record<number, HTMLElement | null>>({});
   const [vesselStackHeight, setVesselStackHeight] = useState(0);
   const [highlightedVesselId, setHighlightedVesselId] = useState<number | null>(null);
+  const [highlightedTerminalId, setHighlightedTerminalId] = useState<number | null>(null);
   const previousTabRef = useRef<Tab>(tab);
   const historyDatesRef = useRef<string[]>(historyDates);
   const serviceDateRef = useRef(serviceDate);
@@ -857,6 +861,11 @@ export function App() {
     setTab('vessels');
   };
 
+  const showTerminalOnTerminalsTab = (terminalId: number) => {
+    setHighlightedTerminalId(terminalId);
+    setTab('terminals');
+  };
+
   const toggleFavoriteTerminal = (terminalId: number) => {
     const nextFavorites = toggleFavoriteTerminalId(favoriteTerminalIds, terminalId);
     setFavoriteTerminalIds(nextFavorites);
@@ -919,6 +928,14 @@ export function App() {
     const timeout = window.setTimeout(() => setHighlightedVesselId(null), 2000);
     return () => window.clearTimeout(timeout);
   }, [tab, highlightedVesselId]);
+
+  // Same treatment for the terminal the Routes node jumped here for.
+  useEffect(() => {
+    if (tab !== 'terminals' || highlightedTerminalId === null) return;
+    terminalCardRefs.current[highlightedTerminalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const timeout = window.setTimeout(() => setHighlightedTerminalId(null), 2000);
+    return () => window.clearTimeout(timeout);
+  }, [tab, highlightedTerminalId]);
 
   // A bare letter key jumps tabs from anywhere, unless it would instead type into a field or a menu is open.
   useEffect(() => {
@@ -1043,7 +1060,7 @@ export function App() {
           {/* Keyed by tab so React remounts the panel and replays the enter animation on every switch. */}
           <div className="view-panel" key={tab}>
           {tab === 'routes' && <div className={`relationship-grid${sailingsOnly ? ' is-sailings-only' : ''}`} style={vesselStackHeight ? { '--vessel-stack-height': `${vesselStackHeight}px` } as CSSProperties : undefined}>
-            <article className="relationship-node terminal-node"><span className="node-type">Terminal</span><h2>{selectedTerminal?.name ?? 'No terminal'}</h2><div className="field"><dt>City</dt><dd>{selectedTerminal?.city}{selectedTerminal?.latitude && selectedTerminal?.longitude ? <> <a href={`https://maps.google.com/?q=${selectedTerminal.latitude},${selectedTerminal.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Coordinates" value={selectedTerminal ? `${selectedTerminal.latitude}, ${selectedTerminal.longitude}` : null} /></article>
+            <article className={`relationship-node terminal-node${selectedTerminal ? ' is-clickable' : ''}`} {...(selectedTerminal ? { role: 'button', tabIndex: 0, 'aria-label': `Show ${selectedTerminal.name} on the Terminals tab`, onClick: () => showTerminalOnTerminalsTab(selectedTerminal.id), onKeyDown: (event: KeyboardEvent<HTMLElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showTerminalOnTerminalsTab(selectedTerminal.id); } } } : {})}><span className="node-type">Terminal</span><h2>{selectedTerminal?.name ?? 'No terminal'}</h2><div className="field"><dt>City</dt><dd>{selectedTerminal?.city}{selectedTerminal?.latitude && selectedTerminal?.longitude ? <> <a href={`https://maps.google.com/?q=${selectedTerminal.latitude},${selectedTerminal.longitude}`} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Coordinates" value={selectedTerminal ? `${selectedTerminal.latitude}, ${selectedTerminal.longitude}` : null} /></article>
             <div className="relationship-link"><span>{associatedVessels.length} associated</span><ArrowRight /></div>
             <div className={`vessel-stack${recordedDay ? ' is-dimmed' : ''}`} ref={vesselStackRef}>{recordedDay && <p className="vessel-live-note">Live positions only.</p>}{associatedVessels.length ? associatedVessels.map((vessel) => { const clickable = vessel.departingTerminalId !== null; return <article className={`relationship-node vessel-node${clickable ? ' is-clickable' : ''}`} key={vessel.id} {...(clickable ? { role: 'button', tabIndex: 0, 'aria-label': `Show ${vessel.name}'s route in the routes view`, onClick: () => pickRoute(vessel.departingTerminalId, vessel.arrivingTerminalId), onKeyDown: (event: KeyboardEvent<HTMLElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pickRoute(vessel.departingTerminalId, vessel.arrivingTerminalId); } } } : {})}><span className="node-type">Vessel</span><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.name}</h2><p>{vessel.departingTerminalName ?? '—'} <ArrowRight size={14} /> {vessel.arrivingTerminalName ?? '—'}</p><Field label="Class" value={vessel.vesselClass} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Speed" value={vessel.speed === null ? null : `${vessel.speed} knots`} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></article>; }) : <div className="empty">No vessel currently references this terminal.</div>}</div>
             <div className="relationship-link"><span>{scheduleResponse?.data.length ?? 0} sailings</span><ArrowRight /></div>
@@ -1056,7 +1073,7 @@ export function App() {
             </article>
           </div>}
 
-          {tab === 'terminals' && <div className="data-grid">{terminals.map((terminal) => <article className="data-card" key={terminal.id}><h2><button className="card-link" type="button" title={`Show ${terminal.name} in the routes view`} onClick={() => openRoute(terminal.id, null)}>{terminal.name}</button></h2><dl><div className="field"><dt>City</dt><dd>{terminal.city}{terminal.latitude && terminal.longitude ? <> <a href={`https://maps.google.com/?q=${terminal.latitude},${terminal.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Latitude" value={terminal.latitude} /><Field label="Longitude" value={terminal.longitude} /></dl><TerminalCameras terminalName={terminal.name} cameras={orderCameras(terminal.cameras, cameraOrder[terminal.id])} stamp={cameraStamp} onReorder={(ids) => changeCameraOrder(terminal.id, ids)} onOpen={(camera, opener) => openCamera(terminal.id, camera.id, opener)} /></article>)}</div>}
+          {tab === 'terminals' && <div className="data-grid">{terminals.map((terminal) => <article className={`data-card${terminal.id === highlightedTerminalId ? ' is-highlighted' : ''}`} key={terminal.id} ref={(element) => { if (element) terminalCardRefs.current[terminal.id] = element; else delete terminalCardRefs.current[terminal.id]; }}><h2><button className="card-link" type="button" title={`Show ${terminal.name} in the routes view`} onClick={() => openRoute(terminal.id, null)}>{terminal.name}</button></h2><dl><div className="field"><dt>City</dt><dd>{terminal.city}{terminal.latitude && terminal.longitude ? <> <a href={`https://maps.google.com/?q=${terminal.latitude},${terminal.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Latitude" value={terminal.latitude} /><Field label="Longitude" value={terminal.longitude} /></dl><TerminalCameras terminalName={terminal.name} cameras={orderCameras(terminal.cameras, cameraOrder[terminal.id])} stamp={cameraStamp} onReorder={(ids) => changeCameraOrder(terminal.id, ids)} onOpen={(camera, opener) => openCamera(terminal.id, camera.id, opener)} /></article>)}</div>}
 
           {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className={`data-card${vessel.id === highlightedVesselId ? ' is-highlighted' : ''}`} key={vessel.id} ref={(element) => { if (element) vesselCardRefs.current[vessel.id] = element; else delete vesselCardRefs.current[vessel.id]; }}><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.departingTerminalId === null ? vessel.name : <button className="card-link" type="button" title={`Show ${vessel.name}'s route in the routes view`} onClick={() => openRoute(vessel.departingTerminalId, vessel.arrivingTerminalId)}>{vessel.name}</button>}</h2><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></dl></article>)}</div>}
 

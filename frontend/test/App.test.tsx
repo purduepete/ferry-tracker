@@ -668,6 +668,30 @@ describe('Card navigation', () => {
     expect(screen.getByRole('button', { name: 'Destination' })).toHaveTextContent('Seattle');
   });
 
+  it('switches to the Terminals tab and highlights the terminal when the Routes terminal card is clicked', async () => {
+    mockOverview();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Show Seattle on the Terminals tab' }));
+
+    expect(screen.getByRole('tab', { name: 'Terminals' })).toHaveAttribute('aria-selected', 'true');
+    const card = (await screen.findByRole('button', { name: 'Seattle' })).closest('.data-card');
+    expect(card).toHaveClass('is-highlighted');
+  });
+
+  it('opens the routes view on the terminal clicked from the Terminals tab', async () => {
+    mockOverview();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Terminals' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Bainbridge Island' }));
+
+    expect(screen.getByRole('tab', { name: 'Routes' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Origin' })).toHaveTextContent('Bainbridge Island'));
+  });
+
   it('leaves the vessel card inert when its terminal is not yet published', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);

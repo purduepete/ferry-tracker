@@ -202,9 +202,9 @@ h2 { margin: 5px 0 8px; font-size: 17px; font-weight: 650; letter-spacing: 0; }
 .relationship-grid.is-sailings-only { grid-template-columns: minmax(0, 720px); justify-content: center; }
 .relationship-grid.is-sailings-only > :not(:last-child) { display: none; }
 .relationship-node { align-self: stretch; padding: 17px; border: 1px solid var(--line); border-top: 3px solid var(--accent); background: var(--surface); box-shadow: var(--shadow); min-width: 0; position: relative; }
-.vessel-node.is-clickable { cursor: pointer; }
-.vessel-node.is-clickable:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--surface) 94%, var(--accent-soft)); }
-.vessel-node.is-clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vessel-node.is-clickable, .terminal-node.is-clickable { cursor: pointer; }
+.vessel-node.is-clickable:hover, .terminal-node.is-clickable:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--surface) 94%, var(--accent-soft)); }
+.vessel-node.is-clickable:focus-visible, .terminal-node.is-clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .relationship-node code, .data-card code { display: inline-block; font-size: 11px; color: var(--muted); background: var(--surface-2); padding: 3px 6px; margin-bottom: 12px; }
 .relationship-node p { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 13px; }
 .relationship-link { position: relative; display: grid; place-items: center; color: var(--accent); align-self: start; height: var(--vessel-stack-height, 100%); }
@@ -273,16 +273,15 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .camera-dialog { width: min(760px, 100%); max-height: 100%; overflow-y: auto; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
 .camera-dialog-head { padding: 10px 8px 10px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
 .camera-dialog-head h2 { margin: 0; flex: 1 1 auto; font-size: 14px; font-weight: 600; }
+.camera-nav { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
 .camera-count { flex: 0 0 auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .camera-close { width: 32px; height: 32px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .2s ease, background-color .2s ease; }
 .camera-close:hover, .camera-close:focus-visible { color: var(--text); background: var(--surface-2); }
 .camera-stage { position: relative; display: grid; place-items: center; background: var(--surface-3); }
 .camera-stage img { display: block; width: 100%; height: auto; }
 .camera-stage-offline { margin: 0; padding: 48px 16px; color: var(--muted); font-size: 13px; }
-.camera-step { position: absolute; top: 0; bottom: 0; width: 44px; border: 0; background: color-mix(in srgb, var(--surface) 72%, transparent); color: var(--text); display: grid; place-items: center; cursor: pointer; transition: background-color .2s ease; }
-.camera-step:first-of-type { left: 0; }
-.camera-step:last-of-type { right: 0; }
-.camera-step:hover, .camera-step:focus-visible { background: color-mix(in srgb, var(--surface) 92%, transparent); }
+.camera-step { width: 26px; height: 26px; padding: 0; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .2s ease, background-color .2s ease; }
+.camera-step:hover, .camera-step:focus-visible { color: var(--text); background: var(--surface-2); }
 .camera-filmstrip { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); overflow-x: auto; }
 .camera-filmstrip button { flex: 0 0 96px; padding: 0; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); display: flex; flex-direction: column; cursor: pointer; overflow: hidden; transition: border-color .2s ease, color .2s ease; }
 .camera-filmstrip button:hover, .camera-filmstrip button:focus-visible { color: var(--text); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
