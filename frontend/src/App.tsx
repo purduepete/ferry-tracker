@@ -466,9 +466,11 @@ export function App() {
   const [cameraStamp, setCameraStamp] = useState(0);
   const cameraOpenerRef = useRef<HTMLButtonElement | null>(null);
   const [draggedFavoriteId, setDraggedFavoriteId] = useState<number | null>(null);
+  const draggedFavoriteIdRef = useRef<number | null>(null);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [favoriteRoutes, setFavoriteRoutes] = useState<FavoriteRoute[]>(loadFavoriteRoutes);
   const [draggedRouteKey, setDraggedRouteKey] = useState<string | null>(null);
+  const draggedRouteKeyRef = useRef<string | null>(null);
   const [favoriteRoutesOpen, setFavoriteRoutesOpen] = useState(false);
   const [newRouteOriginId, setNewRouteOriginId] = useState<number | null>(null);
   const [newRouteDestinationId, setNewRouteDestinationId] = useState<number | null>(null);
@@ -488,6 +490,7 @@ export function App() {
   const [vesselStackHeight, setVesselStackHeight] = useState(0);
   const [highlightedVesselId, setHighlightedVesselId] = useState<number | null>(null);
   const [highlightedTerminalId, setHighlightedTerminalId] = useState<number | null>(null);
+  const highlightJumpRef = useRef(false);
   const previousTabRef = useRef<Tab>(tab);
   const historyDatesRef = useRef<string[]>(historyDates);
   const serviceDateRef = useRef(serviceDate);
@@ -857,11 +860,13 @@ export function App() {
 
   const showVesselOnVesselsTab = (vesselId: number | null) => {
     if (vesselId === null) return;
+    highlightJumpRef.current = true;
     setHighlightedVesselId(vesselId);
     setTab('vessels');
   };
 
   const showTerminalOnTerminalsTab = (terminalId: number) => {
+    highlightJumpRef.current = true;
     setHighlightedTerminalId(terminalId);
     setTab('terminals');
   };
@@ -895,14 +900,16 @@ export function App() {
   };
 
   // Reordering moves the grip's own DOM node, which drops its pointer capture, so the window
-  // has to see the rest of the drag.
+  // has to see the rest of the drag. The dragged id comes from a ref because a move can arrive
+  // before React commits the pointerdown that set the state.
   useEffect(() => {
-    if (draggedFavoriteId === null && draggedRouteKey === null) return;
     const move = (event: PointerEvent) => {
-      if (draggedFavoriteId !== null) dragFavoriteTerminal(event.clientY, draggedFavoriteId);
-      else if (draggedRouteKey !== null) dragFavoriteRoute(event.clientY, draggedRouteKey);
+      if (draggedFavoriteIdRef.current !== null) dragFavoriteTerminal(event.clientY, draggedFavoriteIdRef.current);
+      else if (draggedRouteKeyRef.current !== null) dragFavoriteRoute(event.clientY, draggedRouteKeyRef.current);
     };
     const stop = () => {
+      draggedFavoriteIdRef.current = null;
+      draggedRouteKeyRef.current = null;
       setDraggedFavoriteId(null);
       setDraggedRouteKey(null);
     };
@@ -916,15 +923,22 @@ export function App() {
     };
   });
 
-  // A switched tab starts at the top; the highlight effect below re-scrolls down when it applies.
+  // A switched tab starts at the top. Scrolling is animated, so a highlight jump has to skip this
+  // reset outright: two smooth scrolls in one frame race, and the reset sometimes wins.
   useEffect(() => {
+    if (highlightJumpRef.current) {
+      highlightJumpRef.current = false;
+      return;
+    }
     window.scrollTo({ top: 0 });
   }, [tab]);
 
   // Scrolls to and briefly highlights the vessel a sailing row jumped here for.
   useEffect(() => {
     if (tab !== 'vessels' || highlightedVesselId === null) return;
-    vesselCardRefs.current[highlightedVesselId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const card = vesselCardRefs.current[highlightedVesselId];
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    else window.scrollTo({ top: 0 });
     const timeout = window.setTimeout(() => setHighlightedVesselId(null), 2000);
     return () => window.clearTimeout(timeout);
   }, [tab, highlightedVesselId]);
@@ -932,7 +946,9 @@ export function App() {
   // Same treatment for the terminal the Routes node jumped here for.
   useEffect(() => {
     if (tab !== 'terminals' || highlightedTerminalId === null) return;
-    terminalCardRefs.current[highlightedTerminalId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const card = terminalCardRefs.current[highlightedTerminalId];
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    else window.scrollTo({ top: 0 });
     const timeout = window.setTimeout(() => setHighlightedTerminalId(null), 2000);
     return () => window.clearTimeout(timeout);
   }, [tab, highlightedTerminalId]);
@@ -1161,7 +1177,7 @@ export function App() {
                     type="button"
                     aria-label={`Reorder ${terminal.name}`}
                     title="Drag to reorder, or use the arrow keys"
-                    onPointerDown={(event) => { event.preventDefault(); event.currentTarget.focus(); setDraggedFavoriteId(terminal.id); }}
+                    onPointerDown={(event) => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); draggedFavoriteIdRef.current = terminal.id; setDraggedFavoriteId(terminal.id); }}
                     onKeyDown={(event) => {
                       if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
                       event.preventDefault();
@@ -1192,7 +1208,7 @@ export function App() {
                       type="button"
                       aria-label={`Reorder ${pair}`}
                       title="Drag to reorder, or use the arrow keys"
-                      onPointerDown={(event) => { event.preventDefault(); event.currentTarget.focus(); setDraggedRouteKey(key); }}
+                      onPointerDown={(event) => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); draggedRouteKeyRef.current = key; setDraggedRouteKey(key); }}
                       onKeyDown={(event) => {
                         if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
                         event.preventDefault();

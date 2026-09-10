@@ -10,7 +10,8 @@ const sailing = {
 
 async function catchFixture(page: Page, docked = false, startAt = '11:21:00') {
   const now = at(docked ? '11:41:00' : startAt);
-  await page.clock.install({ time: new Date(now) });
+  // An installed clock keeps ticking, so start a minute early and let pauseAt land exactly on now.
+  await page.clock.install({ time: new Date(Date.parse(now) - 60_000) });
   await page.clock.pauseAt(new Date(now));
   const vessel = {
     id: 18, name: 'Tacoma', vesselClass: 'Jumbo Mark II', departingTerminalId: docked ? 3 : 7,
@@ -20,8 +21,13 @@ async function catchFixture(page: Page, docked = false, startAt = '11:21:00') {
     scheduledDeparture: docked ? sailing.departingTime : at('10:30:00'), leftDock: null,
     eta: docked ? null : at('11:47:00'), updatedAt: now, raw: {},
   };
+  // The reload below destroys the context this reads the fake clock from, so keep the last good read.
+  let clockNow = now;
   await page.route('**/api/vessels', async (route) => {
-    const fetchedAt = await page.evaluate(() => new Date(Date.now()).toISOString());
+    try {
+      clockNow = await page.evaluate(() => new Date(Date.now()).toISOString());
+    } catch { /* navigation in flight */ }
+    const fetchedAt = clockNow;
     await route.fulfill({ json: { data: [{ ...vessel, updatedAt: fetchedAt }], fetchedAt, source: 'fixture' } });
   });
   await page.route('**/api/schedule?*', (route) => route.fulfill({ json: {

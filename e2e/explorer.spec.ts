@@ -59,9 +59,16 @@ test('shows the terminal to ferry to schedule routes view without external netwo
   const callsBeforeRefresh = scheduleRequests;
   const refreshStartedAt = Date.now();
   const refreshButton = page.getByRole('button', { name: 'Refresh data' });
+  // The busy state is transient, so watch for it from the page instead of polling for it after.
+  await refreshButton.evaluate((button) => {
+    const seen = () => button.classList.contains('is-busy');
+    Object.assign(window, { sawBusy: seen() });
+    new MutationObserver(() => { if (seen()) Object.assign(window, { sawBusy: true }); })
+      .observe(button, { attributes: true, attributeFilter: ['class'] });
+  });
   await refreshButton.click();
   // A manual refresh keeps the current view on screen and only marks the button busy.
-  await expect(refreshButton).toHaveClass(/is-busy/);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { sawBusy: boolean }).sawBusy)).toBe(true);
   await expect(page.locator('.view-loading-cover')).toHaveCount(0);
   await expect(page.locator('.schedule-node h2')).toHaveText('Bainbridge Island to Seattle');
   await expect(page.locator('.spin')).toHaveCount(0);
@@ -93,8 +100,12 @@ test('sets favorite terminals and their order from Settings', async ({ page }) =
   await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-favorite-terminals'))).toBe('[7,3]');
 
   const grip = page.getByRole('button', { name: 'Reorder Bainbridge Island' });
+  const targetGrip = page.getByRole('button', { name: 'Reorder Seattle' });
+  // Measure only once both rows are on screen, or the earlier clicks leave the target above the fold.
+  await targetGrip.scrollIntoViewIfNeeded();
   const from = (await grip.boundingBox())!;
-  const target = (await page.getByRole('button', { name: 'Reorder Seattle' }).boundingBox())!;
+  const target = (await targetGrip.boundingBox())!;
+  expect(target.y).toBeGreaterThan(0);
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
   await page.mouse.down();
   await page.mouse.move(from.x + from.width / 2, target.y + target.height / 2, { steps: 8 });
@@ -327,7 +338,7 @@ for (const width of [390, 767, 768, 1024, 1440]) {
     await page.goto('/');
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-    const columns = await page.locator('.relationship-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
+    const columns = await page.locator('.relationship-grid:not(.placeholder-grid)').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
     expect(columns).toBe(width < 1024 ? 1 : 5);
 
     const wrappedSailingRows = await page.locator('.sailing-list .sailing-row > span').evaluateAll((elements) => elements.filter((element) => {
@@ -413,7 +424,8 @@ test('trims the Sailings table to fit a phone without horizontal scroll', async 
 });
 
 test('resets the scroll position after leaving a tab scrolled down by a highlight jump', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 700 });
+  // Short enough that the Vessels list always overflows, whatever the live fields add up to.
+  await page.setViewportSize({ width: 390, height: 400 });
   await page.goto('/');
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Seattle' }).click();
@@ -421,6 +433,7 @@ test('resets the scroll position after leaving a tab scrolled down by a highligh
   const item = page.locator('.sailing-list li', { hasText: 'Tacoma' }).first();
   await item.click();
   await expect(page.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight)).toBe(true);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 
   await page.getByRole('tab', { name: 'Catch' }).click();
