@@ -585,6 +585,7 @@ export function App() {
   const catchOriginId = catchRoute?.originId ?? null;
   const catchDestinationId = catchRoute?.destinationId ?? null;
   const catchRouteKeyValue = catchRoute ? routeKey(catchRoute) : null;
+  const catchOriginTerminal = terminals.find((terminal) => terminal.id === catchOriginId) ?? null;
   const timing = catchTiming(settings, catchRouteKeyValue === null ? undefined : catchOverrides[catchRouteKeyValue]);
   const newRouteDestinationIds = [...new Set(mates
     .filter((mate) => mate.departingTerminalId === newRouteOriginId)
@@ -1132,7 +1133,12 @@ export function App() {
 
           {tab === 'catch' && <div className="countdown-card">
             <div className="schedule-heading catch-heading has-switcher">
-              <div><span className="node-type">Leave by</span><h2>{catchRoute ? routeName(catchRoute, terminals) : 'No favorite route'}</h2></div>
+              <div>
+                <span className="node-type">Leave by</span>
+                <h2>{catchRoute ? routeName(catchRoute, terminals) : 'No favorite route'}</h2>
+                {/* The Catch tab hides the selection band, so this is the only way to its terminal card. */}
+                {catchOriginTerminal && <button type="button" className="card-link schedule-node-terminal" aria-label={`Show the ${catchOriginTerminal.name} terminal card`} title={`Show the ${catchOriginTerminal.name} terminal card`} onClick={() => showTerminalOnTerminalsTab(catchOriginTerminal.id)}><MapPin size={13} />{catchOriginTerminal.name}</button>}
+              </div>
               {favoriteRoutes.length > 1 && <div className="route-chips" role="group" aria-label="Catch route">
                 {favoriteRoutes.map((route) => {
                   const key = routeKey(route);

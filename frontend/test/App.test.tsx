@@ -1774,6 +1774,27 @@ describe('Catching a ferry', () => {
 
     expect(await screen.findByText('No sailing left today that you can still make.')).toBeInTheDocument();
   });
+
+  it('links the catch route back to its origin terminal card', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    await user.click(screen.getByRole('tab', { name: 'Catch' }));
+    await user.click(await screen.findByRole('button', { name: 'Show the Bainbridge Island terminal card' }));
+
+    expect(screen.getByRole('tab', { name: 'Terminals' })).toHaveAttribute('aria-selected', 'true');
+    const card = (await screen.findByRole('button', { name: 'Bainbridge Island' })).closest('.data-card');
+    expect(card).toHaveClass('is-highlighted');
+  });
 });
 
 describe('Catch padding overrides', () => {
