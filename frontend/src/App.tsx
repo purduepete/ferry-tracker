@@ -339,6 +339,7 @@ function CameraDialog({ cameras, index, terminalName, onMove, onClose }: { camer
   const surfaceRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const activeThumbRef = useRef<HTMLButtonElement>(null);
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const camera = cameras[index];
 
   useEffect(() => { closeRef.current?.focus(); }, []);
@@ -376,6 +377,16 @@ function CameraDialog({ cameras, index, terminalName, onMove, onClose }: { camer
 
   const alt = cameraAlt(camera, terminalName);
   const many = cameras.length > 1;
+
+  // Far enough sideways to be a swipe on a phone rather than a tap or a scroll.
+  const endSwipe = (endX: number, endY: number) => {
+    const start = swipeStart.current;
+    swipeStart.current = null;
+    if (!many || !start) return;
+    const acrossX = endX - start.x;
+    if (Math.abs(acrossX) < 40 || Math.abs(acrossX) < Math.abs(endY - start.y)) return;
+    onMove((index + (acrossX < 0 ? 1 : -1) + cameras.length) % cameras.length);
+  };
   return (
     <div className="camera-backdrop" onClick={onClose}>
       <div ref={surfaceRef} className="camera-dialog" role="dialog" aria-modal="true" aria-label={`${terminalName} cameras`} onClick={(event) => event.stopPropagation()}>
@@ -388,7 +399,18 @@ function CameraDialog({ cameras, index, terminalName, onMove, onClose }: { camer
           </div>}
           <button ref={closeRef} className="camera-close" type="button" aria-label="Close camera view" onClick={onClose}><X size={16} /></button>
         </div>
-        <div className="camera-stage">
+        <div
+          className="camera-stage"
+          onTouchStart={(event) => {
+            const touch = event.touches[0];
+            swipeStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+          }}
+          onTouchEnd={(event) => {
+            const touch = event.changedTouches[0];
+            if (touch) endSwipe(touch.clientX, touch.clientY);
+          }}
+          onTouchCancel={() => { swipeStart.current = null; }}
+        >
           <img key={camera.id} src={cacheBusted(camera.imageUrl, Date.now())} alt={alt} referrerPolicy="no-referrer" />
         </div>
         {camera.description && <p className="camera-description">{camera.description}</p>}

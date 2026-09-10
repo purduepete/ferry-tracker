@@ -277,7 +277,7 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 .camera-count { flex: 0 0 auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .camera-close { width: 32px; height: 32px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .2s ease, background-color .2s ease; }
 .camera-close:hover, .camera-close:focus-visible { color: var(--text); background: var(--surface-2); }
-.camera-stage { position: relative; display: grid; place-items: center; background: var(--surface-3); }
+.camera-stage { position: relative; display: grid; place-items: center; background: var(--surface-3); touch-action: pan-y; }
 .camera-stage img { display: block; width: 100%; height: auto; }
 .camera-step { width: 26px; height: 26px; padding: 0; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .2s ease, background-color .2s ease; }
 .camera-step:hover, .camera-step:focus-visible { color: var(--text); background: var(--surface-2); }

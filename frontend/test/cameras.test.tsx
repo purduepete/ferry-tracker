@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
@@ -84,6 +84,35 @@ describe('terminal cameras', () => {
 
     await user.click(within(dialog).getByRole('tab', { name: 'WSF Seattle Ferry Bremerton Holding' }));
     expect(within(dialog).getByText('2 of 3')).toBeInTheDocument();
+  });
+
+  it('pages the enlarged view with a sideways swipe', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await user.click(await screen.findByRole('tab', { name: 'Terminals' }));
+    await user.click(await screen.findByRole('button', { name: /Enlarge WSF Seattle Ferry Holding/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Seattle cameras' });
+    const stage = dialog.querySelector('.camera-stage') as HTMLElement;
+
+    fireEvent.touchStart(stage, { touches: [{ clientX: 260, clientY: 120 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 110, clientY: 132 }] });
+    expect(within(dialog).getByText('2 of 3')).toBeInTheDocument();
+
+    fireEvent.touchStart(stage, { touches: [{ clientX: 110, clientY: 120 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 260, clientY: 128 }] });
+    expect(within(dialog).getByText('1 of 3')).toBeInTheDocument();
+
+    // A scroll down the page is not a page turn.
+    fireEvent.touchStart(stage, { touches: [{ clientX: 200, clientY: 100 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 140, clientY: 320 }] });
+    expect(within(dialog).getByText('1 of 3')).toBeInTheDocument();
+
+    // Nor is a tap.
+    fireEvent.touchStart(stage, { touches: [{ clientX: 200, clientY: 100 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 205, clientY: 102 }] });
+    expect(within(dialog).getByText('1 of 3')).toBeInTheDocument();
   });
 
   it('reorders a camera with the grip keys and keeps the choice on this device', async () => {
