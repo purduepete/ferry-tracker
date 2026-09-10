@@ -30,6 +30,7 @@ const lastRouteKey = 'ferry-tracker-last-route';
 const sailingsOnlyKey = 'ferry-tracker-sailings-only';
 const catchRouteKey = 'ferry-tracker-catch-route';
 const catchPaddingOpenKey = 'ferry-tracker-catch-padding-open';
+const routeControlsOpenKey = 'ferry-tracker-route-controls-open';
 
 function loadLastRoute(): { terminalId: number | null; destinationId: number | null } {
   const empty = { terminalId: null, destinationId: null };
@@ -57,6 +58,14 @@ function loadCatchRoute() {
 function loadCatchPaddingOpen() {
   try {
     return localStorage.getItem(catchPaddingOpenKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function loadRouteControlsOpen() {
+  try {
+    return localStorage.getItem(routeControlsOpenKey) === 'true';
   } catch {
     return false;
   }
@@ -508,6 +517,7 @@ export function App() {
   const [selectedCatchRoute, setSelectedCatchRoute] = useState<string | null>(loadCatchRoute);
   const [catchOverrides, setCatchOverrides] = useState(loadCatchOverrides);
   const [catchPaddingOpen, setCatchPaddingOpen] = useState(loadCatchPaddingOpen);
+  const [routeControlsOpen, setRouteControlsOpen] = useState(loadRouteControlsOpen);
   const [settings, setSettings] = useState<FerrySettings>(loadSettings);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const overviewRequestId = useRef(0);
@@ -1043,6 +1053,12 @@ export function App() {
     try { localStorage.setItem(catchPaddingOpenKey, String(next)); } catch { /* The choice just resets on the next visit. */ }
   };
 
+  const toggleRouteControls = () => {
+    const next = !routeControlsOpen;
+    setRouteControlsOpen(next);
+    try { localStorage.setItem(routeControlsOpenKey, String(next)); } catch { /* The choice just resets on the next visit. */ }
+  };
+
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let nextIndex: number | null = null;
     if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
@@ -1074,19 +1090,23 @@ export function App() {
         {/* Catch follows its own favorite route, Disruption is pinned, and Settings has no route at all. */}
         <section className={`selection-band${routelessTab ? ' is-routeless' : ''}`} aria-labelledby="route-heading">
           <div className="route-title"><span className="eyebrow">Sailings</span><h1 id="route-heading">Departures and vehicle space</h1></div>
-          <div className="route-controls">
-            <div className="selectors">
+          <div className={`route-controls${routeControlsOpen ? '' : ' is-collapsed'}`}>
+            <div className="selectors" id="route-selectors">
               <label><span>Origin</span><FilterSelect ariaLabel="Origin" value={selectedTerminalId} onChange={setSelectedTerminalId} disabled={loading && !backgroundRefresh} options={terminalOptions} /></label>
               <button className="swap-button" type="button" aria-label="Reverse route" title={canSwapRoute ? 'Swap origin and destination' : 'Reverse route unavailable'} disabled={!canSwapRoute} onClick={swapRoute}><ArrowLeftRight size={18} /></button>
               <label><span>Destination</span><FilterSelect ariaLabel="Destination" value={effectiveDestinationId} onChange={setDestinationId} disabled={!destinationIds.length} placeholder="No live association" options={destinationIds.map((id) => ({ value: id, label: terminals.find((terminal) => terminal.id === id)?.name ?? 'Unknown' }))} /></label>
-              <label className="day-field"><span>Day</span><FilterSelect ariaLabel="Day" value={serviceDate} onChange={setServiceDate} disabled={tab !== 'historical' || !historyDates.length} options={dayOptions} /></label>
+              {/* Only Historical can act on a day, so a phone drops the picker everywhere else. */}
+              <label className={`day-field${tab === 'historical' ? '' : ' is-inactive'}`}><span>Day</span><FilterSelect ariaLabel="Day" value={serviceDate} onChange={setServiceDate} disabled={tab !== 'historical' || !historyDates.length} options={dayOptions} /></label>
             </div>
-            {!routelessTab && quickPickRoutes.length > 0 && <div className="route-chips" role="group" aria-label="Favorite routes">
-              {quickPickRoutes.map((route) => {
-                const key = routeKey(route);
-                const active = selectedTerminalId === route.originId && effectiveDestinationId === route.destinationId;
-                return <button key={key} type="button" className={`route-chip${active ? ' active' : ''}`} aria-pressed={active} title={routePairName(route, terminals)} onClick={() => pickRoute(route.originId, route.destinationId)}>{routeName(route, terminals)}</button>;
-              })}
+            {!routelessTab && <div className={`route-chips-row${quickPickRoutes.length ? '' : ' is-empty'}`}>
+              <button className="route-toggle" type="button" aria-expanded={routeControlsOpen} aria-controls="route-selectors" aria-label={routeControlsOpen ? 'Hide route selector' : 'Show route selector'} title={routeControlsOpen ? 'Hide route selector' : 'Show route selector'} onClick={toggleRouteControls}><ChevronDown className={routeControlsOpen ? 'open' : ''} size={16} /></button>
+              {quickPickRoutes.length > 0 && <div className="route-chips" role="group" aria-label="Favorite routes">
+                {quickPickRoutes.map((route) => {
+                  const key = routeKey(route);
+                  const active = selectedTerminalId === route.originId && effectiveDestinationId === route.destinationId;
+                  return <button key={key} type="button" className={`route-chip${active ? ' active' : ''}`} aria-pressed={active} title={routePairName(route, terminals)} onClick={() => pickRoute(route.originId, route.destinationId)}>{routeName(route, terminals)}</button>;
+                })}
+              </div>}
             </div>}
           </div>
         </section>

@@ -1,4 +1,15 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+// The phone band starts collapsed, so the mobile project has to open it before touching a select.
+async function expandRouteControls(page: Page) {
+  const toggle = page.locator('.route-toggle');
+  await toggle.waitFor({ state: 'attached' });
+  // Desktop hides the toggle and always shows the selects, so there is nothing to open there.
+  if (!(await toggle.isVisible())) return;
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') return;
+  await toggle.click();
+  await expect(page.locator('.route-controls')).not.toHaveClass(/is-collapsed/);
+}
 
 test('shows the terminal to ferry to schedule sailings view without external network', async ({ page }) => {
   let sailingSpaceRequests = 0;
@@ -14,6 +25,7 @@ test('shows the terminal to ferry to schedule sailings view without external net
     else await route.abort();
   });
   await page.goto('/');
+  await expandRouteControls(page);
   await page.getByRole('button', { name: 'Origin' }).click();
   await expect.poll(() => page.getByRole('listbox', { name: 'Origin' }).evaluate((element) => getComputedStyle(element).scrollbarWidth)).toBe('thin');
   await page.getByRole('option', { name: 'Seattle' }).click();
@@ -121,6 +133,7 @@ test('sets favorite terminals and their order from Settings', async ({ page }) =
   await expect.poll(() => page.evaluate(() => localStorage.getItem('ferry-tracker-favorite-terminals'))).toBe('[7,3]');
 
   await page.reload();
+  await expandRouteControls(page);
   await page.getByRole('button', { name: 'Origin' }).click();
   await expect(page.getByRole('option').first()).toHaveAccessibleName('Seattle');
   await expect(page.getByRole('option').nth(1)).toHaveAccessibleName('Bainbridge Island');
@@ -197,6 +210,7 @@ test('overrides the Catch padding for one route and resets it back to the settin
 });
 
 test('reopens on the terminal and destination chosen before the reload', async ({ page }) => {  await page.goto('/');
+  await expandRouteControls(page);
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Bainbridge Island' }).click();
   await expect(page.locator('.schedule-node h2')).toHaveText('Bainbridge Island to Seattle');
@@ -218,14 +232,15 @@ test('shows only the sailings schedule at any width', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Sailings only' })).toHaveCount(0);
 
   // "Bainbridge Island" is the longest terminal name, so it decides whether the compact row clips.
+  await expandRouteControls(page);
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Bainbridge Island' }).click();
   await expect(page.locator('.selectors .filter-select-trigger span').first()).toHaveText('Bainbridge Island');
   const clipped = await page.locator('.selectors .filter-select-trigger span').evaluateAll((spans) => spans.filter((span) => span.scrollWidth > span.clientWidth + 1).map((span) => span.textContent ?? ''));
   expect(clipped).toEqual([]);
 
-  // There is no wide view to fall back to, so the phone keeps every control the band offers.
-  await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
+  // The phone keeps the route selects behind the chevron, and drops Day because only Historical reads it.
+  await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
   await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Destination' })).toBeVisible();
   await expect(page.locator('.route-chip').first()).toBeVisible();
@@ -320,6 +335,11 @@ test('drops the tab labels and the route selectors on a phone', async ({ page })
   const tabsLeadTheBand = () => page.evaluate(() => document.querySelector('.tabs')!.getBoundingClientRect().bottom <= document.querySelector('.selection-band')!.getBoundingClientRect().top);
   await expect.poll(tabsLeadTheBand).toBe(true);
 
+  // The selects start folded away, so the band costs one row until the route needs changing.
+  await expect(page.locator('.route-controls')).toHaveClass(/is-collapsed/);
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
+  await expect(page.locator('.route-chip').first()).toBeVisible();
+  await expandRouteControls(page);
   await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
   await catchTab.click();
   await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
@@ -374,6 +394,58 @@ test('drops the tab labels and the route selectors on a phone', async ({ page })
   await expect.poll(tabsLeadTheBand).toBe(true);
 });
 
+test('folds the route selectors behind a chevron on a phone and remembers the choice', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  const toggle = page.getByRole('button', { name: 'Show route selector' });
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('.route-chip').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  // The chevron sits in the chips row, so a taller box would read as a stray control.
+  await expect.poll(() => page.evaluate(() => {
+    const toggle = document.querySelector('.route-toggle')!.getBoundingClientRect().height;
+    const chip = document.querySelector('.route-chip')!.getBoundingClientRect().height;
+    return Math.abs(toggle - chip) < 1;
+  })).toBe(true);
+
+  // Collapsed, the band costs one control row: the chevron and the chips beside it.
+  const bandHeight = () => page.evaluate(() => Math.round(document.querySelector('.selection-band')!.getBoundingClientRect().height));
+  const collapsed = await bandHeight();
+  expect(collapsed).toBeLessThan(70);
+
+  await toggle.click();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Destination' })).toBeVisible();
+  // Day belongs to Historical alone, so it stays out of the way on Sailings even when opened.
+  await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
+  expect(await bandHeight()).toBeGreaterThan(collapsed);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  // The chips lead the row, so the chevron never pushes them off the top of the band.
+  await expect.poll(() => page.evaluate(() => document.querySelector('.route-chips-row')!.getBoundingClientRect().bottom <= document.querySelector('.selectors')!.getBoundingClientRect().top)).toBe(true);
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Hide route selector' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Historical' }).click();
+  await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Hide route selector' }).click();
+  await expect(page.getByRole('button', { name: 'Day' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeHidden();
+
+  // Desktop has the room, so it ignores the stored state and never shows the chevron.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.locator('.route-toggle')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Origin' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Day' })).toBeVisible();
+});
+
 for (const width of [390, 767, 768, 1024, 1440]) {
   test(`keeps the explorer usable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width < 700 ? 844 : 900 });
@@ -401,6 +473,7 @@ for (const width of [390, 767, 768, 1024, 1440]) {
 test('opens the Vessels tab and highlights the vessel when a Historical row is clicked', async ({ page }) => {
   await page.goto('/');
   // Only the Seattle -> Bainbridge Island fixture has sailings, so pick that route explicitly.
+  await expandRouteControls(page);
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Seattle' }).click();
   await page.getByRole('tab', { name: 'Historical' }).click();
@@ -417,6 +490,7 @@ test('opens the Vessels tab and highlights the vessel when a Historical row is c
 test('opens the Vessels tab from the compact schedule list on Sailings', async ({ page }) => {
   await page.goto('/');
   // Only the Seattle -> Bainbridge Island fixture has sailings, so pick that route explicitly.
+  await expandRouteControls(page);
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Seattle' }).click();
 
@@ -437,6 +511,7 @@ test('trims the Historical table to fit a phone without horizontal scroll', asyn
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   // Only the Seattle -> Bainbridge Island fixture has sailings, so pick that route explicitly.
+  await expandRouteControls(page);
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Seattle' }).click();
   await page.getByRole('tab', { name: 'Historical' }).click();
@@ -454,6 +529,7 @@ test('resets the scroll position after leaving a tab scrolled down by a highligh
   // Short enough that the Vessels list always overflows, whatever the live fields add up to.
   await page.setViewportSize({ width: 390, height: 400 });
   await page.goto('/');
+  await expandRouteControls(page);
   await page.getByRole('button', { name: 'Origin' }).click();
   await page.getByRole('option', { name: 'Seattle' }).click();
 

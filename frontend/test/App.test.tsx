@@ -1939,6 +1939,78 @@ describe('Routeless tabs', () => {
   });
 });
 
+describe('Route selector collapse', () => {
+  // Only the phone media query acts on these, so assert the classes and never visibility: jsdom applies no CSS.
+  function bandFetch() {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/terminals')) return json(terminals);
+      if (url.includes('/api/vessels')) return json(vessels);
+      if (url.includes('/api/terminal-mates')) return json([{ departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' }]);
+      if (url.includes('/api/history/dates')) return json(['2026-09-01']);
+      if (url.includes('/api/history')) return json([]);
+      return json([]);
+    });
+  }
+
+  it('starts collapsed and remembers the choice', async () => {
+    bandFetch();
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    const toggle = screen.getByRole('button', { name: 'Show route selector' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', 'route-selectors');
+    expect(document.querySelector('.route-controls')).toHaveClass('is-collapsed');
+    expect(localStorage.getItem('ferry-tracker-route-controls-open')).toBeNull();
+
+    await user.click(toggle);
+    expect(localStorage.getItem('ferry-tracker-route-controls-open')).toBe('true');
+    expect(document.querySelector('.route-controls')).not.toHaveClass('is-collapsed');
+    expect(screen.getByRole('button', { name: 'Hide route selector' })).toHaveAttribute('aria-expanded', 'true');
+
+    await user.click(screen.getByRole('button', { name: 'Hide route selector' }));
+    expect(localStorage.getItem('ferry-tracker-route-controls-open')).toBe('false');
+    expect(document.querySelector('.route-controls')).toHaveClass('is-collapsed');
+  });
+
+  it('reopens on a stored preference', async () => {
+    localStorage.setItem('ferry-tracker-route-controls-open', 'true');
+    bandFetch();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    expect(document.querySelector('.route-controls')).not.toHaveClass('is-collapsed');
+    expect(screen.getByRole('button', { name: 'Hide route selector' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('marks the day picker inactive everywhere but Historical', async () => {
+    bandFetch();
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+    expect(document.querySelector('.day-field')).toHaveClass('is-inactive');
+
+    await user.click(screen.getByRole('tab', { name: 'Historical' }));
+    expect(document.querySelector('.day-field')).not.toHaveClass('is-inactive');
+
+    await user.click(screen.getByRole('tab', { name: 'Sailings' }));
+    expect(document.querySelector('.day-field')).toHaveClass('is-inactive');
+  });
+
+  it('keeps the toggle reachable for a user with no favorite routes', async () => {
+    localStorage.setItem('ferry-tracker-favorite-routes', '[]');
+    bandFetch();
+    render(<ThemeProvider><App /></ThemeProvider>);
+    await screen.findByRole('heading', { name: 'Seattle' });
+
+    expect(document.querySelector('.route-chips')).toBeNull();
+    expect(document.querySelector('.route-chips-row')).toHaveClass('is-empty');
+    expect(screen.getByRole('button', { name: 'Show route selector' })).toBeInTheDocument();
+  });
+});
+
 describe('Settings', () => {
   it('keeps a stored value, rejects junk, and never lets red be looser than yellow', () => {
     expect(normalizeSettings({ spaceSoonPercent: 25, spaceImminentPercent: 50 })).toMatchObject({ spaceSoonPercent: 25, spaceImminentPercent: 25 });
