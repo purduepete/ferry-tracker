@@ -224,37 +224,63 @@ else {
     Write-Ok "$($idpIds.Count) provider(s) will be offered at login"
 }
 
-# ---------------------------------------------------------------- access policy
+# ---------------------------------------------------------------- access application and policy
 
-Write-Step "Access policy: $PolicyName"
-$policies = @(Invoke-CF -Method GET -Path "/accounts/$AccountId/access/policies")
-$policy = $policies | Where-Object { $_.name -eq $PolicyName } | Select-Object -First 1
-
-if ($policy) {
-    Write-Ok "already exists ($($policy.id))"
-    $policyId = $policy.id
-}
-else {
-    $policyBody = @{
-        name     = $PolicyName
-        decision = 'allow'
-        include  = @($AllowEmail | ForEach-Object { @{ email = @{ email = $_ } } })
-    }
-    $created = Invoke-CFWrite -Method POST -Path "/accounts/$AccountId/access/policies" `
-        -Body $policyBody -Description "create allow policy for $($AllowEmail -join ', ')"
-    $policyId = if ($created) { $created.id } else { '<policy-id-from-this-run>' }
-}
-
-# ---------------------------------------------------------------- access application
-
-Write-Step "Access application: $AppName"
+Write-Step "Access application on $Hostname"
 $apps = @(Invoke-CF -Method GET -Path "/accounts/$AccountId/access/apps")
 $app = $apps | Where-Object { $_.domain -eq $Hostname } | Select-Object -First 1
 
+$allowRules = @($AllowEmail | ForEach-Object { @{ email = @{ email = $_ } } })
+
+function Get-PolicyEmail {
+    param([object] $Policy)
+    @($Policy.include |
+        Where-Object { $_.PSObject.Properties.Name -contains 'email' } |
+        ForEach-Object { $_.email.email })
+}
+
 if ($app) {
-    Write-Ok "already exists ($($app.id)) on $($app.domain)"
+    Write-Ok "already exists ($($app.id)), named '$($app.name)'"
+
+    # An app built by hand carries its own policy under its own name. Reconcile that one, because a
+    # second policy created alongside it is one the app never consults.
+    $attached = @($app.policies)
+    if ($attached.Count -eq 0) {
+        $attached = @(Invoke-CF -Method GET -Path "/accounts/$AccountId/access/apps/$($app.id)/policies")
+    }
+    foreach ($p in $attached) {
+        $e = Get-PolicyEmail $p
+        Write-Info "policy '$($p.name)' [$($p.decision)] allows: $(if ($e.Count) { $e -join ', ' } else { '(no email rules)' })"
+    }
+
+    $allowPolicy = $attached | Where-Object { $_.decision -eq 'allow' } | Select-Object -First 1
+    if (-not $allowPolicy) {
+        throw "The app on $Hostname has no allow policy. Add one, or delete the app and re-run so this script builds both."
+    }
+
+    $current = Get-PolicyEmail $allowPolicy
+    if ($current.Count -eq $AllowEmail.Count -and -not (Compare-Object -ReferenceObject $current -DifferenceObject $AllowEmail)) {
+        Write-Ok "policy '$($allowPolicy.name)' already allows exactly the requested emails"
+    }
+    else {
+        $body = @{ name = $allowPolicy.name; decision = 'allow'; include = $allowRules }
+        # Reusable and legacy policies live at different paths, so fall back to the app-scoped one.
+        try {
+            Invoke-CFWrite -Method PUT -Path "/accounts/$AccountId/access/policies/$($allowPolicy.id)" `
+                -Body $body -Description "update '$($allowPolicy.name)' to allow $($AllowEmail -join ', ')" | Out-Null
+        }
+        catch {
+            Invoke-CFWrite -Method PUT -Path "/accounts/$AccountId/access/apps/$($app.id)/policies/$($allowPolicy.id)" `
+                -Body $body -Description "update legacy policy '$($allowPolicy.name)' to allow $($AllowEmail -join ', ')" | Out-Null
+        }
+    }
 }
 else {
+    $created = Invoke-CFWrite -Method POST -Path "/accounts/$AccountId/access/policies" `
+        -Body @{ name = $PolicyName; decision = 'allow'; include = $allowRules } `
+        -Description "create allow policy for $($AllowEmail -join ', ')"
+    $policyId = if ($created) { $created.id } else { '<policy-id-from-this-run>' }
+
     $appBody = @{
         name                      = $AppName
         domain                    = $Hostname          # exact host, never a wildcard
