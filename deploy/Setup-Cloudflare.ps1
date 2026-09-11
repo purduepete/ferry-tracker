@@ -58,7 +58,7 @@ param(
     [string] $PolicyName = 'Ferry Tracker owner',
 
     # Mirrors frontend/test/csp.test.tsx. If that test fails, it prints the new value.
-    [string] $CspScriptHash = 'sha256-RTo1ES63Gvwfm2inULbUlEb1terAlBsDvZcJV/RoLZM=',
+    [string] $CspScriptHash = 'sha256-zmWzz+eVIE4YDlhZ1idw65PsmpiOGcNg1ZceiykhvJk=',
 
     [switch] $EnforceCsp,
     [switch] $Apply

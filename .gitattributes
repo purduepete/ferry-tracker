@@ -1,0 +1,3 @@
+# The CSP hash in csp.test.tsx covers the exact bytes of the inline theme script,
+# so this file has to check out identically on Windows and Linux.
+frontend/index.html text eol=lf

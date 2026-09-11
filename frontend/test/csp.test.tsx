@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 // Mirrors script-src in the Cloudflare Transform Rule. The browser hashes the exact bytes it is
 // served, so this value must never be normalized and must be updated in Cloudflare in lockstep.
-const EXPECTED_THEME_SCRIPT_HASH = 'sha256-RTo1ES63Gvwfm2inULbUlEb1terAlBsDvZcJV/RoLZM=';
+// .gitattributes pins index.html to LF so the bytes do not depend on the OS that checked it out.
+const EXPECTED_THEME_SCRIPT_HASH = 'sha256-zmWzz+eVIE4YDlhZ1idw65PsmpiOGcNg1ZceiykhvJk=';
 
 const sourceHtml = path.resolve(process.cwd(), 'frontend/index.html');
 const builtHtml = path.resolve(process.cwd(), 'frontend/dist/index.html');
