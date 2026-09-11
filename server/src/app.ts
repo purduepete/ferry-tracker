@@ -101,9 +101,19 @@ export function createApp(
   });
 
   const frontendDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../frontend/dist');
-  app.use(express.static(frontendDist));
+  const assetsPrefix = `${path.sep}assets${path.sep}`;
+  app.use(express.static(frontendDist, {
+    setHeaders: (response, filePath) => {
+      // Vite fingerprints /assets, so only those are safe to pin; index.html has to revalidate or a
+      // stale shell keeps requesting asset hashes that no longer exist.
+      if (filePath.endsWith('index.html')) response.setHeader('Cache-Control', 'no-cache');
+      else if (filePath.includes(assetsPrefix)) response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      else response.setHeader('Cache-Control', 'public, max-age=3600');
+    },
+  }));
   app.get('/{*path}', (request, response, next) => {
     if (request.path.startsWith('/api/')) return next();
+    response.setHeader('Cache-Control', 'no-cache');
     response.sendFile(path.join(frontendDist, 'index.html'));
   });
 

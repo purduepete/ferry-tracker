@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
@@ -111,5 +113,22 @@ describe('Ferry Tracker API', () => {
     const privateApp = createApp(testConfig(false));
     const response = await request(privateApp).get('/api/terminals').expect(200);
     expect(response.body.raw).toBeNull();
+  });
+});
+
+describe('static asset caching', () => {
+  const distIndex = path.resolve(process.cwd(), 'frontend/dist/index.html');
+
+  it.skipIf(!existsSync(distIndex))('lets the shell revalidate so a new build is picked up', async () => {
+    const response = await request(app).get('/').expect(200);
+    expect(response.headers['cache-control']).toBe('no-cache');
+  });
+
+  it.skipIf(!existsSync(distIndex))('pins fingerprinted assets', async () => {
+    const asset = /\/assets\/[A-Za-z0-9._-]+/.exec(readFileSync(distIndex, 'utf8'))?.[0];
+    expect(asset, 'no fingerprinted asset found in the built index.html').toBeDefined();
+
+    const response = await request(app).get(asset!).expect(200);
+    expect(response.headers['cache-control']).toBe('public, max-age=31536000, immutable');
   });
 });

@@ -41,6 +41,8 @@ Set-StrictMode -Version Latest
 
 $TaskName = 'FerryTracker'
 $BackupTaskName = 'FerryTracker-Backup'
+$WatchdogTaskName = 'FerryTracker-Watchdog'
+$TunnelServiceName = 'cloudflared'
 $FirewallRuleName = 'Ferry Tracker (TCP 8787)'
 
 $script:step = 0
@@ -273,6 +275,31 @@ if (Test-Path -LiteralPath $backupScript) {
 }
 else { Write-Warn "deploy\backup-db.mjs is missing, so the weekly backup task was skipped." }
 
+$watchdogScript = Join-Path $InstallRoot 'deploy\watchdog.mjs'
+if (Test-Path -LiteralPath $watchdogScript) {
+    $watchdogTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 15)
+    $watchdogAction = New-ScheduledTaskAction -Execute $NodeExe -Argument 'deploy\watchdog.mjs' -WorkingDirectory $InstallRoot
+    $watchdogSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName $WatchdogTaskName -Principal $principal -Trigger $watchdogTrigger -Action $watchdogAction -Settings $watchdogSettings `
+        -Description 'Ferry Tracker health check: tunnel, port, capture freshness, free disk.' -Force | Out-Null
+    Write-Ok ("'{0}' registered: every 15 minutes" -f $WatchdogTaskName)
+    if (-not $env:HEALTHCHECKS_URL) {
+        Write-Warn 'HEALTHCHECKS_URL is not set, so a dead machine will not alert. Set it as a machine-scoped variable.'
+    }
+}
+else { Write-Warn "deploy\watchdog.mjs is missing, so the watchdog task was skipped." }
+
+# The tunnel is what makes the app public, so a rebuild that loses it should be loud.
+$tunnel = Get-Service -Name $TunnelServiceName -ErrorAction SilentlyContinue
+if (-not $tunnel) {
+    Write-Warn ("The '{0}' service is not installed, so ferry.jimlertech.com is NOT reachable. Install it with 'cloudflared service install <token>'." -f $TunnelServiceName)
+}
+else {
+    if ($tunnel.StartType -ne 'Automatic') { Write-Warn ("The '{0}' service start type is {1}, not Automatic, so it will not survive a reboot." -f $TunnelServiceName, $tunnel.StartType) }
+    if ($tunnel.Status -ne 'Running') { Write-Warn ("The '{0}' service is {1}, not Running, so the public hostname is down." -f $TunnelServiceName, $tunnel.Status) }
+    if ($tunnel.StartType -eq 'Automatic' -and $tunnel.Status -eq 'Running') { Write-Ok ("'{0}' service is running and set to start automatically" -f $TunnelServiceName) }
+}
+
 # --- 7. Start and verify -----------------------------------------------------
 
 Write-Step 'Start and verify'
@@ -307,7 +334,7 @@ $addresses = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress 
 Write-Host "`n================ Ferry Tracker is deployed ================" -ForegroundColor Green
 Write-Host ("  checkout   {0} at {1}" -f $InstallRoot, $head)
 Write-Host ("  data       {0}" -f $DataDir)
-Write-Host ("  tasks      {0}, {1}" -f $TaskName, $BackupTaskName)
+Write-Host ("  tasks      {0}, {1}, {2}" -f $TaskName, $BackupTaskName, $WatchdogTaskName)
 foreach ($address in $addresses) { Write-Host ("  reachable  http://{0}:{1}/" -f $address, $Port) }
 Write-Host "`n  Reboot once to confirm capture resumes without a login." -ForegroundColor Yellow
 Write-Host "===========================================================`n" -ForegroundColor Green
