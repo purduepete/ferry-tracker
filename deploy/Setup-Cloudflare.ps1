@@ -162,8 +162,8 @@ if ([string]::IsNullOrWhiteSpace($script:Token)) {
     Write-Host 'Optional, to pin the login methods on the app:'
     Write-Host '  Account | Access: Organizations, Identity Providers, and Groups | Read'
     Write-Host ''
-    Write-Host 'Optional, to stop the Web Analytics beacon that the CSP blocks:'
-    Write-Host '  Account | Account Settings | Edit'
+    Write-Host 'Optional, to report on the Web Analytics beacon that the CSP blocks:'
+    Write-Host '  Account | Account Settings | Read'
     Write-Host ''
     Write-Host 'Then set it in a terminal window OUTSIDE VS Code, so the value is never'
     Write-Host 'captured into a chat transcript:'
@@ -432,16 +432,16 @@ else {
 
 Write-Step 'Web Analytics beacon'
 
-# Cloudflare injects static.cloudflareinsights.com into proxied responses, and script-src blocks
-# it. Excluding this one host keeps the CSP strict and leaves analytics on for the rest of the zone.
+# Cloudflare injects static.cloudflareinsights.com into proxied responses and script-src blocks it.
+# Per-hostname exclude rules need a Pro plan, so automatic injection is turned off for the whole
+# zone under Web Analytics > Manage site. This only reports drift; the fix is a dashboard click.
 $rumSites = $null
 try {
     $rumSites = @(Invoke-CF -Method GET -Path "/accounts/$AccountId/rum/site_info/list")
 }
 catch {
-    Write-Info "could not read Web Analytics sites: $($_.Exception.Message)"
-    Write-Info 'Add "Account | Account Settings | Edit" to the API token to manage this here,'
-    Write-Info 'or exclude the host by hand: Web Analytics > Manage site > Advanced options > Add rule.'
+    Write-Info 'skipped: the token cannot read Web Analytics sites'
+    Write-Info 'Add "Account | Account Settings | Read" to check this automatically.'
 }
 
 if ($null -ne $rumSites) {
@@ -455,27 +455,12 @@ if ($null -ne $rumSites) {
     if (-not $rumSite) {
         Write-Ok "no Web Analytics site covers $ZoneName, so nothing is injecting the beacon"
     }
-    elseif ($rumSite.ruleset.PSObject.Properties.Name -notcontains 'id') {
-        Write-Info 'the Web Analytics site has no ruleset id, so the exclude rule cannot be placed'
+    elseif ($rumSite.PSObject.Properties.Name -contains 'auto_install' -and $rumSite.auto_install) {
+        Write-Info 'auto_install is ON, so the beacon will be injected and the CSP will block it.'
+        Write-Info "Web Analytics > Manage site ($ZoneName) > Enable with JS Snippet installation > Update."
     }
     else {
-        $rumRules = @()
-        if ($rumSite.PSObject.Properties.Name -contains 'rules' -and $rumSite.rules) {
-            $rumRules = @($rumSite.rules)
-        }
-        $excluded = $rumRules | Where-Object {
-            $_.PSObject.Properties.Name -contains 'host' -and $_.host -eq $Hostname -and
-            $_.PSObject.Properties.Name -contains 'inclusive' -and -not $_.inclusive
-        }
-
-        if ($excluded) {
-            Write-Ok "$Hostname is already excluded from Web Analytics"
-        }
-        else {
-            Invoke-CFWrite -Method POST -Path "/accounts/$AccountId/rum/v2/$($rumSite.ruleset.id)/rule" `
-                -Body @{ host = $Hostname; paths = @('*'); inclusive = $false } `
-                -Description "exclude $Hostname from Web Analytics so the beacon is not injected" | Out-Null
-        }
+        Write-Ok "automatic injection is off for $ZoneName"
     }
 }
 
