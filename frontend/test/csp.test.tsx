@@ -23,6 +23,13 @@ function cspHash(script: string): string {
 
 describe('CSP hash for the inline theme script', () => {
   it('matches the hash configured in the Cloudflare Transform Rule', () => {
+    // A checkout made before .gitattributes existed keeps its CRLF bytes, and git sees no change
+    // to rewrite. Catch that here, because the hash mismatch otherwise reads as a script edit.
+    expect(
+      readFileSync(sourceHtml, 'utf8').includes('\r\n'),
+      'frontend/index.html has CRLF line endings. .gitattributes pins it to LF, but that does not rewrite a file already in the working tree. Delete the file and restore it: git checkout -- frontend/index.html. Do not update the Cloudflare hash to match CRLF.',
+    ).toBe(false);
+
     const actual = cspHash(inlineScript(sourceHtml));
     expect(
       actual,
