@@ -1,0 +1,9 @@
+<!-- Source for apple-touch-icon.png. Full bleed on purpose: iOS applies its own rounded mask, and
+     a pre-rounded card leaves light wedges in the corners. Re-render at 180x180 after editing. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="180" height="180">
+  <rect width="64" height="64" fill="#020617"/>
+  <g fill="none" stroke="#38bdf8" stroke-linecap="round" stroke-linejoin="round" stroke-width="6">
+    <circle cx="32" cy="15" r="6"/>
+    <path d="M32 21v30M20 31h24M11 41c2 8 10 14 21 14s19-6 21-14M11 41l8 2M53 41l-8 2"/>
+  </g>
+</svg>
