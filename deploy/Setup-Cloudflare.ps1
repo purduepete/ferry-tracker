@@ -277,6 +277,22 @@ if ($app) {
                 -Body $body -Description "update legacy policy '$($allowPolicy.name)' to allow $($AllowEmail -join ', ')" | Out-Null
         }
     }
+
+    # An earlier run of this script creates $PolicyName before it finds the hand-built app, leaving a
+    # reusable policy the app never consults. Say so rather than delete it, since the same name could
+    # be in use elsewhere.
+    try {
+        $attachedIds = @($attached | ForEach-Object { $_.id })
+        $orphans = @(Invoke-CF -Method GET -Path "/accounts/$AccountId/access/policies" |
+            Where-Object { $_.name -eq $PolicyName -and $attachedIds -notcontains $_.id })
+        foreach ($o in $orphans) {
+            Write-Info "policy '$($o.name)' ($($o.id)) is not attached to this app and has no effect."
+            Write-Info 'Delete it under Zero Trust > Access > Policies so one policy governs the app.'
+        }
+    }
+    catch {
+        Write-Info 'skipped the unattached-policy check: the token cannot list reusable policies'
+    }
 }
 else {
     $created = Invoke-CFWrite -Method POST -Path "/accounts/$AccountId/access/policies" `
@@ -493,14 +509,22 @@ else {
 Write-Host ''
 if ($Apply) {
     Write-Host 'Done.' -ForegroundColor Green
+    $cspStep = if ($EnforceCsp) {
+        "Browse https://$Hostname with devtools open and confirm zero CSP violations.
+     A blocked script means re-running without -EnforceCsp until the policy is right."
+    }
+    else {
+        "Browse https://$Hostname with devtools open, confirm zero CSP violations,
+     then re-run this script with -EnforceCsp -Apply."
+    }
     Write-Host @"
 
 Still yours to do:
   1. Run data/cloudflared-install-command.txt on jimbrownhome (elevated), then delete the file.
   2. sc.exe failure cloudflared reset= 86400 actions= restart/5000/restart/10000/restart/60000
-  3. Browse https://$Hostname with devtools open, confirm zero CSP violations,
-     then re-run this script with -EnforceCsp -Apply.
+  3. $cspStep
   4. Set HEALTHCHECKS_URL and re-run Install-FerryTracker.ps1 for the watchdog task.
+  5. Reboot and re-check https://$Hostname, so the tasks and the tunnel prove they come back.
 "@ -ForegroundColor Gray
 }
 else {
