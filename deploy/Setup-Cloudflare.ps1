@@ -162,6 +162,9 @@ if ([string]::IsNullOrWhiteSpace($script:Token)) {
     Write-Host 'Optional, to pin the login methods on the app:'
     Write-Host '  Account | Access: Organizations, Identity Providers, and Groups | Read'
     Write-Host ''
+    Write-Host 'Optional, to stop the Web Analytics beacon that the CSP blocks:'
+    Write-Host '  Account | Account Settings | Edit'
+    Write-Host ''
     Write-Host 'Then set it in a terminal window OUTSIDE VS Code, so the value is never'
     Write-Host 'captured into a chat transcript:'
     Write-Host '  $env:CLOUDFLARE_API_TOKEN = ''<paste>'''
@@ -423,6 +426,57 @@ else {
     Invoke-CFWrite -Method PUT -Path "/zones/$zoneId/rulesets/$($phaseRuleset.id)" `
         -Body @{ rules = @($kept + $ourRule) } `
         -Description 'upsert the Ferry Tracker security header rule' | Out-Null
+}
+
+# ---------------------------------------------------------------- web analytics beacon
+
+Write-Step 'Web Analytics beacon'
+
+# Cloudflare injects static.cloudflareinsights.com into proxied responses, and script-src blocks
+# it. Excluding this one host keeps the CSP strict and leaves analytics on for the rest of the zone.
+$rumSites = $null
+try {
+    $rumSites = @(Invoke-CF -Method GET -Path "/accounts/$AccountId/rum/site_info/list")
+}
+catch {
+    Write-Info "could not read Web Analytics sites: $($_.Exception.Message)"
+    Write-Info 'Add "Account | Account Settings | Edit" to the API token to manage this here,'
+    Write-Info 'or exclude the host by hand: Web Analytics > Manage site > Advanced options > Add rule.'
+}
+
+if ($null -ne $rumSites) {
+    $rumSite = $null
+    foreach ($s in $rumSites) {
+        if ($s.PSObject.Properties.Name -notcontains 'ruleset' -or -not $s.ruleset) { continue }
+        if ($s.ruleset.PSObject.Properties.Name -notcontains 'zone_tag') { continue }
+        if ($s.ruleset.zone_tag -eq $zoneId) { $rumSite = $s; break }
+    }
+
+    if (-not $rumSite) {
+        Write-Ok "no Web Analytics site covers $ZoneName, so nothing is injecting the beacon"
+    }
+    elseif ($rumSite.ruleset.PSObject.Properties.Name -notcontains 'id') {
+        Write-Info 'the Web Analytics site has no ruleset id, so the exclude rule cannot be placed'
+    }
+    else {
+        $rumRules = @()
+        if ($rumSite.PSObject.Properties.Name -contains 'rules' -and $rumSite.rules) {
+            $rumRules = @($rumSite.rules)
+        }
+        $excluded = $rumRules | Where-Object {
+            $_.PSObject.Properties.Name -contains 'host' -and $_.host -eq $Hostname -and
+            $_.PSObject.Properties.Name -contains 'inclusive' -and -not $_.inclusive
+        }
+
+        if ($excluded) {
+            Write-Ok "$Hostname is already excluded from Web Analytics"
+        }
+        else {
+            Invoke-CFWrite -Method POST -Path "/accounts/$AccountId/rum/v2/$($rumSite.ruleset.id)/rule" `
+                -Body @{ host = $Hostname; paths = @('*'); inclusive = $false } `
+                -Description "exclude $Hostname from Web Analytics so the beacon is not injected" | Out-Null
+        }
+    }
 }
 
 # ---------------------------------------------------------------- connector install command
