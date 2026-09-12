@@ -131,12 +131,34 @@ export function crossingFor(
   return (key === null ? undefined : crossings.get(key)) ?? null;
 }
 
-// Clamped to now, so a boat already past its usual crossing never renders an arrival that has
-// been and gone. The estimate then walks forward until the boat actually ties up.
-export function projectedArrival(departedAt: string | null | undefined, minutes: number | null, now: number) {
+export function projectedArrival(departedAt: string | null | undefined, minutes: number | null) {
   if (!departedAt || minutes === null) return null;
   const left = Date.parse(departedAt);
-  return Number.isNaN(left) ? null : new Date(Math.max(left + minutes * 60000, now)).toISOString();
+  return Number.isNaN(left) ? null : new Date(left + minutes * 60000).toISOString();
+}
+
+export interface ArrivalEstimate {
+  at: string;
+  fromMedian: boolean;
+}
+
+// The median beats WSDOT's estimate right up until the boat overruns it. Past that the median has
+// nothing left to say and the live ETA takes over, because it is still tracking the vessel's real
+// position. With both spent the clock is all that is left, and an arrival that has been and gone
+// is worse than one that walks forward.
+export function estimatedArrival(
+  departedAt: string | null | undefined,
+  medianMinutes: number | null,
+  liveEta: string | null | undefined,
+  now: number,
+): ArrivalEstimate | null {
+  const live = liveEta ?? null;
+  const projected = projectedArrival(departedAt, medianMinutes);
+  if (projected === null) return live === null ? null : { at: live, fromMedian: false };
+  if (Date.parse(projected) >= now) return { at: projected, fromMedian: true };
+  const at = live === null ? Number.NaN : Date.parse(live);
+  if (at >= now) return { at: live as string, fromMedian: false };
+  return { at: new Date(now).toISOString(), fromMedian: false };
 }
 
 // The last few crossings on this pair beat WSDOT's estimate, which is anchored to some other
@@ -145,10 +167,9 @@ export function vesselArrival(
   vessel: Pick<VesselView, 'eta' | 'leftDock' | 'scheduledDeparture' | 'arrivingTerminalId'> & Partial<Pick<VesselView, 'departingTerminalId'>>,
   crossings: Crossings = new Map(),
   now: number = Date.now(),
-) {
+): ArrivalEstimate | null {
   const crossing = crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId);
-  const projected = crossing ? projectedArrival(vessel.leftDock, crossing.medianMinutes, now) : null;
-  return projected ?? vesselEta(vessel) ?? vessel.eta;
+  return estimatedArrival(vessel.leftDock, crossing?.medianMinutes ?? null, vesselEta(vessel) ?? vessel.eta, now);
 }
 
 // Offloaded traffic takes about this long to clear the dock and reach the road.
@@ -588,7 +609,7 @@ export function disruptionWaves(
   });
   const underway = vessels.flatMap((vessel) => {
     if (vessel.arrivingTerminalId !== BAINBRIDGE_TERMINAL_ID || vessel.atDock !== false || !vessel.eta) return [];
-    const landing = Date.parse(vesselArrival(vessel, crossings, now) ?? vessel.eta);
+    const landing = Date.parse(vesselArrival(vessel, crossings, now)?.at ?? vessel.eta);
     if (Number.isNaN(landing)) return [];
     const duplicate = observed.some((seen) => seen.vesselId === vessel.id
       && Math.abs(Date.parse(seen.landingAt) - landing) < DISRUPTION_MERGE_MINUTES * 60000);
@@ -604,11 +625,11 @@ export function disruptionWaves(
     const uniqueSlot = inbound.filter((candidate) => candidate.departingTime
       && Date.parse(candidate.departingTime) === departure).length === 1;
     const live = vessels.find((vessel) => vessel.arrivingTerminalId === BAINBRIDGE_TERMINAL_ID && vessel.atDock === false
-      && vessel.eta && Number.isFinite(Date.parse(vesselArrival(vessel, crossings, now) ?? vessel.eta))
+      && vessel.eta && Number.isFinite(Date.parse(vesselArrival(vessel, crossings, now)?.at ?? vessel.eta))
       && ((vessel.scheduledDeparture && Date.parse(vessel.scheduledDeparture) === departure
           && (vessel.id === leg.vesselId || (uniqueSlot && vessel.departingTerminalId === SEATTLE_TERMINAL_ID)))
         || (vessel.id === leg.vesselId && !vessel.scheduledDeparture
-          && Math.abs(Date.parse(vesselArrival(vessel, crossings, now) ?? vessel.eta) - landing) < DISRUPTION_MERGE_MINUTES * 60000)));
+          && Math.abs(Date.parse(vesselArrival(vessel, crossings, now)?.at ?? vessel.eta) - landing) < DISRUPTION_MERGE_MINUTES * 60000)));
     if (live) return [];
     return disruptionWave(leg.vesselId, leg.vesselName ?? 'Ferry', landing, now, settings, 'schedule');
   });
@@ -669,9 +690,9 @@ export function sailingArrival(
   // projection would time a late boat as though it had left on schedule.
   const crossing = crossingFor(crossings, sailing.departingTerminalId, sailing.arrivingTerminalId);
   const departure = crossing ? sailingDeparture(sailing, vessels) : null;
-  const projected = projectedArrival(departure?.at, crossing?.medianMinutes ?? null, now);
-  const at = projected ?? vesselEta(underway) ?? underway.eta;
-  return at ? { at, estimated: true, samples: projected === null ? null : crossing?.samples ?? null } : null;
+  const estimate = estimatedArrival(departure?.at, crossing?.medianMinutes ?? null, vesselEta(underway) ?? underway.eta, now);
+  if (estimate === null) return null;
+  return { at: estimate.at, estimated: true, samples: estimate.fromMedian ? crossing?.samples ?? null : null };
 }
 
 // Measured against the actual departure when there is one, so the crossing never absorbs
@@ -866,7 +887,9 @@ export function catchDeparture(
     // figure is not conservative enough to make that promise, so it is refused.
     const crossing = crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId);
     const fast = crossing && !crossing.borrowed && crossing.samples >= 3 ? crossing.fastMinutes : null;
-    const eta = projectedArrival(vessel.leftDock, fast, now) ?? vesselEta(vessel) ?? vessel.eta;
+    // No live-ETA fallback once the projection is spent, unlike the arrival columns. A boat still
+    // out there can sail no earlier than now, and that floor is the conservative answer here.
+    const eta = projectedArrival(vessel.leftDock, fast) ?? vesselEta(vessel) ?? vessel.eta;
     if (!eta) return onTime;
     const arrivesAt = Date.parse(eta);
     if (Number.isNaN(arrivesAt)) return onTime;

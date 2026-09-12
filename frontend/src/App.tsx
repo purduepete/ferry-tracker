@@ -127,12 +127,12 @@ function VesselDeparture({ vessel }: { vessel: VesselView }) {
 function VesselEta({ vessel, crossings, now }: { vessel: VesselView; crossings: Crossings; now: number }) {
   const arrival = vesselArrival(vessel, crossings, now);
   if (!vessel.eta) return <>—</>;
-  if (arrival === null || arrival === vessel.eta) return <>{fieldTime(vessel.eta)}</>;
-  const crossing = vessel.leftDock ? crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId) : null;
+  if (arrival === null || arrival.at === vessel.eta) return <>{fieldTime(vessel.eta)}</>;
+  const crossing = arrival.fromMedian ? crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId) : null;
   const reason = crossing
     ? `Median of the last ${crossing.samples} crossings on this route`
     : `WSDOT's estimate plus the ${vesselDelayMinutes(vessel)} min departure delay`;
-  return <>{fieldTime(vessel.eta)}<span className="delay-pill" title={reason}>{clockTime(arrival)}</span></>;
+  return <>{fieldTime(vessel.eta)}<span className="delay-pill" title={reason}>{clockTime(arrival.at)}</span></>;
 }
 
 function estimateReason(samples: number | null) {

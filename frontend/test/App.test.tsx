@@ -991,10 +991,16 @@ describe('Sailing arrival', () => {
       .toEqual({ at: '2026-09-02T00:20:12.000Z', estimated: true, samples: 7 });
   });
 
-  it('never lets the median estimate fall behind the clock', () => {
+  it('hands a spent median back to the live ETA', () => {
     const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:46:00.000Z' };
-    expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-02T00:25:00.000Z'))?.at)
-      .toBe('2026-09-02T00:25:00.000Z');
+    expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-02T00:25:00.000Z')))
+      .toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true, samples: null });
+  });
+
+  it('never lets the estimate fall behind the clock', () => {
+    const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:46:00.000Z' };
+    expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-02T00:35:00.000Z')))
+      .toEqual({ at: '2026-09-02T00:35:00.000Z', estimated: true, samples: null });
   });
 
   it('keeps the live ETA on a pair with no measured crossings', () => {
