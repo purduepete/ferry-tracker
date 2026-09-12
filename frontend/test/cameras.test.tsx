@@ -12,8 +12,8 @@ const cameras = [
   { id: 9043, title: 'WSF Seattle Ferry Bainbridge Holding', description: null, imageUrl: 'https://images.wsdot.wa.gov/wsf/colman/BainbridgeHolding.jpg', width: 400, height: 246 },
 ];
 const terminals = [
-  { id: 7, name: 'Seattle', subjectName: 'seattle', latitude: 47.6, longitude: -122.3, city: 'Seattle', cameras, raw: [] },
-  { id: 3, name: 'Bainbridge Island', subjectName: 'bainbridge', latitude: 47.62, longitude: -122.5, city: 'Bainbridge Island', cameras: [], raw: [] },
+  { id: 7, name: 'Seattle', subjectName: 'seattle', latitude: 47.6, longitude: -122.3, city: 'Seattle', cameras, alerts: [], raw: [] },
+  { id: 3, name: 'Bainbridge Island', subjectName: 'bainbridge', latitude: 47.62, longitude: -122.5, city: 'Bainbridge Island', cameras: [], alerts: [], raw: [] },
 ];
 
 function json(data: unknown) {

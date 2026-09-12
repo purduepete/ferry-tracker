@@ -23,6 +23,10 @@ export function cameraAlt(camera: Pick<TerminalCameraView, 'title'>, terminalNam
   return camera.title.trim() || `${terminalName} terminal camera`;
 }
 
+export function alertCountLabel(count: number) {
+  return count === 1 ? '1 service alert' : `${count} service alerts`;
+}
+
 // Multicolumn balances by height, which strands the remainder in the last column. A reader
 // scanning a schedule expects the leftmost column to be the fullest, so the indexes returned
 // here get a forced `break-before: column` to override the browser's own split.

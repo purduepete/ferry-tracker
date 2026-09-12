@@ -15,6 +15,7 @@ import {
   type VesselView,
 } from '@ferry-tracker/shared';
 import { z } from 'zod';
+import { AlertDirectory, assignAlerts, RouteDirectory } from './alerts.js';
 import { assignCameras, CameraDirectory } from './cameras.js';
 import type { RecordedLeg, RecordedSpace, SailingHistory } from './history/sailingHistory.js';
 import type { WsdotClient } from './wsdotClient.js';
@@ -68,6 +69,8 @@ function backfill(
 
 export class FerryDataService {
   private readonly cameras: CameraDirectory;
+  private readonly alerts: AlertDirectory;
+  private readonly routes: RouteDirectory;
 
   constructor(
     private readonly client: WsdotClient,
@@ -75,18 +78,23 @@ export class FerryDataService {
     private readonly history?: SailingHistory,
   ) {
     this.cameras = new CameraDirectory(client, now);
+    this.alerts = new AlertDirectory(client, now);
+    this.routes = new RouteDirectory(client, now);
   }
 
   /** Pulls the camera inventory at startup so the first terminal request does not wait on it. */
   warmCameras(): void {
     this.cameras.warm();
+    this.alerts.warm();
+    this.routes.warm();
   }
 
   async terminals(): Promise<{ data: TerminalView[]; raw: unknown }> {
-    const [basicsRaw, locationsRaw, cameras] = await Promise.all([
+    const [basicsRaw, locationsRaw, cameras, alerts] = await Promise.all([
       this.client.getTerminalBasics(),
       this.client.getTerminalLocations(),
       this.cameras.list(),
+      this.alerts.list(),
     ]);
     const basics = z.array(terminalBasicSchema).parse(basicsRaw);
     const locations = z.array(terminalLocationSchema).parse(locationsRaw);
@@ -98,6 +106,7 @@ export class FerryDataService {
       longitude: locationsById.get(basic.TerminalID)?.Longitude ?? null,
     }));
     const camerasByTerminal = assignCameras(cameras, positions);
+    const alertsByTerminal = assignAlerts(alerts, this.routes.list());
     const data = basics.map<TerminalView>((basic) => {
       const location = locationsById.get(basic.TerminalID);
       return {
@@ -108,9 +117,11 @@ export class FerryDataService {
         longitude: location?.Longitude ?? null,
         city: location?.City ?? null,
         cameras: camerasByTerminal.get(basic.TerminalID) ?? [],
+        alerts: alertsByTerminal.get(basic.TerminalID) ?? [],
         raw: [basic, ...(location ? [location] : [])] as SourceRecord[],
       };
     }).sort((left, right) => left.name.localeCompare(right.name));
+    // Raw alert bodies stay out of the envelope: the inspector is on by default and the text is HTML.
     return { data, raw: { basics: basicsRaw, locations: locationsRaw } };
   }
 

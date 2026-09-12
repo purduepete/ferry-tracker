@@ -54,8 +54,20 @@ export class WsdotClient {
     return this.get('Terminals', 'terminalsailingspace', 'terminalsailingspace.json', bypassCache);
   }
 
-  getSchedule(departingId: number, arrivingId: number, onlyRemaining: boolean): Promise<unknown> {
-    return this.get('Schedule', `scheduletoday/${departingId}/${arrivingId}/${onlyRemaining}`, `schedule-${departingId}-${arrivingId}.json`);
+  getScheduleAlerts(): Promise<unknown> {
+    return this.get('Schedule', 'alerts', 'alerts.json');
+  }
+
+  getRoutes(): Promise<unknown> {
+    return this.get('Schedule', `routes/${pacificDate()}`, 'routes.json');
+  }
+
+  getTerminalsAndMatesByRoute(routeId: number): Promise<unknown> {
+    return this.get('Schedule', `terminalsandmatesbyroute/${pacificDate()}/${routeId}`, `route-mates-${routeId}.json`);
+  }
+
+  getSchedule(departingId: number, arrivingId: number, onlyRemaining: boolean, bypassCache = false): Promise<unknown> {
+    return this.get('Schedule', `scheduletoday/${departingId}/${arrivingId}/${onlyRemaining}`, `schedule-${departingId}-${arrivingId}.json`, bypassCache);
   }
 
   async getScheduleRange(departingId: number, arrivingId: number, start: number, end: number): Promise<unknown> {
@@ -85,6 +97,7 @@ export class WsdotClient {
       return JSON.parse(contents) as unknown;
     } catch (error) {
       if (name.startsWith('schedule-')) return { TerminalCombos: [] };
+      if (name.startsWith('route-mates-')) return [];
       throw error;
     }
   }
@@ -98,21 +111,52 @@ export class WsdotClient {
 
   private async fetchJson(url: URL): Promise<unknown> {
     let lastError: unknown;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < MAX_FETCH_ATTEMPTS; attempt += 1) {
+      let retryAfterMs: number | null = null;
       try {
         const response = await fetch(url, {
           headers: { Accept: 'application/json' },
           signal: AbortSignal.timeout(10_000),
         });
-        if (!response.ok) throw new Error(`WSDOT returned HTTP ${response.status}.`);
+        if (!response.ok) {
+          if (THROTTLE_STATUSES.has(response.status)) retryAfterMs = retryAfterDelay(response.headers.get('retry-after'));
+          throw new Error(`WSDOT returned HTTP ${response.status}.`);
+        }
         return await response.json() as unknown;
       } catch (error) {
         lastError = error;
-        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 250));
+        if (attempt === MAX_FETCH_ATTEMPTS - 1) break;
+        await this.sleep(retryAfterMs ?? backoffDelay(attempt));
       }
     }
     throw lastError;
   }
+
+  // Overridable so tests can exercise the backoff ladder without waiting on it.
+  protected sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+}
+
+/** Hourly schedule capture multiplies request volume, so a throttled call waits instead of hammering. */
+const MAX_FETCH_ATTEMPTS = 3;
+const THROTTLE_STATUSES = new Set([429, 503]);
+const BASE_BACKOFF_MS = 500;
+const MAX_BACKOFF_MS = 30_000;
+
+function backoffDelay(attempt: number): number {
+  const ceiling = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
+  // Full jitter, so ~40 pair captures retrying at once do not resynchronise into a second burst.
+  return Math.round(ceiling * (0.5 + Math.random() * 0.5));
+}
+
+export function retryAfterDelay(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header.trim());
+  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds, 0) * 1000, MAX_BACKOFF_MS);
+  const at = Date.parse(header);
+  if (Number.isNaN(at)) return null;
+  return Math.min(Math.max(at - Date.now(), 0), MAX_BACKOFF_MS);
 }
 
 function pacificDate(timestamp: number = Date.now()): string {

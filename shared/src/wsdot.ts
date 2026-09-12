@@ -134,7 +134,51 @@ export interface TerminalView {
   longitude: number | null;
   city: string | null;
   cameras: TerminalCameraView[];
+  alerts: TerminalAlertView[];
   raw: SourceRecord[];
+}
+
+export const scheduleAlertSchema = z.looseObject({
+  BulletinID: z.number(),
+  BulletinFlag: z.boolean().nullable().optional(),
+  BulletinText: nullableString,
+  CommunicationFlag: z.boolean().nullable().optional(),
+  CommunicationText: nullableString,
+  RouteAlertFlag: z.boolean().nullable().optional(),
+  RouteAlertText: nullableString,
+  HomepageAlertText: nullableString,
+  PublishDate: nullableString,
+  DisruptionDescription: nullableString,
+  AllRoutesFlag: z.boolean().nullable().optional(),
+  SortSeq: nullableNumber,
+  AlertTypeID: nullableNumber,
+  AlertType: nullableString,
+  AlertFullTitle: nullableString,
+  AffectedRouteIDs: z.array(z.number()).nullable().optional(),
+  IVRText: nullableString,
+});
+
+export type ScheduleAlert = z.infer<typeof scheduleAlertSchema>;
+
+export const scheduleRouteSchema = z.looseObject({
+  RouteID: z.number(),
+  RouteAbbrev: nullableString,
+  Description: nullableString,
+  RegionID: nullableNumber,
+});
+
+export const routeTerminalMateSchema = z.looseObject({
+  DepartingTerminalID: z.number(),
+  ArrivingTerminalID: z.number(),
+});
+
+export interface TerminalAlertView {
+  id: number;
+  title: string;
+  text: string | null;
+  type: string | null;
+  publishedAt: string | null;
+  allRoutes: boolean;
 }
 
 export const highwayCameraSchema = z.looseObject({
@@ -181,6 +225,29 @@ export function cameraImageUrl(value: unknown): string | null {
 
 export function isFerryCamera(camera: HighwayCamera): boolean {
   return camera.CameraLocation?.RoadName === 'Ferries';
+}
+
+const ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '-', mdash: '-', hellip: '...',
+};
+
+export const ALERT_TEXT_LIMIT = 1200;
+
+/**
+ * WSF alert bodies carry markup, and React renders it as literal tags. Tags are dropped rather than
+ * rendered so the app never has a reason to reach for dangerouslySetInnerHTML.
+ */
+export function plainText(value: unknown, limit = ALERT_TEXT_LIMIT): string | null {
+  if (typeof value !== 'string') return null;
+  const stripped = value
+    .replace(/<(?:br|\/p|\/div|\/li|\/tr)\b[^>]*>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&([a-z]+);/gi, (match, name: string) => ENTITIES[name.toLowerCase()] ?? match)
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (stripped === '') return null;
+  return stripped.length > limit ? `${stripped.slice(0, limit - 1).trimEnd()}\u2026` : stripped;
 }
 
 export interface VesselView {

@@ -57,7 +57,9 @@ function getCaptureConfig(): CaptureConfig {
     vesselIntervalMs: positive(process.env.CAPTURE_VESSEL_INTERVAL_MS, 30_000),
     spaceIntervalMs: positive(process.env.CAPTURE_SPACE_INTERVAL_MS, 60_000),
     referenceIntervalMs: positive(process.env.CAPTURE_REFERENCE_INTERVAL_MS, 21_600_000),
-    scheduleIntervalMs: positive(process.env.CAPTURE_SCHEDULE_INTERVAL_MS, 21_600_000),
+    // Hourly rather than every 6 hours, because a timetable revision is only reflected in the
+    // Historical view once the next capture reconciles it.
+    scheduleIntervalMs: positive(process.env.CAPTURE_SCHEDULE_INTERVAL_MS, 3_600_000),
     // A dock arrival only reaches the Sailings table once the rollup closes the leg, and the
     // rollup holds an arrival back until it has outlived the debounce window, so an arrival
     // shows up within dockDebounceSeconds plus one of these.

@@ -5,8 +5,8 @@ import { App } from '../src/App';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
-  { id: 7, name: 'Seattle', subjectName: 'seattle', latitude: 47.6, longitude: -122.3, city: 'Seattle', cameras: [], raw: [] },
-  { id: 3, name: 'Bainbridge Island', subjectName: 'bainbridge', latitude: 47.62, longitude: -122.5, city: 'Bainbridge Island', cameras: [], raw: [] },
+  { id: 7, name: 'Seattle', subjectName: 'seattle', latitude: 47.6, longitude: -122.3, city: 'Seattle', cameras: [], alerts: [], raw: [] },
+  { id: 3, name: 'Bainbridge Island', subjectName: 'bainbridge', latitude: 47.62, longitude: -122.5, city: 'Bainbridge Island', cameras: [], alerts: [], raw: [] },
 ];
 const vessels = [{
   id: 1, name: 'Tacoma', vesselClass: 'Jumbo Mark II', departingTerminalId: 7, arrivingTerminalId: 3,

@@ -1,0 +1,14 @@
+[
+  {
+    "DepartingTerminalID": 7,
+    "DepartingDescription": "Seattle",
+    "ArrivingTerminalID": 3,
+    "ArrivingDescription": "Bainbridge Island"
+  },
+  {
+    "DepartingTerminalID": 3,
+    "DepartingDescription": "Bainbridge Island",
+    "ArrivingTerminalID": 7,
+    "ArrivingDescription": "Seattle"
+  }
+]

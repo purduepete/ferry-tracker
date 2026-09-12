@@ -336,6 +336,26 @@ describe('leg state machine', () => {
     expect(leg.departure_delay_minutes).toBe(45);
   });
 
+  it('still pairs a leg to a slot that was withdrawn from the timetable', () => {
+    // The withdraw marker is why the reconcile keeps the row instead of deleting it: a boat can
+    // run a sailing WSDOT already pulled from the published schedule.
+    db.prepare(`INSERT INTO schedule_snapshot (
+      captured_at, service_date, departing_terminal_id, arriving_terminal_id, departing_time, arriving_time, withdrawn_at
+    ) VALUES (?, '2026-09-01', 7, 3, ?, ?, ?)`).run(at(0), at(60), at(95), at(30));
+
+    observe([
+      { minute: 5, atDock: 1, departing: 7, arriving: 3 },
+      { minute: 65, atDock: 0, departing: 7, arriving: 3, leftDock: at(65) },
+      { minute: 100, atDock: 1, departing: 3, arriving: 7 },
+    ]);
+
+    runLegRollup(db, options);
+    const [leg] = legs();
+
+    expect(leg.scheduled_departure_source).toBe('schedule_snapshot');
+    expect(leg.scheduled_departure).toBe(at(60));
+  });
+
   it('buckets a spring forward departure on the correct Pacific hour', () => {
     const insert = db.prepare(`INSERT INTO vessel_observation (
       vessel_id, vessel_name, source_timestamp, captured_at, content_hash,

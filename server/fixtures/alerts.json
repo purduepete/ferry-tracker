@@ -1,0 +1,40 @@
+[
+  {
+    "BulletinID": 91001,
+    "BulletinFlag": true,
+    "BulletinText": "<p>The <b>Bainbridge Island</b> 4:40 p.m. sailing is cancelled for crewing.</p><p>Travellers should expect crowding on the 5:30 p.m. departure. See <a href=\"https://wsdot.com/ferries\">wsdot.com/ferries</a>.</p>",
+    "CommunicationFlag": false,
+    "CommunicationText": null,
+    "RouteAlertFlag": true,
+    "RouteAlertText": "Seattle / Bainbridge Island cancellation",
+    "HomepageAlertText": "Bainbridge Island 4:40 p.m. cancelled",
+    "PublishDate": "/Date(1789225200000-0700)/",
+    "DisruptionDescription": "Cancelled sailing",
+    "AllRoutesFlag": false,
+    "SortSeq": 10,
+    "AlertTypeID": 1,
+    "AlertType": "Cancellation",
+    "AlertFullTitle": "Seattle / Bainbridge Island 4:40 p.m. sailing cancelled",
+    "AffectedRouteIDs": [5],
+    "IVRText": null
+  },
+  {
+    "BulletinID": 91002,
+    "BulletinFlag": true,
+    "BulletinText": "Reservation changes take effect system wide on Monday. Arrive 30 minutes before departure.",
+    "CommunicationFlag": true,
+    "CommunicationText": null,
+    "RouteAlertFlag": false,
+    "RouteAlertText": null,
+    "HomepageAlertText": "Reservation changes Monday",
+    "PublishDate": "/Date(1789138800000-0700)/",
+    "DisruptionDescription": null,
+    "AllRoutesFlag": true,
+    "SortSeq": 20,
+    "AlertTypeID": 3,
+    "AlertType": "Information",
+    "AlertFullTitle": "System wide reservation changes",
+    "AffectedRouteIDs": [],
+    "IVRText": null
+  }
+]

@@ -109,6 +109,10 @@ function snapshot(rows: Array<{ departingTime: string; serviceDate?: string; ves
   }
 }
 
+function withdraw(departingTime: string): void {
+  db.prepare(`UPDATE schedule_snapshot SET withdrawn_at = '2026-09-01T13:00:00.000Z' WHERE departing_time = ?`).run(departingTime);
+}
+
 describe('recorded sailing legs', () => {
   it('returns the actual departure and delay for a scheduled sailing', () => {
     logLeg([{ departedAt: '2026-09-01T18:06:00.000Z' }]);
@@ -197,6 +201,22 @@ describe('recorded days', () => {
 
   it('reports no sailings for a day capture never saw', () => {
     expect(new DatabaseSailingHistory(db).daySailings(SEATTLE, BAINBRIDGE, '2026-07-04')).toEqual([]);
+  });
+
+  it('hides a slot WSDOT stopped publishing', () => {
+    snapshot([{ departingTime: DEPARTURE }, { departingTime: '2026-09-01T19:00:00.000Z' }]);
+    withdraw('2026-09-01T19:00:00.000Z');
+
+    const day = new DatabaseSailingHistory(db).daySailings(SEATTLE, BAINBRIDGE, '2026-09-01');
+
+    expect(day.map((sailing) => sailing.departingTime)).toEqual([DEPARTURE]);
+  });
+
+  it('drops a day whose sailings were all withdrawn, rather than offering an empty one', () => {
+    snapshot([{ serviceDate: '2026-08-30', departingTime: '2026-08-30T18:00:00.000Z' }, { departingTime: DEPARTURE }]);
+    withdraw('2026-08-30T18:00:00.000Z');
+
+    expect(new DatabaseSailingHistory(db).serviceDates(SEATTLE, BAINBRIDGE)).toEqual(['2026-09-01']);
   });
 });
 

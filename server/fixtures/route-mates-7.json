@@ -1,0 +1,14 @@
+[
+  {
+    "DepartingTerminalID": 7,
+    "DepartingDescription": "Seattle",
+    "ArrivingTerminalID": 9,
+    "ArrivingDescription": "Bremerton"
+  },
+  {
+    "DepartingTerminalID": 9,
+    "DepartingDescription": "Bremerton",
+    "ArrivingTerminalID": 7,
+    "ArrivingDescription": "Seattle"
+  }
+]

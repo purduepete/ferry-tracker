@@ -186,6 +186,14 @@ export const migrations: Migration[] = [
       `CREATE INDEX ix_capture_run_service_date ON capture_run (service_date, task)`,
     ],
   },
+  {
+    version: 3,
+    statements: [
+      // Set when WSDOT stops publishing a future slot. The row stays so the rollup can still pair a
+      // completed leg to it, and clears again if the slot comes back.
+      `ALTER TABLE schedule_snapshot ADD COLUMN withdrawn_at TEXT`,
+    ],
+  },
 ];
 
 export const latestVersion = migrations.reduce((highest, migration) => Math.max(highest, migration.version), 0);

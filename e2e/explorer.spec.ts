@@ -93,6 +93,26 @@ test('shows the terminal to ferry to schedule sailings view without external net
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test('marks a terminal that WSF has posted a service alert against', async ({ page }) => {
+  await page.goto('/');
+  await expandRouteControls(page);
+  await page.getByRole('button', { name: 'Origin' }).click();
+  await page.getByRole('option', { name: 'Seattle' }).click();
+
+  // The back-link keeps its own name; the icon inside it carries the count.
+  const backLink = page.getByRole('button', { name: 'Show the Seattle terminal card' });
+  await expect(backLink.locator('.terminal-alert-icon')).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Terminals' }).click();
+  const card = page.locator('.data-card').filter({ has: page.getByRole('heading', { name: 'Seattle' }) });
+  await expect(card.locator('.terminal-alert-icon').first()).toBeVisible();
+  await card.getByRole('button', { name: /Alerts/ }).click();
+  await expect(card.locator('.terminal-alert-list li').first()).toContainText('4:40');
+  // The stripper has to leave the bulletin as words, never as markup the page could render.
+  await expect(card.locator('.terminal-alert-list')).not.toContainText('<');
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test('persists a selected theme and exposes semantic keyboard tabs', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Appearance' }).click();

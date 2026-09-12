@@ -1,0 +1,16 @@
+[
+  {
+    "RouteID": 5,
+    "RouteAbbrev": "sea-bi",
+    "Description": "Seattle / Bainbridge Island",
+    "RegionID": 2,
+    "ServiceDisruptions": []
+  },
+  {
+    "RouteID": 7,
+    "RouteAbbrev": "sea-br",
+    "Description": "Seattle / Bremerton",
+    "RegionID": 2,
+    "ServiceDisruptions": []
+  }
+]

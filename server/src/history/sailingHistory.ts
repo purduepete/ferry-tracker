@@ -57,12 +57,14 @@ interface SnapshotRow {
 }
 
 // The timetable is published a day ahead, so a future date would offer a day with no
-// recorded space or legs behind it.
+// recorded space or legs behind it. Withdrawn rows are excluded from both reads so a slot
+// WSDOT stopped publishing cannot resurface here, and cannot offer a day that is now empty.
 const SERVICE_DATE_SQL = `
   SELECT DISTINCT service_date
   FROM schedule_snapshot
   WHERE departing_terminal_id = ? AND arriving_terminal_id = ?
     AND service_date <= ?
+    AND withdrawn_at IS NULL
   ORDER BY service_date DESC
   LIMIT ?`;
 
@@ -70,6 +72,7 @@ const DAY_SCHEDULE_SQL = `
   SELECT departing_time, arriving_time, vessel_id, vessel_name
   FROM schedule_snapshot
   WHERE service_date = ? AND departing_terminal_id = ? AND arriving_terminal_id = ?
+    AND withdrawn_at IS NULL
   ORDER BY departing_time`;
 
 // Widened past the first and last sailing so a boat that loaded before midnight still matches.
