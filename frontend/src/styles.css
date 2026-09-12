@@ -262,25 +262,37 @@ span.capacity-pill.full { border-color: color-mix(in srgb, var(--danger) 55%, va
 @media (hover: none) { .camera-grip { opacity: 1; } }
 .camera-offline { display: grid; place-items: center; height: 72px; background: var(--surface-3); font-size: 10px; text-align: center; }
 .camera-caption { padding: 5px 6px; font-size: 10px; line-height: 1.3; text-align: left; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
-.camera-backdrop { position: fixed; inset: 0; z-index: 60; padding: 16px; display: grid; place-items: center; background: color-mix(in srgb, #000 62%, transparent); }
-.camera-dialog { width: min(760px, 100%); max-height: 100%; overflow-y: auto; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
-.camera-dialog-head { padding: 10px 8px 10px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
+.camera-backdrop { position: fixed; inset: 0; z-index: 60; padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); display: grid; place-items: center; background: color-mix(in srgb, #000 62%, transparent); }
+.camera-dialog { width: min(760px, 100%); max-height: 100%; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
+.camera-dialog-head { flex: none; padding: 10px 8px 10px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
 .camera-dialog-head h2 { margin: 0; flex: 1 1 auto; font-size: 14px; font-weight: 600; }
 .camera-nav { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
 .camera-count { flex: 0 0 auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .camera-close { width: 32px; height: 32px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .2s ease, background-color .2s ease; }
 .camera-close:hover, .camera-close:focus-visible { color: var(--text); background: var(--surface-2); }
-.camera-stage { position: relative; display: grid; place-items: center; background: var(--surface-3); touch-action: pan-y; }
-.camera-stage img { display: block; width: 100%; height: auto; }
+/* Flex stretch, not a percentage height: it is the only way the picture tracks the stage after
+   the dialog shrinks to a landscape viewport. */
+.camera-stage { position: relative; min-height: 0; display: flex; background: var(--surface-3); touch-action: pan-y; }
+.camera-stage img { display: block; width: 100%; object-fit: contain; }
 .camera-step { width: 26px; height: 26px; padding: 0; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .2s ease, background-color .2s ease; }
 .camera-step:hover, .camera-step:focus-visible { color: var(--text); background: var(--surface-2); }
-.camera-filmstrip { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); overflow-x: auto; }
+.camera-filmstrip { flex: none; display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); overflow-x: auto; }
 .camera-filmstrip button { flex: 0 0 96px; padding: 0; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); display: flex; flex-direction: column; cursor: pointer; overflow: hidden; transition: border-color .2s ease, color .2s ease; }
 .camera-filmstrip button:hover, .camera-filmstrip button:focus-visible { color: var(--text); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .camera-filmstrip button.active { border-color: var(--accent); color: var(--text); }
 .camera-filmstrip img { display: block; width: 100%; height: 54px; object-fit: cover; background: var(--surface-3); }
 .camera-filmstrip span { padding: 4px 5px; font-size: 10px; line-height: 1.3; text-align: left; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
-.camera-description { margin: 0; padding: 10px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.camera-description { flex: none; margin: 0; padding: 10px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+/* Phone landscape: trim the chrome so the picture keeps most of the ~374px on offer. */
+@media (max-height: 560px) {
+  .camera-backdrop { padding: 8px max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left)); }
+  .camera-dialog-head { padding: 6px 6px 6px 12px; }
+  .camera-description { display: none; }
+  .camera-filmstrip { padding: 6px; }
+  .camera-filmstrip button { flex: 0 0 72px; }
+  .camera-filmstrip img { height: 44px; }
+  .camera-filmstrip span { display: none; }
+}
 .vessel-status-icon { position: absolute; top: 8px; right: 8px; color: var(--accent); display: flex; align-items: center; justify-content: center; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
 .schedule-card { border: 1px solid var(--line); background: var(--surface); }
