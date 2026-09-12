@@ -80,6 +80,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .header-actions { height: 100%; display: flex; align-items: center; gap: 8px; }
 .refresh-time { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .refresh-time time { color: var(--text); font-variant-numeric: tabular-nums; }
+.refresh-time.is-stale, .refresh-time.is-stale time { color: var(--warning); }
 .icon-button { width: 36px; height: 100%; padding: 0 8px; border: 0; background: transparent; display: grid; place-items: center; border-radius: 0; color: var(--muted); transition: color .2s ease, background-color .2s ease; }
 .icon-button:hover, .icon-button[aria-expanded='true'] { color: var(--text); background: var(--surface-2); }
 .icon-button:disabled { cursor: wait; color: var(--accent); }

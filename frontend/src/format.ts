@@ -43,6 +43,15 @@ export function clockTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
 }
 
+export const STALE_REFRESH_MS = 300_000;
+
+// Both arguments are client-clock milliseconds. Comparing against the server's fetchedAt
+// would let a skewed client render stale data that just arrived.
+export function refreshIsStale(lastRefreshMs: number | null, now: number) {
+  if (lastRefreshMs === null) return false;
+  return now - lastRefreshMs >= STALE_REFRESH_MS;
+}
+
 // Vessel cards stack several timestamps, so today's date is repeated noise.
 export function fieldTime(value: string | null) {
   if (!value) return '—';

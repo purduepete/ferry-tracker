@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '../src/App';
-import { addFavoriteRoute, capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, DEFAULT_FAVORITE_ROUTES, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, isPublishedRoute, loadCatchOverrides, loadFavoriteRoutes, loadSettings, normalizeCatchOverrides, normalizeFavoriteRoutes, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingColumnBreaks, sailingDeparture, sailingTimeMinutes, serviceDayLabel, setCatchOverride, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
+import { addFavoriteRoute, capacityLevel, CATCH_DEFAULT_PAD_MINUTES, catchLevel, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, DEFAULT_FAVORITE_ROUTES, DEFAULT_SETTINGS, departureDelayLabel, departureDelayMinutes, disruptionLevel, disruptionLoad, disruptionWaves, getCurrentSailing, isCurrentSailing, isPublishedRoute, loadCatchOverrides, loadFavoriteRoutes, loadSettings, normalizeCatchOverrides, normalizeFavoriteRoutes, normalizeSettings, openSpacePercent, orderTerminals, recordedSpaceLabel, refreshIsStale, removeFavoriteRoute, renameFavoriteRoute, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingColumnBreaks, sailingDeparture, sailingTimeMinutes, serviceDayLabel, setCatchOverride, toggleFavoriteTerminalId, vesselDelayMinutes, vesselEta, vesselRouteRank } from '../src/format';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 const terminals = [
@@ -39,6 +39,7 @@ describe('Ferry data explorer', () => {
     render(<ThemeProvider><App /></ThemeProvider>);
   expect(screen.getByRole('status', { name: 'Loading ferry data' })).toBeInTheDocument();
   expect(document.querySelector('.spin')).not.toBeInTheDocument();
+  expect(document.querySelector('.refresh-time')).toBeNull();
     expect(await screen.findByRole('heading', { name: 'Seattle' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Tacoma' })).toBeInTheDocument();
     expect(screen.getByText(/Seattle to Bainbridge Island/)).toBeInTheDocument();
@@ -931,6 +932,17 @@ describe('Vessel lateness', () => {
 
   it('leaves the estimate alone when WSDOT publishes none', () => {
     expect(vesselEta({ ...underway, eta: null })).toBeNull();
+  });
+});
+
+describe('Stale refresh threshold', () => {
+  const at = 1_760_000_000_000;
+
+  it('holds off until a full five minutes have passed', () => {
+    expect(refreshIsStale(null, at)).toBe(false);
+    expect(refreshIsStale(at, at + 299_999)).toBe(false);
+    expect(refreshIsStale(at, at + 300_000)).toBe(true);
+    expect(refreshIsStale(at, at + 3_600_000)).toBe(true);
   });
 });
 

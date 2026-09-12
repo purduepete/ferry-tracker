@@ -2,7 +2,7 @@ import { isValidElement, useEffect, useRef, useState, type CSSProperties, type K
 import { Anchor, ArrowLeftRight, ArrowRight, Car, ChevronDown, ChevronLeft, ChevronRight, Clock3, ExternalLink, GripVertical, History, MapPin, Plus, RefreshCw, RotateCcw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
 import type { ApiEnvelope, SailingView, TerminalCameraView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, cacheBusted, cameraAlt, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, DEFAULT_SETTINGS, departureDelayLabel, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCameraOrder, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderCameras, orderTerminals, phoneVehicleSpace, recordedSpaceLabel, removeFavoriteRoute, renameFavoriteRoute, reorderCameras, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingColumnBreaks, sailingDeparture, sailingTimeMinutes, saveCameraOrder, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CameraOrder, type CatchOverride, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
+import { addFavoriteRoute, BAINBRIDGE_TERMINAL_ID, cacheBusted, cameraAlt, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, DEFAULT_SETTINGS, departureDelayLabel, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCameraOrder, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderCameras, orderTerminals, phoneVehicleSpace, recordedSpaceLabel, refreshIsStale, removeFavoriteRoute, renameFavoriteRoute, reorderCameras, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingColumnBreaks, sailingDeparture, sailingTimeMinutes, saveCameraOrder, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CameraOrder, type CatchOverride, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -20,6 +20,8 @@ const tabs: Array<{ id: Tab; label: string; icon: typeof Waypoints; shortcut: st
 ];
 const COUNTDOWN_TICK_MS = 15_000;
 const BACKGROUND_REFRESH_MS = 60_000;
+const VISIBILITY_REFRESH_MIN_AGE_MS = 10_000;
+const STALE_TICK_MS = 30_000;
 const CAMERA_REFRESH_MS = 120_000;
 const SAILING_COLUMN_WIDTH = 340;
 const SAILING_COLUMN_GAP = 28;
@@ -494,6 +496,9 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
+  // Staleness is measured against the client clock, since fetchedAt comes from the server's.
+  const [lastRefreshMs, setLastRefreshMs] = useState<number | null>(null);
+  const [staleClock, setStaleClock] = useState(() => Date.now());
   const [minimumInitialSkeletonElapsed, setMinimumInitialSkeletonElapsed] = useState(false);
   const [initialScheduleSettled, setInitialScheduleSettled] = useState(false);
   const [initialDataVisible, setInitialDataVisible] = useState(false);
@@ -534,8 +539,11 @@ export function App() {
   const previousTabRef = useRef<Tab>(tab);
   const historyDatesRef = useRef<string[]>(historyDates);
   const serviceDateRef = useRef(serviceDate);
+  const refreshingRef = useRef(false);
+  const lastRefreshMsRef = useRef<number | null>(null);
   historyDatesRef.current = historyDates;
   serviceDateRef.current = serviceDate;
+  lastRefreshMsRef.current = lastRefreshMs;
 
   const loadOverview = () => {
     const controller = new AbortController();
@@ -552,6 +560,7 @@ export function App() {
         // A restored terminal is only kept while WSDOT still publishes it.
         setSelectedTerminalId((current) => (current !== null && terminals.data.some((terminal) => terminal.id === current) ? current : terminals.data[0]?.id ?? null));
         setLastRefreshAt((current) => latestTimestamp(current, terminals.fetchedAt, vessels.fetchedAt, mates.fetchedAt));
+        setLastRefreshMs(Date.now());
       })
       .catch((cause: unknown) => {
         if (requestId === overviewRequestId.current && (cause as Error).name !== 'AbortError') setError(cause instanceof Error ? cause.message : 'Unable to load ferry data.');
@@ -645,6 +654,7 @@ export function App() {
         setScheduleResponse(schedule);
         setInitialScheduleSettled(true);
         setLastRefreshAt((current) => latestTimestamp(current, schedule.fetchedAt));
+        setLastRefreshMs(Date.now());
       })
       .catch((cause: unknown) => {
         if (requestId === scheduleRequestId.current && (cause as Error).name !== 'AbortError') {
@@ -750,12 +760,21 @@ export function App() {
   };
   // A manual refresh replaces the same data in place, so it must not raise the loading cover.
   const refreshing = loading || scheduleLoading;
+  refreshingRef.current = refreshing;
+  const refreshStale = refreshIsStale(lastRefreshMs, staleClock);
   const viewUpdating = !backgroundRefresh && (loading || (scheduleLoading && (tab === 'sailings' || tab === 'historical')));
   const initialLoading = !initialDataVisible && (loading || hasOverview);
 
   useEffect(() => {
     if (backgroundRefresh && !refreshing) setBackgroundRefresh(false);
   }, [backgroundRefresh, refreshing]);
+
+  // Coarse on purpose: the cue can lag the true five-minute mark by up to one tick, and in
+  // exchange it keeps running on every tab so a sleeping device always recovers.
+  useEffect(() => {
+    const timer = window.setInterval(() => setStaleClock(Date.now()), STALE_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // The countdown only has to stay honest while it is on screen.
   useEffect(() => {
@@ -767,16 +786,36 @@ export function App() {
 
   // Ticking the clock is not enough: a boat that ties up leaves the vessel feed and the one
   // behind it only appears in a fresh fetch, so the countdown tabs poll while they are open.
-  // Sailings polls for the same reason: the rollup stamps a dock arrival minutes after it happens.
+  // Sailings and Historical poll for the same reason: the rollup stamps a dock arrival minutes
+  // after it happens. A recorded day never gains a row, so it is excluded.
   useEffect(() => {
-    const polling = tab === 'catch' || tab === 'disruption' || (tab === 'historical' && scheduleDayIsLive);
+    const polling = tab === 'catch' || tab === 'disruption' || ((tab === 'sailings' || tab === 'historical') && scheduleDayIsLive);
     if (!polling) return;
-    const timer = window.setInterval(() => {
+    const refresh = () => {
+      if (refreshingRef.current) return;
       setBackgroundRefresh(true);
       loadOverview();
       setRefreshVersion((current) => current + 1);
-    }, BACKGROUND_REFRESH_MS);
-    return () => window.clearInterval(timer);
+    };
+    let timer = 0;
+    const start = () => { timer = window.setInterval(refresh, BACKGROUND_REFRESH_MS); };
+    const stop = () => window.clearInterval(timer);
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+        return;
+      }
+      // A hide/show bounce must not fire a second fetch on top of data that just landed.
+      const age = lastRefreshMsRef.current === null ? Infinity : Date.now() - lastRefreshMsRef.current;
+      if (age >= VISIBILITY_REFRESH_MIN_AGE_MS) refresh();
+      start();
+    };
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [scheduleDayIsLive, tab]);
 
   // WSDOT refreshes a terminal camera every one to five minutes, so anything faster than this
@@ -803,6 +842,7 @@ export function App() {
         setCatchResponse(schedule);
         setCatchError(null);
         setLastRefreshAt((current) => latestTimestamp(current, schedule.fetchedAt));
+        setLastRefreshMs(Date.now());
       })
       .catch((cause: unknown) => {
         if (active) setCatchError(cause instanceof Error ? cause.message : 'Unable to load the schedule for this route.');
@@ -828,6 +868,7 @@ export function App() {
         setInboundError(null);
         setCountdownNow(Date.now());
         setLastRefreshAt((current) => latestTimestamp(current, schedule.fetchedAt));
+        setLastRefreshMs(Date.now());
       })
       .catch(() => {
         if (active) setInboundError('Schedule unavailable. Retrying on the next refresh.');
@@ -1077,7 +1118,7 @@ export function App() {
         <div className="header-inner">
         <button className="brand" type="button" title="Go to Sailings" onClick={() => setTab('sailings')}><span className="brand-mark"><Anchor size={22} /></span><div><strong>Ferry Tracker</strong><span>WSDOT data explorer</span></div></button>
         <div className="header-actions">
-          {lastRefreshAt && <span className="refresh-time" title={`Last refresh ${localTime(lastRefreshAt)}`}><Clock3 size={13} /><span className="refresh-time-label">Last refresh</span><time dateTime={lastRefreshAt}>{clockTime(lastRefreshAt)}</time></span>}
+          {lastRefreshAt && <span className={`refresh-time${refreshStale ? ' is-stale' : ''}`} title={refreshStale ? `Data may be out of date. Last refresh ${localTime(lastRefreshAt)}` : `Last refresh ${localTime(lastRefreshAt)}`}><Clock3 size={13} /><span className="refresh-time-label">Last refresh</span><time dateTime={lastRefreshAt}>{clockTime(lastRefreshAt)}</time></span>}
           {/* A deployed server is always live, so the badge only earns its space when the data is canned. */}
           {terminalResponse?.source === 'fixture' && <span className="source-badge fixture">fixture</span>}
           <button className={`icon-button${refreshing ? ' is-busy' : ''}`} type="button" title="Refresh data" aria-label="Refresh data" disabled={refreshing} onClick={refreshAll}><RefreshCw size={18} /></button>
