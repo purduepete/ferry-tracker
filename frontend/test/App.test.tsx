@@ -20,6 +20,13 @@ function json(data: unknown) {
   return Promise.resolve(new Response(JSON.stringify({ data, fetchedAt: '2026-09-01T16:00:00.000Z', source: 'fixture', raw: data })));
 }
 
+// Every countdown measures from the wall-clock MINUTE, so a fixture built from a live clock
+// reads a minute short whenever the run crosses a minute boundary between building it and the
+// card reading the clock. Freeze both ends on one instant. Restored by the global afterEach.
+function freezeClock(iso = '2026-09-06T18:06:20.000Z') {
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse(iso));
+}
+
 describe('Ferry data explorer', () => {
   it('traces a terminal to its vessel and schedule', async () => {
     let scheduleCalls = 0;
@@ -1414,8 +1421,7 @@ describe('Bainbridge disruption', () => {
   });
 
   it('shows the countdown and the boats behind it', async () => {
-    // Relative to the real clock so the countdown does not need fake timers, which would
-    // deadlock userEvent.
+    freezeClock();
     const soon = new Date(Date.now() + 20 * 60000).toISOString();
     const later = { ...vessels[0], id: 2, name: 'Wenatchee', eta: new Date(Date.now() + 80 * 60000).toISOString(), leftDock: null };
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
@@ -1667,6 +1673,7 @@ describe('Catching a ferry', () => {
   });
 
   it('counts down to the next Bainbridge departure and remembers a changed pad', async () => {
+    freezeClock();
     const departure = (mins: number) => ({
       vesselId: 1, vesselName: 'Tacoma', departingTime: new Date(Date.now() + mins * 60000).toISOString(), arrivingTime: null,
       departingTerminalId: 3, arrivingTerminalId: 7, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null,
@@ -1847,6 +1854,7 @@ describe('Catch padding overrides', () => {
   });
 
   it('overrides the padding from the Catch tab and puts it back on reset', async () => {
+    freezeClock();
     overviewFetch(departure);
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
@@ -1875,6 +1883,7 @@ describe('Catch padding overrides', () => {
   });
 
   it('collapses the padding controls and flags a route that overrides them', async () => {
+    freezeClock();
     overviewFetch(departure);
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
@@ -1900,6 +1909,7 @@ describe('Catch padding overrides', () => {
   });
 
   it('keeps each favorite route on its own padding', async () => {
+    freezeClock();
     localStorage.setItem('ferry-tracker-catch-overrides', JSON.stringify({ '3-7': { trafficMinutes: 0, queueMinutes: 0 } }));
     overviewFetch(departure);
     const user = userEvent.setup();
