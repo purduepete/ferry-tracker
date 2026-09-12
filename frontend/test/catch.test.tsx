@@ -138,3 +138,39 @@ describe('Catch traffic cutoff', () => {
     expect(catchWindowLevel({ minutesAway: -16, estimatedMinutesAway: 12, spacePercent: 10 })).toBe('imminent');
   });
 });
+
+describe('Catch crossing projection', () => {
+  const now = at('11:21:43');
+  const crossing = {
+    departingTerminalId: 7, arrivingTerminalId: 3, medianMinutes: 34, fastMinutes: 31, samples: 7, borrowed: false,
+  };
+  const returning = { ...inbound, departingTerminalId: 7, leftDock: new Date(at('11:10:00')).toISOString() };
+  const withCrossing = (row: typeof crossing) => catchDeparture(sailing, [returning], now, new Map([['7-3', row]]));
+
+  // The fastest recent crossing, so the claim stays a lower bound on when the boat can sail.
+  it('projects the return sailing from the tenth percentile crossing', () => {
+    expect(withCrossing(crossing)).toMatchObject({
+      departsAt: at('11:41:00'), delayMinutes: 6, delaySource: 'projected',
+    });
+  });
+
+  // Without a measured crossing the live ETA carries the 40 minute departure delay a second
+  // time. The 52 minute result it produces reads as a different sailing, so the staleness cap
+  // throws it away and the card shows no projection at all.
+  it('loses the projection to the live ETA without a usable crossing', () => {
+    const dropped = { departsAt: at('11:35:00'), delayMinutes: null, delaySource: null };
+    expect(catchDeparture(sailing, [returning], now)).toMatchObject(dropped);
+    expect(withCrossing({ ...crossing, borrowed: true })).toMatchObject(dropped);
+    expect(withCrossing({ ...crossing, samples: 2 })).toMatchObject(dropped);
+  });
+
+  // Leave-by is the scheduled departure less the pad, always. A projection may only move the
+  // estimate beside it.
+  it('leaves the scheduled leave-by alone', () => {
+    const [window] = catchWindows([sailing], now, timing, [returning], new Map([['7-3', crossing]]));
+    expect(window).toMatchObject({
+      leaveByAt: new Date(at('11:05:00')).toISOString(),
+      estimatedLeaveByAt: new Date(at('11:11:00')).toISOString(),
+    });
+  });
+});

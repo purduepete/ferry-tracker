@@ -38,7 +38,7 @@ describe('Ferry data explorer', () => {
         { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
         { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
       ]);
-      if (url.includes('/api/history')) return json([]);
+      if (url.includes('/api/history') || url.includes('/api/crossings')) return json([]);
       scheduleCalls += 1;
       return json([{ vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
     });
@@ -287,7 +287,7 @@ describe('Ferry data explorer', () => {
         { departingTerminalId: 7, departingTerminalName: 'Seattle', arrivingTerminalId: 3, arrivingTerminalName: 'Bainbridge Island' },
         { departingTerminalId: 3, departingTerminalName: 'Bainbridge Island', arrivingTerminalId: 7, arrivingTerminalName: 'Seattle' },
       ]);
-      if (url.includes('/api/history')) return json([]);
+      if (url.includes('/api/history') || url.includes('/api/crossings')) return json([]);
       scheduleCalls += 1;
       if (scheduleCalls > 1) return changedRouteResponse;
       return json([{ vesselId: 1, vesselName: 'Tacoma', departingTime: '2026-09-01T17:00:00.000Z', arrivingTime: '2026-09-01T17:35:00.000Z', departingTerminalId: 7, arrivingTerminalId: 3, isCancelled: false, driveUpSpaceCount: 176, reservableSpaceCount: null, maxSpaceCount: 202, spaceAvailable: true, raw: {} }]);
@@ -957,21 +957,50 @@ describe('Sailing arrival', () => {
   const sailing = { actualArrival: null, arrivingTime: null, vesselId: 18, departingTime: '2026-09-01T23:45:00.000Z' };
   const boat = { id: 18, atDock: false, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:46:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
 
+  const crossings = new Map([['7-3', {
+    departingTerminalId: 7,
+    arrivingTerminalId: 3,
+    medianMinutes: 34.2,
+    fastMinutes: 31.7,
+    samples: 7,
+    borrowed: false,
+  }]]);
+
   it('prefers the observed dock arrival over the published schedule', () => {
     expect(sailingArrival({ ...sailing, actualArrival: '2026-09-02T00:21:00.000Z', arrivingTime: '2026-09-02T00:20:00.000Z' }, []))
-      .toEqual({ at: '2026-09-02T00:21:00.000Z', estimated: false });
+      .toEqual({ at: '2026-09-02T00:21:00.000Z', estimated: false, samples: null });
   });
 
   it('falls back to the published schedule when nothing was observed', () => {
-    expect(sailingArrival({ ...sailing, arrivingTime: '2026-09-02T00:20:00.000Z' }, [])).toEqual({ at: '2026-09-02T00:20:00.000Z', estimated: false });
+    expect(sailingArrival({ ...sailing, arrivingTime: '2026-09-02T00:20:00.000Z' }, []))
+      .toEqual({ at: '2026-09-02T00:20:00.000Z', estimated: false, samples: null });
   });
 
   it('estimates from the live ETA of the boat making the crossing', () => {
-    expect(sailingArrival(sailing, [boat])).toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true });
+    expect(sailingArrival(sailing, [boat])).toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true, samples: null });
   });
 
   it('adds the departure delay back onto the live ETA', () => {
-    expect(sailingArrival(sailing, [{ ...boat, leftDock: '2026-09-01T23:56:00.000Z' }])).toEqual({ at: '2026-09-02T00:40:00.000Z', estimated: true });
+    expect(sailingArrival(sailing, [{ ...boat, leftDock: '2026-09-01T23:56:00.000Z' }]))
+      .toEqual({ at: '2026-09-02T00:40:00.000Z', estimated: true, samples: null });
+  });
+
+  it('times the crossing from the observed departure and the pair median', () => {
+    const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:46:00.000Z' };
+    expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-01T23:50:00.000Z')))
+      .toEqual({ at: '2026-09-02T00:20:12.000Z', estimated: true, samples: 7 });
+  });
+
+  it('never lets the median estimate fall behind the clock', () => {
+    const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:46:00.000Z' };
+    expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-02T00:25:00.000Z'))?.at)
+      .toBe('2026-09-02T00:25:00.000Z');
+  });
+
+  it('keeps the live ETA on a pair with no measured crossings', () => {
+    const route = { ...sailing, departingTerminalId: 3, arrivingTerminalId: 7, actualDeparture: '2026-09-01T23:46:00.000Z' };
+    expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-01T23:50:00.000Z')))
+      .toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true, samples: null });
   });
 
   it('gives no arrival for a boat still at the dock or on another slot', () => {
@@ -986,21 +1015,37 @@ describe('Sailing time', () => {
 
   it('measures from the actual departure to the observed arrival', () => {
     expect(sailingTimeMinutes({ ...sailing, actualDeparture: '2026-09-01T23:56:00.000Z', actualArrival: '2026-09-02T00:31:00.000Z' }, []))
-      .toEqual({ minutes: 35, estimated: false });
+      .toEqual({ minutes: 35, estimated: false, samples: null });
   });
 
   it('falls back to the scheduled departure when the boat has not sailed', () => {
-    expect(sailingTimeMinutes({ ...sailing, arrivingTime: '2026-09-02T00:20:00.000Z' }, [])).toEqual({ minutes: 35, estimated: false });
+    expect(sailingTimeMinutes({ ...sailing, arrivingTime: '2026-09-02T00:20:00.000Z' }, []))
+      .toEqual({ minutes: 35, estimated: false, samples: null });
   });
 
   it('marks a crossing built on the live ETA as estimated', () => {
     const boat = { id: 18, atDock: false, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:46:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
-    expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true });
+    expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true, samples: null });
   });
 
   it('measures a late crossing from the live departure, so the delay never inflates it', () => {
     const boat = { id: 18, atDock: false, speed: 14, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:56:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
-    expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true });
+    expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true, samples: null });
+  });
+
+  it('reports the pair median instead of the doubled-up live ETA', () => {
+    const boat = { id: 18, atDock: false, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:46:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
+    const crossings = new Map([['7-3', {
+      departingTerminalId: 7,
+      arrivingTerminalId: 3,
+      medianMinutes: 34.2,
+      fastMinutes: 31.7,
+      samples: 7,
+      borrowed: false,
+    }]]);
+    const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:46:00.000Z' };
+    expect(sailingTimeMinutes(route, [boat], crossings, Date.parse('2026-09-01T23:50:00.000Z')))
+      .toEqual({ minutes: 34, estimated: true, samples: 7 });
   });
 
   it('gives nothing when either end is missing or the pair is out of order', () => {

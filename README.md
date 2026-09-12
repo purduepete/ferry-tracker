@@ -103,6 +103,26 @@ npm run capture:report -- C:\ProgramData\ferry-tracker\ferry-capture.db
 
 It works against a live database, so you can run it while the server is still capturing.
 
+### Predicting an arrival
+
+`GET /api/crossings` returns the median and tenth-percentile crossing time for every terminal pair, taken from the last 7 usable legs within a fortnight and cached for 2 minutes. A pair needs 3 legs to appear. A direction with none of its own borrows its reverse and is flagged `borrowed`, since a crossing runs close to the same length either way.
+
+The Sailings, Disruption and Catch tabs all time an in-progress crossing from the observed departure plus the pair median, and fall back to the WSDOT vessel ETA when a pair has no measured history. Catch uses the tenth percentile instead of the median and refuses a borrowed or thin pair, because its projection only ever claims a boat cannot sail before it has arrived, so it has to stay a lower bound.
+
+Backtested over 30 days and 2833 departures from a production snapshot:
+
+| Estimator | Mean error | p90 |
+| --- | --- | --- |
+| Pair median | 2.10 min | 3.80 min |
+| WSDOT ETA | 2.70 min | 4.37 min |
+| WSDOT ETA plus departure delay | 6.91 min | 15.40 min |
+
+Partitioning by vessel as well as pair moved the mean error by 0.01 min, and no major pair spread more than 4.5 min between its median and p90, so there is no vessel, hour or weekday bucketing. Re-run the comparison against a snapshot with:
+
+```powershell
+node deploy/backtest-crossings.mjs C:\ProgramData\ferry-tracker\ferry-capture.db
+```
+
 ## Checks
 
 ```powershell

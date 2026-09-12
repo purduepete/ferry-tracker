@@ -1,6 +1,7 @@
-import type { SailingView } from '@ferry-tracker/shared';
+import type { CrossingView, SailingView } from '@ferry-tracker/shared';
 import { pacificParts, spaceCount } from '@ferry-tracker/shared';
 import type { Db } from '../db/database.js';
+import { CrossingCache } from './crossingMedians.js';
 
 export const MAX_HISTORY_DAYS = 14;
 
@@ -28,6 +29,7 @@ export interface SailingHistory {
   recordedLegs(departingId: number, arrivingId: number, fromIso: string, toIso: string): Map<string, RecordedLeg>;
   serviceDates(departingId: number, arrivingId: number): string[];
   daySailings(departingId: number, arrivingId: number, serviceDate: string): SailingView[];
+  crossings(): CrossingView[];
 }
 
 interface ObservationRow {
@@ -119,7 +121,15 @@ const LEG_SQL = `
   ORDER BY scheduled_departure, departed_at`;
 
 export class DatabaseSailingHistory implements SailingHistory {
-  constructor(private readonly db: Db) {}
+  private readonly crossingCache: CrossingCache;
+
+  constructor(private readonly db: Db, now: () => number = Date.now) {
+    this.crossingCache = new CrossingCache(db, now);
+  }
+
+  crossings(): CrossingView[] {
+    return this.crossingCache.read();
+  }
 
   serviceDates(departingId: number, arrivingId: number): string[] {
     const today = pacificParts(new Date())?.serviceDate;

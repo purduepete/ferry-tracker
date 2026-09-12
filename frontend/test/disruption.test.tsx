@@ -98,6 +98,17 @@ describe('Disruption schedule fallback', () => {
     expect(disruptionWaves([{ ...vessel, atDock: true }], now, DEFAULT_SETTINGS, [sailing])).toHaveLength(1);
   });
 
+  // The measured crossing beats the hard-coded 35, which was only ever a stand-in for the one
+  // route the Disruption tab covers.
+  it('prefers the measured Seattle to Bainbridge crossing over the fallback', () => {
+    const crossings = new Map([['7-3', {
+      departingTerminalId: 7, arrivingTerminalId: 3, medianMinutes: 32, fastMinutes: 31, samples: 7, borrowed: false,
+    }]]);
+    expect(disruptionWaves([], now, DEFAULT_SETTINGS, [sailing], crossings)[0]).toMatchObject({
+      source: 'schedule', landingAt: new Date(at('10:52:00')).toISOString(),
+    });
+  });
+
   it('prefers a published arrival and respects lead and duration settings', () => {
     const settings = { ...DEFAULT_SETTINGS, disruptionLeadMinutes: 5, disruptionDurationMinutes: 20 };
     expect(disruptionWaves([], now, settings, [{ ...sailing, arrivingTime: at('11:00:00') }])[0]).toMatchObject({

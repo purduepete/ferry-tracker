@@ -1,4 +1,4 @@
-import type { SailingView, TerminalCameraView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
+import type { CrossingView, SailingView, TerminalCameraView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 
 // Floored, not rounded: a boat 40 seconds late still shows the same clock minute as its
 // slot, so rounding up would contradict the times either side of the pill.
@@ -115,6 +115,42 @@ export function vesselEta(vessel: Pick<VesselView, 'eta' | 'leftDock' | 'schedul
 
 export const BAINBRIDGE_TERMINAL_ID = 3;
 export const SEATTLE_TERMINAL_ID = 7;
+
+export type Crossings = Map<string, CrossingView>;
+
+export function crossingKey(departingId: number | null | undefined, arrivingId: number | null | undefined) {
+  return departingId == null || arrivingId == null ? null : `${departingId}-${arrivingId}`;
+}
+
+export function crossingFor(
+  crossings: Crossings,
+  departingId: number | null | undefined,
+  arrivingId: number | null | undefined,
+): CrossingView | null {
+  const key = crossingKey(departingId, arrivingId);
+  return (key === null ? undefined : crossings.get(key)) ?? null;
+}
+
+// Clamped to now, so a boat already past its usual crossing never renders an arrival that has
+// been and gone. The estimate then walks forward until the boat actually ties up.
+export function projectedArrival(departedAt: string | null | undefined, minutes: number | null, now: number) {
+  if (!departedAt || minutes === null) return null;
+  const left = Date.parse(departedAt);
+  return Number.isNaN(left) ? null : new Date(Math.max(left + minutes * 60000, now)).toISOString();
+}
+
+// The last few crossings on this pair beat WSDOT's estimate, which is anchored to some other
+// vessel's stale position. The feed is still the answer for a pair with no measured history.
+export function vesselArrival(
+  vessel: Pick<VesselView, 'eta' | 'leftDock' | 'scheduledDeparture' | 'arrivingTerminalId'> & Partial<Pick<VesselView, 'departingTerminalId'>>,
+  crossings: Crossings = new Map(),
+  now: number = Date.now(),
+) {
+  const crossing = crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId);
+  const projected = crossing ? projectedArrival(vessel.leftDock, crossing.medianMinutes, now) : null;
+  return projected ?? vesselEta(vessel) ?? vessel.eta;
+}
+
 // Offloaded traffic takes about this long to clear the dock and reach the road.
 export const DISRUPTION_LEAD_MINUTES = 10;
 // And about this long to drain off it again.
@@ -508,6 +544,7 @@ export function disruptionLevel(minutesAway: number, settings: FerrySettings = D
 // A boat can still read as underway for a tick after it ties up, so an observed arrival
 // this close to a live ETA is the same landing seen twice.
 const DISRUPTION_MERGE_MINUTES = 30;
+// Only reached before the pair has enough measured crossings to speak for itself.
 const BAINBRIDGE_CROSSING_MINUTES = 35;
 
 function disruptionWave(vesselId: number | null, vesselName: string, landing: number, now: number, settings: FerrySettings, source: DisruptionWave['source']): DisruptionWave[] {
@@ -536,7 +573,10 @@ export function disruptionWaves(
   now: number,
   settings: FerrySettings = DEFAULT_SETTINGS,
   landed: Array<Pick<SailingView, 'vesselId' | 'vesselName' | 'actualArrival'> & Partial<Pick<SailingView, 'departingTime' | 'arrivingTime' | 'isCancelled' | 'departingTerminalId' | 'arrivingTerminalId'>>> = [],
+  crossings: Crossings = new Map(),
 ): DisruptionWave[] {
+  const crossingMinutes = crossingFor(crossings, SEATTLE_TERMINAL_ID, BAINBRIDGE_TERMINAL_ID)?.medianMinutes
+    ?? BAINBRIDGE_CROSSING_MINUTES;
   const inbound = landed.filter((leg) => !leg.isCancelled
     && (leg.departingTerminalId == null || leg.departingTerminalId === SEATTLE_TERMINAL_ID)
     && (leg.arrivingTerminalId == null || leg.arrivingTerminalId === BAINBRIDGE_TERMINAL_ID));
@@ -548,7 +588,7 @@ export function disruptionWaves(
   });
   const underway = vessels.flatMap((vessel) => {
     if (vessel.arrivingTerminalId !== BAINBRIDGE_TERMINAL_ID || vessel.atDock !== false || !vessel.eta) return [];
-    const landing = Date.parse(vesselEta(vessel) ?? vessel.eta);
+    const landing = Date.parse(vesselArrival(vessel, crossings, now) ?? vessel.eta);
     if (Number.isNaN(landing)) return [];
     const duplicate = observed.some((seen) => seen.vesselId === vessel.id
       && Math.abs(Date.parse(seen.landingAt) - landing) < DISRUPTION_MERGE_MINUTES * 60000);
@@ -560,15 +600,15 @@ export function disruptionWaves(
     if (!Number.isFinite(departure)) return [];
     const publishedArrival = leg.arrivingTime ? Date.parse(leg.arrivingTime) : NaN;
     const landing = Number.isFinite(publishedArrival) && publishedArrival > departure
-      ? publishedArrival : departure + BAINBRIDGE_CROSSING_MINUTES * 60000;
+      ? publishedArrival : departure + crossingMinutes * 60000;
     const uniqueSlot = inbound.filter((candidate) => candidate.departingTime
       && Date.parse(candidate.departingTime) === departure).length === 1;
     const live = vessels.find((vessel) => vessel.arrivingTerminalId === BAINBRIDGE_TERMINAL_ID && vessel.atDock === false
-      && vessel.eta && Number.isFinite(Date.parse(vesselEta(vessel) ?? vessel.eta))
+      && vessel.eta && Number.isFinite(Date.parse(vesselArrival(vessel, crossings, now) ?? vessel.eta))
       && ((vessel.scheduledDeparture && Date.parse(vessel.scheduledDeparture) === departure
           && (vessel.id === leg.vesselId || (uniqueSlot && vessel.departingTerminalId === SEATTLE_TERMINAL_ID)))
         || (vessel.id === leg.vesselId && !vessel.scheduledDeparture
-          && Math.abs(Date.parse(vesselEta(vessel) ?? vessel.eta) - landing) < DISRUPTION_MERGE_MINUTES * 60000)));
+          && Math.abs(Date.parse(vesselArrival(vessel, crossings, now) ?? vessel.eta) - landing) < DISRUPTION_MERGE_MINUTES * 60000)));
     if (live) return [];
     return disruptionWave(leg.vesselId, leg.vesselName ?? 'Ferry', landing, now, settings, 'schedule');
   });
@@ -608,34 +648,47 @@ export function sailingDeparture(
   return delay < LATE_MINUTES ? { at: sailing.departingTime, delayMinutes: null } : { at: underway.leftDock, delayMinutes: delay };
 }
 
-// WSDOT publishes a scheduled arrival on almost no route, so the observed dock arrival is
-// the usual answer and the live ETA covers the one crossing still in progress.
+// WSDOT publishes a scheduled arrival on almost no route, so the observed dock arrival is the
+// usual answer. For the one crossing still in progress, the pair's own recent crossings are
+// worth about 2 minutes of error against 7 for the live ETA, which double counts the delay.
 export function sailingArrival(
-  sailing: Pick<SailingView, 'actualArrival' | 'arrivingTime' | 'vesselId' | 'departingTime'>,
-  vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'>>,
-): { at: string; estimated: boolean } | null {
-  if (sailing.actualArrival) return { at: sailing.actualArrival, estimated: false };
-  if (sailing.arrivingTime) return { at: sailing.arrivingTime, estimated: false };
+  sailing: Pick<SailingView, 'actualArrival' | 'arrivingTime' | 'vesselId' | 'departingTime' | 'actualDeparture' | 'departureDelayMinutes'>
+    & Partial<Pick<SailingView, 'departingTerminalId' | 'arrivingTerminalId'>>,
+  vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'> & Partial<Pick<VesselView, 'speed'>>>,
+  crossings: Crossings = new Map(),
+  now: number = Date.now(),
+): { at: string; estimated: boolean; samples: number | null } | null {
+  if (sailing.actualArrival) return { at: sailing.actualArrival, estimated: false, samples: null };
+  if (sailing.arrivingTime) return { at: sailing.arrivingTime, estimated: false, samples: null };
   // Matched on the scheduled departure so a boat that runs the route twice cannot lend its
   // ETA to the wrong row.
   const underway = vessels.find((vessel) =>
     vessel.id === sailing.vesselId && vessel.atDock === false && vessel.scheduledDeparture === sailing.departingTime);
-  if (!underway?.eta) return null;
-  return { at: vesselEta(underway) ?? underway.eta, estimated: true };
+  if (!underway) return null;
+  // Only a departure the fleet was actually seen to make can anchor a crossing. Without one the
+  // projection would time a late boat as though it had left on schedule.
+  const crossing = crossingFor(crossings, sailing.departingTerminalId, sailing.arrivingTerminalId);
+  const departure = crossing ? sailingDeparture(sailing, vessels) : null;
+  const projected = projectedArrival(departure?.at, crossing?.medianMinutes ?? null, now);
+  const at = projected ?? vesselEta(underway) ?? underway.eta;
+  return at ? { at, estimated: true, samples: projected === null ? null : crossing?.samples ?? null } : null;
 }
 
 // Measured against the actual departure when there is one, so the crossing never absorbs
 // time the boat spent late at the dock.
 export function sailingTimeMinutes(
-  sailing: Pick<SailingView, 'actualArrival' | 'arrivingTime' | 'vesselId' | 'departingTime' | 'actualDeparture' | 'departureDelayMinutes'>,
+  sailing: Pick<SailingView, 'actualArrival' | 'arrivingTime' | 'vesselId' | 'departingTime' | 'actualDeparture' | 'departureDelayMinutes'>
+    & Partial<Pick<SailingView, 'departingTerminalId' | 'arrivingTerminalId'>>,
   vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'> & Partial<Pick<VesselView, 'speed'>>>,
-): { minutes: number; estimated: boolean } | null {
-  const arrival = sailingArrival(sailing, vessels);
+  crossings: Crossings = new Map(),
+  now: number = Date.now(),
+): { minutes: number; estimated: boolean; samples: number | null } | null {
+  const arrival = sailingArrival(sailing, vessels, crossings, now);
   const departure = sailingDeparture(sailing, vessels)?.at ?? sailing.departingTime;
   if (arrival === null || departure === null) return null;
   const minutes = (Date.parse(arrival.at) - Date.parse(departure)) / 60000;
   if (Number.isNaN(minutes) || minutes <= 0) return null;
-  return { minutes: Math.round(minutes), estimated: arrival.estimated };
+  return { minutes: Math.round(minutes), estimated: arrival.estimated, samples: arrival.samples };
 }
 
 type CurrentSailing = Pick<SailingView, 'departingTime' | 'actualDeparture' | 'vesselId'>;
@@ -756,7 +809,8 @@ export interface CatchDeparture {
   departed: boolean;
 }
 
-type CatchVessel = Pick<VesselView, 'id' | 'atDock' | 'speed' | 'leftDock' | 'eta' | 'scheduledDeparture' | 'arrivingTerminalId' | 'updatedAt'>;
+type CatchVessel = Pick<VesselView, 'id' | 'atDock' | 'speed' | 'leftDock' | 'eta' | 'scheduledDeparture' | 'arrivingTerminalId' | 'updatedAt'>
+  & Partial<Pick<VesselView, 'departingTerminalId'>>;
 
 // A missing timestamp is treated as fresh: the feed publishes one on every real record, so its
 // absence means a fixture or a trimmed payload rather than a boat nobody has heard from.
@@ -775,6 +829,7 @@ export function catchDeparture(
   sailing: Pick<SailingView, 'departingTime' | 'departingTerminalId' | 'vesselId'>,
   vessels: CatchVessel[],
   now: number,
+  crossings: Crossings = new Map(),
 ): CatchDeparture | null {
   if (sailing.departingTime === null) return null;
   const scheduledAt = Date.parse(sailing.departingTime);
@@ -805,7 +860,13 @@ export function catchDeparture(
   if (vessel.atDock === false && vessel.arrivingTerminalId !== null && vessel.arrivingTerminalId === sailing.departingTerminalId) {
     const updatedAt = vessel.updatedAt ? Date.parse(vessel.updatedAt) : NaN;
     if (!Number.isFinite(updatedAt) || updatedAt > now || now - updatedAt > CATCH_FEED_FRESH_MINUTES * 60000) return onTime;
-    const eta = vesselEta(vessel) ?? vessel.eta;
+    // The fastest of the recent crossings, not the median, because this projection only ever
+    // claims the boat cannot sail before it has arrived. A median is late half the time, and
+    // late here pushes leave-by out and loses someone a ferry. A borrowed reverse-direction
+    // figure is not conservative enough to make that promise, so it is refused.
+    const crossing = crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId);
+    const fast = crossing && !crossing.borrowed && crossing.samples >= 3 ? crossing.fastMinutes : null;
+    const eta = projectedArrival(vessel.leftDock, fast, now) ?? vesselEta(vessel) ?? vessel.eta;
     if (!eta) return onTime;
     const arrivesAt = Date.parse(eta);
     if (Number.isNaN(arrivesAt)) return onTime;
@@ -836,13 +897,14 @@ export function catchWindows(
   now: number,
   timing: CatchTiming = { trafficMinutes: DEFAULT_SETTINGS.catchTrafficMinutes, queueMinutes: DEFAULT_SETTINGS.catchQueueMinutes },
   vessels: CatchVessel[] = [],
+  crossings: Crossings = new Map(),
 ): CatchWindow[] {
   const trafficMs = timing.trafficMinutes * 60000;
   const padMs = (timing.trafficMinutes + timing.queueMinutes) * 60000;
   return sailings
     .flatMap((sailing) => {
       if (sailing.isCancelled) return [];
-      const departure = catchDeparture(sailing, vessels, now);
+      const departure = catchDeparture(sailing, vessels, now, crossings);
       if (departure === null || departure.departed) return [];
       if (openSpaceCount(sailing) === 0) return [];
       if (now > departure.departsAt - trafficMs) return [];

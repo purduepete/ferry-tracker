@@ -1,4 +1,4 @@
-import type { ApiEnvelope, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
+import type { ApiEnvelope, CrossingView, SailingView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 
 let reauthenticating = false;
 
@@ -32,6 +32,7 @@ export const ferryApi = {
   terminals: (signal?: AbortSignal) => get<TerminalView[]>('/api/terminals', signal),
   vessels: (signal?: AbortSignal) => get<VesselView[]>('/api/vessels', signal),
   terminalMates: (signal?: AbortSignal) => get<TerminalMateView[]>('/api/terminal-mates', signal),
+  crossings: (signal?: AbortSignal) => get<CrossingView[]>('/api/crossings', signal),
   schedule: (departingId: number, arrivingId: number, signal?: AbortSignal) =>
     get<SailingView[]>(`/api/schedule?departingTerminalId=${departingId}&arrivingTerminalId=${arrivingId}&onlyRemaining=false`, signal),
   historyDates: (departingId: number, arrivingId: number, signal?: AbortSignal) =>

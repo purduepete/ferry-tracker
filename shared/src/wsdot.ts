@@ -311,6 +311,18 @@ export interface SailingSpaceView {
   maxSpaceCount: number | null;
 }
 
+export interface CrossingView {
+  departingTerminalId: number;
+  arrivingTerminalId: number;
+  medianMinutes: number;
+  // Catch needs a projection that is early rather than accurate, so it gets the low
+  // quantile and every other surface gets the median.
+  fastMinutes: number;
+  samples: number;
+  // True when the pair had too few legs of its own and the reverse direction stood in.
+  borrowed: boolean;
+}
+
 export interface ApiEnvelope<T> {
   data: T;
   fetchedAt: string;

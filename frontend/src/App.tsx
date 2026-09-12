@@ -1,8 +1,8 @@
-import { isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { isValidElement, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Anchor, AlertTriangle, ArrowLeftRight, ArrowRight, Car, ChevronDown, ChevronLeft, ChevronRight, Clock3, ExternalLink, GripVertical, History, MapPin, Plus, RefreshCw, RotateCcw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
-import type { ApiEnvelope, SailingView, TerminalAlertView, TerminalCameraView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
+import type { ApiEnvelope, CrossingView, SailingView, TerminalAlertView, TerminalCameraView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { addFavoriteRoute, alertCountLabel, alertMeta, BAINBRIDGE_TERMINAL_ID, cacheBusted, cameraAlt, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, DEFAULT_SETTINGS, departureDelayLabel, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCameraOrder, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderCameras, orderTerminals, phoneVehicleSpace, recordedSpaceLabel, refreshIsStale, removeFavoriteRoute, renameFavoriteRoute, reorderCameras, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingColumnBreaks, sailingDeparture, sailingTimeMinutes, saveCameraOrder, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselDelayMinutes, vesselEta, vesselRouteRank, type CameraOrder, type CatchOverride, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
+import { addFavoriteRoute, alertCountLabel, alertMeta, BAINBRIDGE_TERMINAL_ID, cacheBusted, cameraAlt, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, crossingFor, crossingKey, DEFAULT_SETTINGS, departureDelayLabel, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCameraOrder, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderCameras, orderTerminals, phoneVehicleSpace, recordedSpaceLabel, refreshIsStale, removeFavoriteRoute, renameFavoriteRoute, reorderCameras, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingColumnBreaks, sailingDeparture, sailingTimeMinutes, saveCameraOrder, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselArrival, vesselDelayMinutes, vesselRouteRank, type CameraOrder, type CatchOverride, type Crossings, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -124,25 +124,35 @@ function VesselDeparture({ vessel }: { vessel: VesselView }) {
   return <>{fieldTime(vessel.leftDock)}<span className="delay-pill" title={`Left ${delay} minutes after the scheduled departure`}>{delay} min</span></>;
 }
 
-function VesselEta({ vessel }: { vessel: VesselView }) {
-  const adjusted = vesselEta(vessel);
+function VesselEta({ vessel, crossings, now }: { vessel: VesselView; crossings: Crossings; now: number }) {
+  const arrival = vesselArrival(vessel, crossings, now);
   if (!vessel.eta) return <>—</>;
-  if (adjusted === null) return <>{fieldTime(vessel.eta)}</>;
-  return <>{fieldTime(vessel.eta)}<span className="delay-pill" title={`WSDOT's estimate plus the ${vesselDelayMinutes(vessel)} min departure delay`}>{clockTime(adjusted)}</span></>;
+  if (arrival === null || arrival === vessel.eta) return <>{fieldTime(vessel.eta)}</>;
+  const crossing = vessel.leftDock ? crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId) : null;
+  const reason = crossing
+    ? `Median of the last ${crossing.samples} crossings on this route`
+    : `WSDOT's estimate plus the ${vesselDelayMinutes(vessel)} min departure delay`;
+  return <>{fieldTime(vessel.eta)}<span className="delay-pill" title={reason}>{clockTime(arrival)}</span></>;
 }
 
-function SailingArrival({ sailing, vessels }: { sailing: SailingView; vessels: VesselView[] }) {
-  const arrival = sailingArrival(sailing, vessels);
+function estimateReason(samples: number | null) {
+  return samples === null
+    ? "Estimated from the vessel's live ETA"
+    : `Estimated from the median of the last ${samples} crossings on this route`;
+}
+
+function SailingArrival({ sailing, vessels, crossings, now }: { sailing: SailingView; vessels: VesselView[]; crossings: Crossings; now: number }) {
+  const arrival = sailingArrival(sailing, vessels, crossings, now);
   if (arrival === null) return <>—</>;
   if (!arrival.estimated) return <>{localTime(arrival.at)}</>;
-  return <span className="estimated-time" title="Estimated from the vessel's live ETA">{localTime(arrival.at)}</span>;
+  return <span className="estimated-time" title={estimateReason(arrival.samples)}>{localTime(arrival.at)}</span>;
 }
 
-function SailingTime({ sailing, vessels }: { sailing: SailingView; vessels: VesselView[] }) {
-  const crossing = sailingTimeMinutes(sailing, vessels);
+function SailingTime({ sailing, vessels, crossings, now }: { sailing: SailingView; vessels: VesselView[]; crossings: Crossings; now: number }) {
+  const crossing = sailingTimeMinutes(sailing, vessels, crossings, now);
   if (crossing === null) return <>—</>;
   if (!crossing.estimated) return <>{crossing.minutes} min</>;
-  return <span className="estimated-time" title="Estimated from the vessel's live ETA">{crossing.minutes} min</span>;
+  return <span className="estimated-time" title={estimateReason(crossing.samples)}>{crossing.minutes} min</span>;
 }
 
 function latestTimestamp(current: string | null, ...values: string[]) {
@@ -500,6 +510,7 @@ export function App() {
   const [terminalResponse, setTerminalResponse] = useState<ApiEnvelope<TerminalView[]> | null>(null);
   const [vesselResponse, setVesselResponse] = useState<ApiEnvelope<VesselView[]> | null>(null);
   const [mateResponse, setMateResponse] = useState<ApiEnvelope<TerminalMateView[]> | null>(null);
+  const [crossingRows, setCrossingRows] = useState<CrossingView[]>([]);
   const [scheduleResponse, setScheduleResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
   const [catchResponse, setCatchResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
   const [inboundResponse, setInboundResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
@@ -596,6 +607,16 @@ export function App() {
     const controller = loadOverview();
     return () => controller.abort();
   }, []);
+
+  // Kept out of the overview load on purpose. Capture is off on some hosts, where this 404s, and
+  // a rejection inside that Promise.all would take the whole page down with it.
+  useEffect(() => {
+    const controller = new AbortController();
+    ferryApi.crossings(controller.signal)
+      .then((response) => setCrossingRows(response.data))
+      .catch(() => { /* No measured crossings just means the live ETA stays in charge. */ });
+    return () => controller.abort();
+  }, [refreshVersion]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setMinimumInitialSkeletonElapsed(true), MINIMUM_SKELETON_MS);
@@ -747,11 +768,15 @@ export function App() {
   const currentSailing = scheduleResponse?.data ? getCurrentSailing(scheduleResponse.data, vessels) : null;
   const sailingColumns = useSailingColumns(tab === 'sailings', scheduleResponse?.data.length ?? 0);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
-  const waves = disruptionWaves(vessels, countdownNow, settings, inboundResponse?.data ?? []);
+  const crossings = useMemo(
+    () => new Map(crossingRows.map((row) => [crossingKey(row.departingTerminalId, row.arrivingTerminalId) ?? '', row])),
+    [crossingRows],
+  );
+  const waves = disruptionWaves(vessels, countdownNow, settings, inboundResponse?.data ?? [], crossings);
   const [nextWave, ...laterWaves] = waves;
   const nextLoad = nextWave && nextWave.vesselId !== null && nextWave.source !== 'schedule'
     ? disruptionLoad(inboundResponse?.data ?? [], nextWave.vesselId, nextWave.landingAt) : null;
-  const catches = catchWindows(catchResponse?.data ?? [], countdownNow, timing, vessels);
+  const catches = catchWindows(catchResponse?.data ?? [], countdownNow, timing, vessels, crossings);
   const [nextCatch, ...laterCatches] = catches;
   const minuteOptions = CATCH_MINUTE_CHOICES.map((minutes) => ({ value: minutes, label: `${minutes} min` }));
 
@@ -1188,7 +1213,7 @@ export function App() {
           {tab === 'sailings' && <div className="relationship-grid is-sailings-only" style={vesselStackHeight ? { '--vessel-stack-height': `${vesselStackHeight}px` } as CSSProperties : undefined}>
             <article className={`relationship-node terminal-node${selectedTerminal ? ' is-clickable' : ''}`} {...(selectedTerminal ? { role: 'button', tabIndex: 0, 'aria-label': `Show ${selectedTerminal.name} on the Terminals tab`, onClick: () => showTerminalOnTerminalsTab(selectedTerminal.id), onKeyDown: (event: KeyboardEvent<HTMLElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showTerminalOnTerminalsTab(selectedTerminal.id); } } } : {})}><span className="node-type">Terminal</span><h2>{selectedTerminal?.name ?? 'No terminal'}</h2><div className="field"><dt>City</dt><dd>{selectedTerminal?.city}{selectedTerminal?.latitude && selectedTerminal?.longitude ? <> <a href={`https://maps.google.com/?q=${selectedTerminal.latitude},${selectedTerminal.longitude}`} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Coordinates" value={selectedTerminal ? `${selectedTerminal.latitude}, ${selectedTerminal.longitude}` : null} /></article>
             <div className="relationship-link"><span>{associatedVessels.length} associated</span><ArrowRight /></div>
-            <div className={`vessel-stack${recordedDay ? ' is-dimmed' : ''}`} ref={vesselStackRef}>{recordedDay && <p className="vessel-live-note">Live positions only.</p>}{associatedVessels.length ? associatedVessels.map((vessel) => { const clickable = vessel.departingTerminalId !== null; return <article className={`relationship-node vessel-node${clickable ? ' is-clickable' : ''}`} key={vessel.id} {...(clickable ? { role: 'button', tabIndex: 0, 'aria-label': `Show ${vessel.name}'s route in the sailings view`, onClick: () => pickRoute(vessel.departingTerminalId, vessel.arrivingTerminalId), onKeyDown: (event: KeyboardEvent<HTMLElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pickRoute(vessel.departingTerminalId, vessel.arrivingTerminalId); } } } : {})}><span className="node-type">Vessel</span><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.name}</h2><p>{vessel.departingTerminalName ?? '—'} <ArrowRight size={14} /> {vessel.arrivingTerminalName ?? '—'}</p><Field label="Class" value={vessel.vesselClass} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Speed" value={vessel.speed === null ? null : `${vessel.speed} knots`} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></article>; }) : <div className="empty">No vessel currently references this terminal.</div>}</div>
+            <div className={`vessel-stack${recordedDay ? ' is-dimmed' : ''}`} ref={vesselStackRef}>{recordedDay && <p className="vessel-live-note">Live positions only.</p>}{associatedVessels.length ? associatedVessels.map((vessel) => { const clickable = vessel.departingTerminalId !== null; return <article className={`relationship-node vessel-node${clickable ? ' is-clickable' : ''}`} key={vessel.id} {...(clickable ? { role: 'button', tabIndex: 0, 'aria-label': `Show ${vessel.name}'s route in the sailings view`, onClick: () => pickRoute(vessel.departingTerminalId, vessel.arrivingTerminalId), onKeyDown: (event: KeyboardEvent<HTMLElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pickRoute(vessel.departingTerminalId, vessel.arrivingTerminalId); } } } : {})}><span className="node-type">Vessel</span><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.name}</h2><p>{vessel.departingTerminalName ?? '—'} <ArrowRight size={14} /> {vessel.arrivingTerminalName ?? '—'}</p><Field label="Class" value={vessel.vesselClass} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} crossings={crossings} now={countdownNow} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Speed" value={vessel.speed === null ? null : `${vessel.speed} knots`} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></article>; }) : <div className="empty">No vessel currently references this terminal.</div>}</div>
             <div className="relationship-link"><span>{scheduleResponse?.data.length ?? 0} sailings</span><ArrowRight /></div>
             <article className="relationship-node schedule-node">
               <button type="button" className="schedule-node-header" title="Show the Historical tab" onClick={() => setTab('historical')}>
@@ -1204,9 +1229,9 @@ export function App() {
 
           {tab === 'terminals' && <div className="data-grid">{terminals.map((terminal) => <article className={`data-card${terminal.id === highlightedTerminalId ? ' is-highlighted' : ''}`} key={terminal.id} ref={(element) => { if (element) terminalCardRefs.current[terminal.id] = element; else delete terminalCardRefs.current[terminal.id]; }}><h2><button className="card-link" type="button" title={`Show ${terminal.name} in the sailings view`} onClick={() => openRoute(terminal.id, null)}>{terminal.name}</button>{terminal.alerts.length > 0 && <AlertTriangle className="terminal-alert-icon" size={18} role="img" aria-label={alertCountLabel(terminal.alerts.length)} />}</h2><dl><div className="field"><dt>City</dt><dd>{terminal.city}{terminal.latitude && terminal.longitude ? <> <a href={`https://maps.google.com/?q=${terminal.latitude},${terminal.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: '6px' }}><ExternalLink size={13} /></a></> : null}</dd></div><Field label="Latitude" value={terminal.latitude} /><Field label="Longitude" value={terminal.longitude} /></dl><TerminalAlerts alerts={terminal.alerts} /><TerminalCameras terminalName={terminal.name} cameras={orderCameras(terminal.cameras, cameraOrder[terminal.id])} stamp={cameraStamp} onReorder={(ids) => changeCameraOrder(terminal.id, ids)} onOpen={(camera, opener) => openCamera(terminal.id, camera.id, opener)} /></article>)}</div>}
 
-          {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className={`data-card${vessel.id === highlightedVesselId ? ' is-highlighted' : ''}`} key={vessel.id} ref={(element) => { if (element) vesselCardRefs.current[vessel.id] = element; else delete vesselCardRefs.current[vessel.id]; }}><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.departingTerminalId === null ? vessel.name : <button className="card-link" type="button" title={`Show ${vessel.name}'s route in the sailings view`} onClick={() => openRoute(vessel.departingTerminalId, vessel.arrivingTerminalId)}>{vessel.name}</button>}</h2><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></dl></article>)}</div>}
+          {tab === 'vessels' && <div className="data-grid">{vessels.map((vessel) => <article className={`data-card${vessel.id === highlightedVesselId ? ' is-highlighted' : ''}`} key={vessel.id} ref={(element) => { if (element) vesselCardRefs.current[vessel.id] = element; else delete vesselCardRefs.current[vessel.id]; }}><div className="vessel-status-icon">{vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}</div><h2>{vessel.departingTerminalId === null ? vessel.name : <button className="card-link" type="button" title={`Show ${vessel.name}'s route in the sailings view`} onClick={() => openRoute(vessel.departingTerminalId, vessel.arrivingTerminalId)}>{vessel.name}</button>}</h2><dl><Field label="Class" value={vessel.vesselClass} /><Field label="Direction" value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`} /><Field label="In service" value={vessel.inService} /><Field label="At dock" value={vessel.atDock} /><Field label="Left dock" value={<VesselDeparture vessel={vessel} />} /><Field label="ETA" value={<VesselEta vessel={vessel} crossings={crossings} now={countdownNow} />} /><Field label="ETA basis" value={vessel.etaBasis ? <span className="field-note">{vessel.etaBasis}</span> : null} /><Field label="Updated" value={fieldTime(vessel.updatedAt)} /></dl></article>)}</div>}
 
-          {tab === 'historical' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Historical sailings</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Sailing time</th><th className="col-vessel">Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => { const linkedVesselId = sailingRowVesselId(sailing); const rowClasses = [isCurrentSailing(sailing, currentSailing) ? 'current' : '', linkedVesselId !== null ? 'is-linked' : ''].filter(Boolean).join(' '); return <tr key={`${sailing.departingTime}-${index}`} className={rowClasses || undefined} {...(linkedVesselId !== null ? { tabIndex: 0, 'aria-label': `View ${sailing.vesselName} on the Vessels tab`, onClick: () => showVesselOnVesselsTab(linkedVesselId), onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showVesselOnVesselsTab(linkedVesselId); } } } : {})}><td>{localTime(sailing.departingTime)}</td><td><DepartureDelay sailing={sailing} vessels={vessels} placeholder="—" /></td><td><SailingArrival sailing={sailing} vessels={vessels} /></td><td><SailingTime sailing={sailing} vessels={vessels} /></td><td className="col-vessel"><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRoute} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}><span className="space-detail">{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /></span><span className="space-desktop-pill"><CapacityMeter sailing={sailing} /></span><span className="space-percent-only"><MobileSpacePercent sailing={sailing} /></span></td></tr>; })}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
+          {tab === 'historical' && <div className="schedule-card"><div className="schedule-heading"><span className="node-type">Historical sailings</span></div><div className="table-wrap"><table><thead><tr><th>Departure</th><th>Left</th><th>Arrival</th><th>Sailing time</th><th className="col-vessel">Vessel</th><th>Vehicle space</th></tr></thead><tbody>{scheduleResponse?.data.map((sailing, index) => { const linkedVesselId = sailingRowVesselId(sailing); const rowClasses = [isCurrentSailing(sailing, currentSailing) ? 'current' : '', linkedVesselId !== null ? 'is-linked' : ''].filter(Boolean).join(' '); return <tr key={`${sailing.departingTime}-${index}`} className={rowClasses || undefined} {...(linkedVesselId !== null ? { tabIndex: 0, 'aria-label': `View ${sailing.vesselName} on the Vessels tab`, onClick: () => showVesselOnVesselsTab(linkedVesselId), onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showVesselOnVesselsTab(linkedVesselId); } } } : {})}><td>{localTime(sailing.departingTime)}</td><td><DepartureDelay sailing={sailing} vessels={vessels} placeholder="—" /></td><td><SailingArrival sailing={sailing} vessels={vessels} crossings={crossings} now={countdownNow} /></td><td><SailingTime sailing={sailing} vessels={vessels} crossings={crossings} now={countdownNow} /></td><td className="col-vessel"><SailingVessel sailing={sailing} vessels={vessels} onOpen={openRoute} /></td><td className={sailing.spaceSource === 'recorded' ? 'is-recorded' : undefined} title={recordedSpaceLabel(sailing) ?? undefined}><span className="space-detail">{vehicleSpace(sailing)} <RecordedSpaceMark sailing={sailing} /></span><span className="space-desktop-pill"><CapacityMeter sailing={sailing} /></span><span className="space-percent-only"><MobileSpacePercent sailing={sailing} /></span></td></tr>; })}</tbody></table>{!scheduleLoading && !scheduleResponse?.data.length && <div className="empty">No sailings in this 14-hour window.</div>}</div></div>}
 
           {tab === 'catch' && <div className="countdown-card">
             <div className="schedule-heading catch-heading has-switcher">

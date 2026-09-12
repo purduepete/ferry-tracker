@@ -72,6 +72,14 @@ export function createApp(
     try { send(response, await service.schedule(departingId, arrivingId, onlyRemaining)); } catch (error) { next(error); }
   });
 
+  app.get('/api/crossings', (_request, response, next) => {
+    if (!history) {
+      response.status(404).json({ error: 'Recorded crossings are not available.' });
+      return;
+    }
+    try { send(response, { data: history.crossings(), raw: null }); } catch (error) { next(error); }
+  });
+
   app.get('/api/history/dates', (request, response, next) => {
     const departingId = terminalId(request.query.departingTerminalId);
     const arrivingId = terminalId(request.query.arrivingTerminalId);

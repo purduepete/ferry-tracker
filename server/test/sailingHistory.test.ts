@@ -417,5 +417,29 @@ describe('history endpoints', () => {
 
   it('returns 404 when capture is off', async () => {
     await request(createApp(testConfig(), () => fixtureNow)).get('/api/history/dates?departingTerminalId=7&arrivingTerminalId=3').expect(404);
+    await request(createApp(testConfig(), () => fixtureNow)).get('/api/crossings').expect(404);
+  });
+
+  it('serves the measured crossings', async () => {
+    logLeg([
+      { departedAt: '2026-09-01T18:00:00.000Z', dockArrivalAt: '2026-09-01T18:34:00.000Z' },
+      { departedAt: '2026-09-01T19:00:00.000Z', dockArrivalAt: '2026-09-01T19:35:00.000Z' },
+      { departedAt: '2026-09-01T20:00:00.000Z', dockArrivalAt: '2026-09-01T20:36:00.000Z' },
+    ]);
+    db.prepare(`UPDATE sailing_leg
+      SET crossing_minutes = (julianday(dock_arrival_at) - julianday(departed_at)) * 1440`).run();
+
+    const crossingsApp = createApp(testConfig(), () => fixtureNow, undefined,
+      new DatabaseSailingHistory(db, () => Date.parse('2026-09-02T00:00:00.000Z')));
+    const response = await request(crossingsApp).get('/api/crossings').expect(200);
+
+    expect(response.body.data).toContainEqual({
+      departingTerminalId: 7,
+      arrivingTerminalId: 3,
+      medianMinutes: 35,
+      fastMinutes: 34,
+      samples: 3,
+      borrowed: false,
+    });
   });
 });
