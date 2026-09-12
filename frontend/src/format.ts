@@ -143,21 +143,26 @@ export interface ArrivalEstimate {
 }
 
 // The median beats WSDOT's estimate right up until the boat overruns it. Past that the median has
-// nothing left to say and the live ETA takes over, because it is still tracking the vessel's real
+// nothing left to say and the feed takes over, because it is still tracking the vessel's real
 // position. With both spent the clock is all that is left, and an arrival that has been and gone
 // is worse than one that walks forward.
 export function estimatedArrival(
   departedAt: string | null | undefined,
   medianMinutes: number | null,
-  liveEta: string | null | undefined,
+  vessel: Pick<VesselView, 'eta' | 'leftDock' | 'scheduledDeparture'>,
   now: number,
 ): ArrivalEstimate | null {
-  const live = liveEta ?? null;
   const projected = projectedArrival(departedAt, medianMinutes);
-  if (projected === null) return live === null ? null : { at: live, fromMedian: false };
+  // Minutes into a crossing the feed is still anchored to a stale position, so a late boat needs
+  // its delay added back. An hour into a 31 minute crossing that delay is long since priced in,
+  // and the raw ETA is the only figure re-estimated against where the boat actually is.
+  if (projected === null) {
+    const live = vesselEta(vessel) ?? vessel.eta;
+    return live === null ? null : { at: live, fromMedian: false };
+  }
   if (Date.parse(projected) >= now) return { at: projected, fromMedian: true };
-  const at = live === null ? Number.NaN : Date.parse(live);
-  if (at >= now) return { at: live as string, fromMedian: false };
+  const tracked = vessel.eta === null ? Number.NaN : Date.parse(vessel.eta);
+  if (tracked >= now) return { at: vessel.eta as string, fromMedian: false };
   return { at: new Date(now).toISOString(), fromMedian: false };
 }
 
@@ -169,7 +174,7 @@ export function vesselArrival(
   now: number = Date.now(),
 ): ArrivalEstimate | null {
   const crossing = crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId);
-  return estimatedArrival(vessel.leftDock, crossing?.medianMinutes ?? null, vesselEta(vessel) ?? vessel.eta, now);
+  return estimatedArrival(vessel.leftDock, crossing?.medianMinutes ?? null, vessel, now);
 }
 
 // Offloaded traffic takes about this long to clear the dock and reach the road.
@@ -690,7 +695,7 @@ export function sailingArrival(
   // projection would time a late boat as though it had left on schedule.
   const crossing = crossingFor(crossings, sailing.departingTerminalId, sailing.arrivingTerminalId);
   const departure = crossing ? sailingDeparture(sailing, vessels) : null;
-  const estimate = estimatedArrival(departure?.at, crossing?.medianMinutes ?? null, vesselEta(underway) ?? underway.eta, now);
+  const estimate = estimatedArrival(departure?.at, crossing?.medianMinutes ?? null, underway, now);
   if (estimate === null) return null;
   return { at: estimate.at, estimated: true, samples: estimate.fromMedian ? crossing?.samples ?? null : null };
 }

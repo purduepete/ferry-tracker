@@ -109,7 +109,7 @@ It works against a live database, so you can run it while the server is still ca
 
 The Sailings, Disruption and Catch tabs all time an in-progress crossing from the observed departure plus the pair median, and fall back to the WSDOT vessel ETA when a pair has no measured history. Catch uses the tenth percentile instead of the median and refuses a borrowed or thin pair, because its projection only ever claims a boat cannot sail before it has arrived, so it has to stay a lower bound.
 
-A boat that overruns its median has outrun what the median can say about it, so the arrival columns hand back to the live WSDOT ETA, which is still tracking the vessel's position. With both spent the estimate clamps to the current time and walks forward until the leg closes, rather than showing an arrival that has been and gone. Catch skips that handover and keeps the clamp, since the current time is the conservative floor there.
+A boat that overruns its median has outrun what the median can say about it, so the arrival columns hand back to the WSDOT vessel ETA, which is still tracking the vessel's position. The handover takes the raw feed value rather than the delay-adjusted one used minutes after departure: an hour into a half-hour crossing, every ETA WSDOT has published since already prices that delay in, and adding it again costs the 6.91 min scored below. With both spent the estimate clamps to the current time and walks forward until the leg closes, rather than showing an arrival that has been and gone. Catch skips the handover and keeps the clamp, since the current time is the conservative floor there.
 
 Backtested over 30 days and 2833 departures from a production snapshot:
 

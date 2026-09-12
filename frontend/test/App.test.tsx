@@ -997,6 +997,13 @@ describe('Sailing arrival', () => {
       .toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true, samples: null });
   });
 
+  it('leaves the departure delay off a handover, since the feed has long since priced it in', () => {
+    const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:56:00.000Z' };
+    const late = { ...boat, leftDock: '2026-09-01T23:56:00.000Z', eta: '2026-09-02T00:40:00.000Z' };
+    expect(sailingArrival(route, [late], crossings, Date.parse('2026-09-02T00:35:00.000Z')))
+      .toEqual({ at: '2026-09-02T00:40:00.000Z', estimated: true, samples: null });
+  });
+
   it('never lets the estimate fall behind the clock', () => {
     const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:46:00.000Z' };
     expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-02T00:35:00.000Z')))
