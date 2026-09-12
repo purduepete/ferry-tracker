@@ -27,6 +27,13 @@ export function alertCountLabel(count: number) {
   return count === 1 ? '1 service alert' : `${count} service alerts`;
 }
 
+// WSDOT stamps nearly every bulletin "All Alerts", so the token only earns its place when it says
+// something, which keeps a real type like "Cancellation" showing if they ever start sending one.
+export function alertMeta(type: string | null, publishedAt: string | null) {
+  const label = type?.trim().toLowerCase() === 'all alerts' ? null : type;
+  return [label, publishedAt ? fieldTime(publishedAt) : null].filter(Boolean).join(' · ');
+}
+
 // Multicolumn balances by height, which strands the remainder in the last column. A reader
 // scanning a schedule expects the leftmost column to be the fullest, so the indexes returned
 // here get a forced `break-before: column` to override the browser's own split.

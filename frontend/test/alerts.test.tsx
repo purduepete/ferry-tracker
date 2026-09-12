@@ -50,6 +50,27 @@ describe('terminal alerts', () => {
     expect(screen.getByText(alerts[0].text)).toBeInTheDocument();
   });
 
+  it('shows a real alert type alongside the publish time', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await user.click(await screen.findByRole('tab', { name: 'Terminals' }));
+    await user.click(await screen.findByRole('button', { name: /Alerts 1 service alert/ }));
+    expect(await screen.findByText(/^Cancellation · /)).toBeInTheDocument();
+  });
+
+  it('drops the type when WSDOT sends its catch-all "All Alerts" label', async () => {
+    mockApi(terminals([{ ...alerts[0], type: 'All Alerts' }]));
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await user.click(await screen.findByRole('tab', { name: 'Terminals' }));
+    await user.click(await screen.findByRole('button', { name: /Alerts 1 service alert/ }));
+    expect(await screen.findByText(alerts[0].title)).toBeInTheDocument();
+    expect(screen.queryByText(/All Alerts/)).toBeNull();
+  });
+
   it('marks the Sailings back-link without renaming it', async () => {
     mockApi();
     render(<ThemeProvider><App /></ThemeProvider>);
