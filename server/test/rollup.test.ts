@@ -268,6 +268,47 @@ describe('leg state machine', () => {
     expect(second.load_exclusion_reason).toBe('terminal_discontinuity');
   });
 
+  // Replayed from the Tacoma 15:00 Bainbridge to Seattle sailing on 2026-09-12. The feed never
+  // reported the Seattle dock, so the leg stayed open through the stop and the crossing back and
+  // recorded a 93 minute arrival at Seattle that was really the boat docking at Bainbridge.
+  it('excludes a leg that docks somewhere other than its own destination', () => {
+    observe([
+      { minute: 0, atDock: 1, departing: 3, arriving: 7 },
+      { minute: 18, atDock: 0, departing: 3, arriving: 7, leftDock: at(18) },
+      { minute: 50, atDock: 0, departing: 3, arriving: 7 },
+      { minute: 80, atDock: 0, departing: 3, arriving: 7 },
+      { minute: 93, atDock: 1, departing: 3, arriving: 7 },
+      { minute: 100, atDock: 1, departing: 3, arriving: 7 },
+      { minute: 110, atDock: 1, departing: 3, arriving: 7 },
+    ]);
+
+    runLegRollup(db, options);
+    const [leg] = legs();
+
+    expect(legs()).toHaveLength(1);
+    expect(leg.dock_arrival_at).toBe(at(93));
+    expect(leg.arriving_terminal_id).toBe(3);
+    expect(leg.confidence).toBe('low');
+    expect(leg.exclusion_reason).toBe('terminal_discontinuity');
+  });
+
+  it('keeps a leg that docks at its own destination once the feed has settled', () => {
+    observe([
+      { minute: 0, atDock: 1, departing: 7, arriving: 3 },
+      { minute: 10, atDock: 0, departing: 7, arriving: 3, leftDock: at(10) },
+      { minute: 40, atDock: 1, departing: 3, arriving: 7 },
+      { minute: 50, atDock: 1, departing: 3, arriving: 7 },
+      { minute: 60, atDock: 1, departing: 3, arriving: 7 },
+    ]);
+
+    runLegRollup(db, options);
+    const [leg] = legs();
+
+    expect(leg.arriving_terminal_id).toBe(3);
+    expect(leg.confidence).toBe('high');
+    expect(leg.exclusion_reason).toBeNull();
+  });
+
   it('uses the feed scheduled departure to measure lateness', () => {
     observe([
       { minute: 0, atDock: 1 },

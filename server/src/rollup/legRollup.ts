@@ -116,6 +116,20 @@ function trimUnsettledTail(observations: Observation[], windowSeconds: number, n
   return observations.slice(0, last.indexes[0]);
 }
 
+// For a poll or two after docking the feed can still name the crossing that just ended, so the
+// terminal a boat is really at is the one it has settled on by the end of the dock run. A run
+// that has not outlasted the window is still inside that stale stretch and gets no vote.
+function settledDockTerminals(observations: Observation[], windowSeconds: number): Array<number | null> {
+  const settled: Array<number | null> = observations.map(() => null);
+  for (const run of dockRuns(observations)) {
+    if (run.state !== 1) continue;
+    const last = observations[run.indexes[run.indexes.length - 1]];
+    if (Date.parse(last.ts) - run.startMs < windowSeconds * 1000) continue;
+    for (const index of run.indexes) settled[index] = last.departing_terminal_id;
+  }
+  return settled;
+}
+
 function dockRuns(observations: Observation[]): DockRun[] {
   const runs: DockRun[] = [];
   let open: DockRun | null = null;
@@ -198,8 +212,10 @@ function buildLegs(
   let lastArrival = seed;
   let previous: Observation | null = null;
   let gapPending = false;
+  const docked = settledDockTerminals(observations, options.dockDebounceSeconds);
 
-  for (const observation of observations) {
+  for (let index = 0; index < observations.length; index += 1) {
+    const observation = observations[index];
     if (observation.in_service === 0) {
       if (open) {
         legs.push(truncate(open, 'out_of_service'));
@@ -219,8 +235,22 @@ function buildLegs(
 
     if (observation.at_dock === 1) {
       if (open) {
-        const terminalId = open.arrivingTerminalId ?? observation.departing_terminal_id;
-        legs.push(finish(open, observation.ts, terminalId));
+        const arrivedAt = docked[index];
+        // A stale feed can hold a leg open through an unobserved arrival and the crossing back,
+        // so a dock anywhere but the leg's own destination means it swallowed more than one.
+        const stray = open.arrivingTerminalId !== null && arrivedAt !== null && arrivedAt !== open.arrivingTerminalId;
+        const terminalId = stray
+          ? arrivedAt
+          : open.arrivingTerminalId ?? arrivedAt ?? observation.departing_terminal_id;
+        const closed = finish(open, observation.ts, terminalId);
+        legs.push(stray
+          ? {
+            ...closed,
+            arrivingTerminalId: terminalId,
+            confidence: 'low',
+            exclusionReason: closed.exclusionReason ?? 'terminal_discontinuity',
+          }
+          : closed);
         lastArrival = { terminalId, at: observation.ts, origin: 'observed' };
         open = null;
       } else if (
