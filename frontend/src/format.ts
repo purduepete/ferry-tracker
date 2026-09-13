@@ -137,9 +137,13 @@ export function projectedArrival(departedAt: string | null | undefined, minutes:
   return Number.isNaN(left) ? null : new Date(left + minutes * 60000).toISOString();
 }
 
+// 'clock' means the boat is overdue and the estimate is only walking forward with the current
+// time, which is a different claim from either of the other two and has to be labelled as one.
+export type ArrivalSource = 'median' | 'feed' | 'clock';
+
 export interface ArrivalEstimate {
   at: string;
-  fromMedian: boolean;
+  source: ArrivalSource;
 }
 
 // The median beats WSDOT's estimate right up until the boat overruns it. Past that the median has
@@ -158,12 +162,12 @@ export function estimatedArrival(
   // and the raw ETA is the only figure re-estimated against where the boat actually is.
   if (projected === null) {
     const live = vesselEta(vessel) ?? vessel.eta;
-    return live === null ? null : { at: live, fromMedian: false };
+    return live === null ? null : { at: live, source: 'feed' };
   }
-  if (Date.parse(projected) >= now) return { at: projected, fromMedian: true };
+  if (Date.parse(projected) >= now) return { at: projected, source: 'median' };
   const tracked = vessel.eta === null ? Number.NaN : Date.parse(vessel.eta);
-  if (tracked >= now) return { at: vessel.eta as string, fromMedian: false };
-  return { at: new Date(now).toISOString(), fromMedian: false };
+  if (tracked >= now) return { at: vessel.eta as string, source: 'feed' };
+  return { at: new Date(now).toISOString(), source: 'clock' };
 }
 
 // The last few crossings on this pair beat WSDOT's estimate, which is anchored to some other
@@ -683,9 +687,9 @@ export function sailingArrival(
   vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'> & Partial<Pick<VesselView, 'speed'>>>,
   crossings: Crossings = new Map(),
   now: number = Date.now(),
-): { at: string; estimated: boolean; samples: number | null } | null {
-  if (sailing.actualArrival) return { at: sailing.actualArrival, estimated: false, samples: null };
-  if (sailing.arrivingTime) return { at: sailing.arrivingTime, estimated: false, samples: null };
+): { at: string; estimated: boolean; samples: number | null; source: ArrivalSource | null } | null {
+  if (sailing.actualArrival) return { at: sailing.actualArrival, estimated: false, samples: null, source: null };
+  if (sailing.arrivingTime) return { at: sailing.arrivingTime, estimated: false, samples: null, source: null };
   // Matched on the scheduled departure so a boat that runs the route twice cannot lend its
   // ETA to the wrong row.
   const underway = vessels.find((vessel) =>
@@ -697,7 +701,8 @@ export function sailingArrival(
   const departure = crossing ? sailingDeparture(sailing, vessels) : null;
   const estimate = estimatedArrival(departure?.at, crossing?.medianMinutes ?? null, underway, now);
   if (estimate === null) return null;
-  return { at: estimate.at, estimated: true, samples: estimate.fromMedian ? crossing?.samples ?? null : null };
+  const samples = estimate.source === 'median' ? crossing?.samples ?? null : null;
+  return { at: estimate.at, estimated: true, samples, source: estimate.source };
 }
 
 // Measured against the actual departure when there is one, so the crossing never absorbs
@@ -708,13 +713,13 @@ export function sailingTimeMinutes(
   vessels: Array<Pick<VesselView, 'id' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'> & Partial<Pick<VesselView, 'speed'>>>,
   crossings: Crossings = new Map(),
   now: number = Date.now(),
-): { minutes: number; estimated: boolean; samples: number | null } | null {
+): { minutes: number; estimated: boolean; samples: number | null; source: ArrivalSource | null } | null {
   const arrival = sailingArrival(sailing, vessels, crossings, now);
   const departure = sailingDeparture(sailing, vessels)?.at ?? sailing.departingTime;
   if (arrival === null || departure === null) return null;
   const minutes = (Date.parse(arrival.at) - Date.parse(departure)) / 60000;
   if (Number.isNaN(minutes) || minutes <= 0) return null;
-  return { minutes: Math.round(minutes), estimated: arrival.estimated, samples: arrival.samples };
+  return { minutes: Math.round(minutes), estimated: arrival.estimated, samples: arrival.samples, source: arrival.source };
 }
 
 type CurrentSailing = Pick<SailingView, 'departingTime' | 'actualDeparture' | 'vesselId'>;

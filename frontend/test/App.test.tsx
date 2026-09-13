@@ -968,52 +968,52 @@ describe('Sailing arrival', () => {
 
   it('prefers the observed dock arrival over the published schedule', () => {
     expect(sailingArrival({ ...sailing, actualArrival: '2026-09-02T00:21:00.000Z', arrivingTime: '2026-09-02T00:20:00.000Z' }, []))
-      .toEqual({ at: '2026-09-02T00:21:00.000Z', estimated: false, samples: null });
+      .toEqual({ at: '2026-09-02T00:21:00.000Z', estimated: false, samples: null, source: null });
   });
 
   it('falls back to the published schedule when nothing was observed', () => {
     expect(sailingArrival({ ...sailing, arrivingTime: '2026-09-02T00:20:00.000Z' }, []))
-      .toEqual({ at: '2026-09-02T00:20:00.000Z', estimated: false, samples: null });
+      .toEqual({ at: '2026-09-02T00:20:00.000Z', estimated: false, samples: null, source: null });
   });
 
   it('estimates from the live ETA of the boat making the crossing', () => {
-    expect(sailingArrival(sailing, [boat])).toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true, samples: null });
+    expect(sailingArrival(sailing, [boat])).toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true, samples: null, source: 'feed' });
   });
 
   it('adds the departure delay back onto the live ETA', () => {
     expect(sailingArrival(sailing, [{ ...boat, leftDock: '2026-09-01T23:56:00.000Z' }]))
-      .toEqual({ at: '2026-09-02T00:40:00.000Z', estimated: true, samples: null });
+      .toEqual({ at: '2026-09-02T00:40:00.000Z', estimated: true, samples: null, source: 'feed' });
   });
 
   it('times the crossing from the observed departure and the pair median', () => {
     const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:46:00.000Z' };
     expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-01T23:50:00.000Z')))
-      .toEqual({ at: '2026-09-02T00:20:12.000Z', estimated: true, samples: 7 });
+      .toEqual({ at: '2026-09-02T00:20:12.000Z', estimated: true, samples: 7, source: 'median' });
   });
 
   it('hands a spent median back to the live ETA', () => {
     const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:46:00.000Z' };
     expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-02T00:25:00.000Z')))
-      .toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true, samples: null });
+      .toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true, samples: null, source: 'feed' });
   });
 
   it('leaves the departure delay off a handover, since the feed has long since priced it in', () => {
     const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:56:00.000Z' };
     const late = { ...boat, leftDock: '2026-09-01T23:56:00.000Z', eta: '2026-09-02T00:40:00.000Z' };
     expect(sailingArrival(route, [late], crossings, Date.parse('2026-09-02T00:35:00.000Z')))
-      .toEqual({ at: '2026-09-02T00:40:00.000Z', estimated: true, samples: null });
+      .toEqual({ at: '2026-09-02T00:40:00.000Z', estimated: true, samples: null, source: 'feed' });
   });
 
   it('never lets the estimate fall behind the clock', () => {
     const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:46:00.000Z' };
     expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-02T00:35:00.000Z')))
-      .toEqual({ at: '2026-09-02T00:35:00.000Z', estimated: true, samples: null });
+      .toEqual({ at: '2026-09-02T00:35:00.000Z', estimated: true, samples: null, source: 'clock' });
   });
 
   it('keeps the live ETA on a pair with no measured crossings', () => {
     const route = { ...sailing, departingTerminalId: 3, arrivingTerminalId: 7, actualDeparture: '2026-09-01T23:46:00.000Z' };
     expect(sailingArrival(route, [boat], crossings, Date.parse('2026-09-01T23:50:00.000Z')))
-      .toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true, samples: null });
+      .toEqual({ at: '2026-09-02T00:29:00.000Z', estimated: true, samples: null, source: 'feed' });
   });
 
   it('gives no arrival for a boat still at the dock or on another slot', () => {
@@ -1028,22 +1028,22 @@ describe('Sailing time', () => {
 
   it('measures from the actual departure to the observed arrival', () => {
     expect(sailingTimeMinutes({ ...sailing, actualDeparture: '2026-09-01T23:56:00.000Z', actualArrival: '2026-09-02T00:31:00.000Z' }, []))
-      .toEqual({ minutes: 35, estimated: false, samples: null });
+      .toEqual({ minutes: 35, estimated: false, samples: null, source: null });
   });
 
   it('falls back to the scheduled departure when the boat has not sailed', () => {
     expect(sailingTimeMinutes({ ...sailing, arrivingTime: '2026-09-02T00:20:00.000Z' }, []))
-      .toEqual({ minutes: 35, estimated: false, samples: null });
+      .toEqual({ minutes: 35, estimated: false, samples: null, source: null });
   });
 
   it('marks a crossing built on the live ETA as estimated', () => {
     const boat = { id: 18, atDock: false, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:46:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
-    expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true, samples: null });
+    expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true, samples: null, source: 'feed' });
   });
 
   it('measures a late crossing from the live departure, so the delay never inflates it', () => {
     const boat = { id: 18, atDock: false, speed: 14, eta: '2026-09-02T00:29:00.000Z', leftDock: '2026-09-01T23:56:00.000Z', scheduledDeparture: '2026-09-01T23:45:00.000Z' };
-    expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true, samples: null });
+    expect(sailingTimeMinutes(sailing, [boat])).toEqual({ minutes: 44, estimated: true, samples: null, source: 'feed' });
   });
 
   it('reports the pair median instead of the doubled-up live ETA', () => {
@@ -1058,7 +1058,7 @@ describe('Sailing time', () => {
     }]]);
     const route = { ...sailing, departingTerminalId: 7, arrivingTerminalId: 3, actualDeparture: '2026-09-01T23:46:00.000Z' };
     expect(sailingTimeMinutes(route, [boat], crossings, Date.parse('2026-09-01T23:50:00.000Z')))
-      .toEqual({ minutes: 34, estimated: true, samples: 7 });
+      .toEqual({ minutes: 34, estimated: true, samples: 7, source: 'median' });
   });
 
   it('gives nothing when either end is missing or the pair is out of order', () => {

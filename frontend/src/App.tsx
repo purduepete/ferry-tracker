@@ -2,7 +2,7 @@ import { isValidElement, useEffect, useMemo, useRef, useState, type CSSPropertie
 import { Anchor, AlertTriangle, ArrowLeftRight, ArrowRight, Car, ChevronDown, ChevronLeft, ChevronRight, Clock3, ExternalLink, GripVertical, History, MapPin, Plus, RefreshCw, RotateCcw, Settings, Ship, Star, Timer, TrafficCone, Waypoints, Wind, X } from 'lucide-react';
 import type { ApiEnvelope, CrossingView, SailingView, TerminalAlertView, TerminalCameraView, TerminalMateView, TerminalView, VesselView } from '@ferry-tracker/shared';
 import { ferryApi } from './api';
-import { addFavoriteRoute, alertCountLabel, alertMeta, BAINBRIDGE_TERMINAL_ID, cacheBusted, cameraAlt, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, crossingFor, crossingKey, DEFAULT_SETTINGS, departureDelayLabel, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCameraOrder, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderCameras, orderTerminals, phoneVehicleSpace, recordedSpaceLabel, refreshIsStale, removeFavoriteRoute, renameFavoriteRoute, reorderCameras, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingColumnBreaks, sailingDeparture, sailingTimeMinutes, saveCameraOrder, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselArrival, vesselDelayMinutes, vesselRouteRank, type CameraOrder, type CatchOverride, type Crossings, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
+import { addFavoriteRoute, alertCountLabel, alertMeta, BAINBRIDGE_TERMINAL_ID, cacheBusted, cameraAlt, capacityLevel, CATCH_MINUTE_CHOICES, catchPillClass, catchTiming, catchWindowLevel, catchWindows, clearCatchOverride, clockTime, crossingFor, crossingKey, DEFAULT_SETTINGS, departureDelayLabel, disruptionLevel, disruptionLoad, disruptionWaves, fieldTime, getCurrentSailing, isCurrentSailing, isPublishedRoute, LATE_MINUTES, loadCameraOrder, loadCatchOverrides, loadFavoriteRoutes, loadFavoriteTerminalIds, loadSettings, localTime, normalizeSettings, openSpacePercent, orderCameras, orderTerminals, phoneVehicleSpace, recordedSpaceLabel, refreshIsStale, removeFavoriteRoute, renameFavoriteRoute, reorderCameras, reorderFavoriteRoutes, reorderFavoriteTerminals, routeKey, routeName, routePairName, sailingArrival, sailingColumnBreaks, sailingDeparture, sailingTimeMinutes, saveCameraOrder, saveCatchOverrides, saveFavoriteRoutes, saveFavoriteTerminalIds, saveSettings, SEATTLE_TERMINAL_ID, serviceDayLabel, SETTING_CHOICES, setCatchOverride, toggleFavoriteTerminalId, vehicleSpace, vesselArrival, vesselDelayMinutes, vesselRouteRank, type ArrivalSource, type CameraOrder, type CatchOverride, type Crossings, type FavoriteRoute, type FerrySettings, type CatchWindow } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -124,18 +124,23 @@ function VesselDeparture({ vessel }: { vessel: VesselView }) {
   return <>{fieldTime(vessel.leftDock)}<span className="delay-pill" title={`Left ${delay} minutes after the scheduled departure`}>{delay} min</span></>;
 }
 
+const OVERDUE_REASON = "Overdue: past both the usual crossing time and WSDOT's estimate, so this counts forward from now";
+
 function VesselEta({ vessel, crossings, now }: { vessel: VesselView; crossings: Crossings; now: number }) {
   const arrival = vesselArrival(vessel, crossings, now);
   if (!vessel.eta) return <>—</>;
   if (arrival === null || arrival.at === vessel.eta) return <>{fieldTime(vessel.eta)}</>;
-  const crossing = arrival.fromMedian ? crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId) : null;
+  const crossing = arrival.source === 'median' ? crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId) : null;
   const reason = crossing
     ? `Median of the last ${crossing.samples} crossings on this route`
-    : `WSDOT's estimate plus the ${vesselDelayMinutes(vessel)} min departure delay`;
+    : arrival.source === 'clock'
+      ? OVERDUE_REASON
+      : `WSDOT's estimate plus the ${vesselDelayMinutes(vessel)} min departure delay`;
   return <>{fieldTime(vessel.eta)}<span className="delay-pill" title={reason}>{clockTime(arrival.at)}</span></>;
 }
 
-function estimateReason(samples: number | null) {
+function estimateReason(samples: number | null, source: ArrivalSource | null) {
+  if (source === 'clock') return OVERDUE_REASON;
   return samples === null
     ? "Estimated from the vessel's live ETA"
     : `Estimated from the median of the last ${samples} crossings on this route`;
@@ -145,14 +150,14 @@ function SailingArrival({ sailing, vessels, crossings, now }: { sailing: Sailing
   const arrival = sailingArrival(sailing, vessels, crossings, now);
   if (arrival === null) return <>—</>;
   if (!arrival.estimated) return <>{localTime(arrival.at)}</>;
-  return <span className="estimated-time" title={estimateReason(arrival.samples)}>{localTime(arrival.at)}</span>;
+  return <span className="estimated-time" title={estimateReason(arrival.samples, arrival.source)}>{localTime(arrival.at)}</span>;
 }
 
 function SailingTime({ sailing, vessels, crossings, now }: { sailing: SailingView; vessels: VesselView[]; crossings: Crossings; now: number }) {
   const crossing = sailingTimeMinutes(sailing, vessels, crossings, now);
   if (crossing === null) return <>—</>;
   if (!crossing.estimated) return <>{crossing.minutes} min</>;
-  return <span className="estimated-time" title={estimateReason(crossing.samples)}>{crossing.minutes} min</span>;
+  return <span className="estimated-time" title={estimateReason(crossing.samples, crossing.source)}>{crossing.minutes} min</span>;
 }
 
 function latestTimestamp(current: string | null, ...values: string[]) {
