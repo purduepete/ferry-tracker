@@ -105,6 +105,24 @@ function Copy-Rule {
     return $copy
 }
 
+function Format-CFError {
+    <# The rulesets API omits 'code' and hides the real cause in source.pointer / error_chain,
+       and Set-StrictMode turns a missing property into its own error that buries the first one. #>
+    param([object] $Errors)
+
+    # Indexed lookup rather than .Properties.Name, which StrictMode rejects on a property-less object.
+    $has = { param($o, $n) if (-not $o) { return $false }; $p = $o.PSObject.Properties[$n]; return [bool]($p -and $p.Value) }
+    $out = foreach ($e in @($Errors)) {
+        if ($e -isnot [psobject]) { "$e"; continue }
+        $part = if (& $has $e 'code') { "$($e.code): " } else { '' }
+        $part += if (& $has $e 'message') { "$($e.message)" } else { ($e | ConvertTo-Json -Depth 6 -Compress) }
+        if (& $has $e 'source') { if (& $has $e.source 'pointer') { $part += " (at $($e.source.pointer))" } }
+        if (& $has $e 'error_chain') { $part += ' -> ' + ((Format-CFError $e.error_chain) -join '; ') }
+        $part
+    }
+    return @($out)
+}
+
 function Invoke-CF {
     <# Thin wrapper that surfaces Cloudflare's own error text instead of a bare 400. #>
     param(
@@ -134,15 +152,13 @@ function Invoke-CF {
         try { $parsed = $detail | ConvertFrom-Json } catch { $parsed = $null }
 
         if ($parsed -and $parsed.PSObject.Properties.Name -contains 'errors' -and $parsed.errors) {
-            $messages = @($parsed.errors | ForEach-Object { "$($_.code): $($_.message)" })
-            throw "$Method $Path failed. $($messages -join ' | ')"
+            throw "$Method $Path failed. $((Format-CFError $parsed.errors) -join ' | ')"
         }
         throw "$Method $Path failed. $detail"
     }
 
     if (-not $response.success) {
-        $messages = @($response.errors | ForEach-Object { "$($_.code): $($_.message)" })
-        throw "$Method $Path returned success=false. $($messages -join ' | ')"
+        throw "$Method $Path returned success=false. $((Format-CFError $response.errors) -join ' | ')"
     }
     return $response.result
 }
