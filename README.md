@@ -143,7 +143,16 @@ CATCH_TOKEN=<32 random bytes, hex>
 
 Behind Cloudflare, this path carries an Access bypass so the watch can reach it without an email login, which leaves the token as the only gate on it. Deploy the token-enforcing server before creating that bypass. `deploy/Setup-Cloudflare.ps1` creates the bypass and caps the path at 10 requests a minute.
 
-Rotating the token means editing `.env.local`, restarting the scheduled task, and editing the Shortcut.
+Setting or rotating the token means writing `.env.local`, restarting the scheduled task, and editing the Shortcut. Write the line with `WriteAllLines` rather than `Add-Content`: a `.env.local` with no trailing newline swallows an appended line onto the end of the previous one, and the installer then reports no token found.
+
+```powershell
+$t = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$p = 'C:\Files\Dev\main\ferry_tracker\.env.local'
+$lines = @([IO.File]::ReadAllLines($p) | Where-Object { $_ -notmatch '^\s*CATCH_TOKEN\s*=' }) + @('', "CATCH_TOKEN=$t")
+[IO.File]::WriteAllLines($p, [string[]]$lines, (New-Object Text.UTF8Encoding($false)))
+Stop-ScheduledTask -TaskName 'FerryTracker'; Start-ScheduledTask -TaskName 'FerryTracker'
+$t
+```
 
 ## Checks
 
