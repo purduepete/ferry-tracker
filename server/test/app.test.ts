@@ -152,6 +152,34 @@ describe('the watch catch endpoint', () => {
     expect(response.body.raw).toBeNull();
   });
 
+  it('pads by the traffic and queue minutes the caller asked for', async () => {
+    const short = 'departingTerminalId=7&arrivingTerminalId=3&traffic=5&queue=5';
+    const response = await request(gated).get(`/api/catch?${short}`).set('X-Ferry-Token', token).expect(200);
+    expect(response.body.data.summary).toBe('Leave by 09:50 for the 10:00 Tacoma, 50 min');
+    expect(response.body.data.windows[0]).toEqual(expect.objectContaining({
+      leaveByAt: '2026-09-01T16:50:00.000Z',
+      minutesAway: 50,
+    }));
+  });
+
+  it('falls back to the defaults when the padding is absent or junk', async () => {
+    const pair = 'departingTerminalId=7&arrivingTerminalId=3';
+    for (const suffix of ['', '&traffic=abc&queue=-4', '&traffic=15&queue=15']) {
+      const response = await request(gated).get(`/api/catch?${pair}${suffix}`).set('X-Ferry-Token', token).expect(200);
+      expect(response.body.data.summary).toBe('Leave by 09:30 for the 10:00 Tacoma, 30 min');
+    }
+  });
+
+  it('reads pad as the whole budget, and lets traffic or queue override it', async () => {
+    const pair = 'departingTerminalId=7&arrivingTerminalId=3';
+    const padded = await request(gated).get(`/api/catch?${pair}&pad=20`).set('X-Ferry-Token', token).expect(200);
+    expect(padded.body.data.summary).toBe('Leave by 09:40 for the 10:00 Tacoma, 40 min');
+    expect(padded.body.data.windows[0].queueMinutesRemaining).toBeNull();
+
+    const mixed = await request(gated).get(`/api/catch?${pair}&pad=20&queue=10`).set('X-Ferry-Token', token).expect(200);
+    expect(mixed.body.data.summary).toBe('Leave by 09:30 for the 10:00 Tacoma, 30 min');
+  });
+
   it('says so when every sailing has sailed', async () => {
     const tooLate = createApp(testConfig(false, token), () => fixtureNow);
     const response = await request(tooLate).get(`/api/catch?${query}`).set('X-Ferry-Token', token).expect(200);

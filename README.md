@@ -133,7 +133,11 @@ node deploy/backtest-crossings.mjs C:\ProgramData\ferry-tracker\ferry-capture.db
 { "data": { "summary": "Leave by 09:30 for the 10:00 Tacoma, 30 min", "windows": [ ... ] }, "raw": null }
 ```
 
-Query parameters are `departingTerminalId`, `arrivingTerminalId`, and optional `traffic`, `queue` and `pad` minutes (0 to 180). The summary is built from `shared/src/catch.ts`, the same module the browser renders from, so the two cannot drift.
+Query parameters are `departingTerminalId`, `arrivingTerminalId`, and optional `traffic`, `queue` and `pad` minutes (0 to 180). `pad` is the whole budget in one number and counts as drive time; `traffic` or `queue` override it. The summary is built from `shared/src/catch.ts`, the same module the browser renders from, so the two cannot drift.
+
+Raising `traffic` can push the leave-by time later rather than earlier. Drive time also decides which sailings are still reachable, so a larger value drops the nearest boat and the answer moves to the next one.
+
+The Traffic and Queue values set in the browser live in that browser's storage and never reach the server, so the watch uses whatever the URL says and 15/15 otherwise.
 
 The route only exists when `CATCH_TOKEN` is set, and every request must carry that value in an `X-Ferry-Token` header. Without the header it returns a bare 401. Put the token in a header rather than the query string so it stays out of logs and referrers.
 
@@ -141,7 +145,9 @@ The route only exists when `CATCH_TOKEN` is set, and every request must carry th
 CATCH_TOKEN=<32 random bytes, hex>
 ```
 
-Behind Cloudflare, this path carries an Access bypass so the watch can reach it without an email login, which leaves the token as the only gate on it. Deploy the token-enforcing server before creating that bypass. `deploy/Setup-Cloudflare.ps1` creates the bypass and caps the path at 10 requests a minute.
+Behind Cloudflare, this path carries an Access bypass so the watch can reach it without an email login, which leaves the token as the only gate on it. Deploy the token-enforcing server before creating that bypass. `deploy/Setup-Cloudflare.ps1` creates the bypass and caps the path at 5 requests per 10 seconds, which is the only counting period the free plan allows.
+
+Keep `.env.local` to one `CATCH_TOKEN` line. dotenv reads the last occurrence, so a duplicate leaves a token that looks valid in the file but returns 401.
 
 Setting or rotating the token means writing `.env.local`, restarting the scheduled task, and editing the Shortcut. Write the line with `WriteAllLines` rather than `Add-Content`: a `.env.local` with no trailing newline swallows an appended line onto the end of the previous one, and the installer then reports no token found.
 

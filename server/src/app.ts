@@ -19,10 +19,14 @@ function terminalId(value: unknown): number | null {
 // Three hours of padding is already absurd; anything past it is a typo or someone probing.
 const MAX_PAD_MINUTES = 180;
 
-function minutes(value: unknown, fallback: number): number {
-  if (typeof value !== 'string' || !/^\d+$/.test(value)) return fallback;
+function rawMinutes(value: unknown): number | null {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
   const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed >= 0 ? Math.min(parsed, MAX_PAD_MINUTES) : fallback;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? Math.min(parsed, MAX_PAD_MINUTES) : null;
+}
+
+function minutes(value: unknown, fallback: number): number {
+  return rawMinutes(value) ?? fallback;
 }
 
 // Hashing first gives both sides a fixed 32 bytes, so timingSafeEqual never throws on a length
@@ -108,9 +112,12 @@ export function createApp(
       response.status(400).json({ error: 'Valid, different departingTerminalId and arrivingTerminalId values are required.' });
       return;
     }
+    // `pad` is the single knob the app had before it split into drive time and lane time, and all
+    // of it counts as drive time, the same way the browser migrates a stored pad.
+    const pad = rawMinutes(request.query.pad);
     const timing = {
-      trafficMinutes: minutes(request.query.traffic, CATCH_TRAFFIC_MINUTES),
-      queueMinutes: minutes(request.query.queue, CATCH_QUEUE_MINUTES),
+      trafficMinutes: minutes(request.query.traffic, pad ?? CATCH_TRAFFIC_MINUTES),
+      queueMinutes: minutes(request.query.queue, pad === null ? CATCH_QUEUE_MINUTES : 0),
     };
     try { send(response, await service.catchWindows(departingId, arrivingId, timing)); } catch (error) { next(error); }
   });

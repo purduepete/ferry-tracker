@@ -146,11 +146,13 @@ $candidates = @(
     'C:\Files\Dev\main\_ferry-deploy\.env.local'
 ) | Where-Object { $_ } | Select-Object -Unique
 
+# Last, not first, on every key below: dotenv keeps the last occurrence, so reading the first one
+# from a file that picked up a duplicate would rewrite .env.local with a value the server never used.
 $accessCodeLine = $null
 $accessCodeFile = $null
 foreach ($candidate in $candidates) {
     if (-not (Test-Path -LiteralPath $candidate)) { Write-Info ("no file at {0}" -f $candidate); continue }
-    $accessCodeLine = Get-Content -LiteralPath $candidate | Where-Object { $_ -match '^\s*WSDOT_API_ACCESS_CODE\s*=\s*\S' } | Select-Object -First 1
+    $accessCodeLine = Get-Content -LiteralPath $candidate | Where-Object { $_ -match '^\s*WSDOT_API_ACCESS_CODE\s*=\s*\S' } | Select-Object -Last 1
     if ($accessCodeLine) { $accessCodeFile = $candidate; Write-Ok ("access code carried over from {0}" -f $candidate); break }
     Write-Warn ("{0} exists but has no WSDOT_API_ACCESS_CODE line" -f $candidate)
 }
@@ -164,7 +166,7 @@ if (-not $accessCodeLine) {
 $catchTokenLine = $null
 foreach ($candidate in (@($candidates | Where-Object { $_ -ne $envPath }) + $envPath)) {
     if (-not (Test-Path -LiteralPath $candidate)) { continue }
-    $catchTokenLine = Get-Content -LiteralPath $candidate | Where-Object { $_ -match '^\s*CATCH_TOKEN\s*=\s*\S' } | Select-Object -First 1
+    $catchTokenLine = Get-Content -LiteralPath $candidate | Where-Object { $_ -match '^\s*CATCH_TOKEN\s*=\s*\S' } | Select-Object -Last 1
     if ($catchTokenLine) { Write-Ok ("watch token carried over from {0}" -f $candidate); break }
 }
 if (-not $catchTokenLine) { Write-Info 'no CATCH_TOKEN found, so /api/catch will return 404' }
