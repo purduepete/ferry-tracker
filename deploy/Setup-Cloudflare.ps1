@@ -46,7 +46,10 @@
       Account | Account Rulesets         | Read
       Zone    | DNS                      | Edit
       Zone    | Transform Rules          | Edit
-      Zone    | Rate Limit Rules         | Edit
+      Zone    | Zone WAF                 | Edit
+
+    Rate limiting rules are deployed to the WAF's http_ratelimit phase, so they need Zone WAF
+    rather than a permission of their own. There is no "Rate Limit Rules" entry in the picker.
 
     Optional:
       Account | Access: Organizations, Identity Providers, and Groups | Read
@@ -203,7 +206,7 @@ if ([string]::IsNullOrWhiteSpace($script:Token)) {
     Write-Host '  Account | Account Rulesets          | Read'
     Write-Host '  Zone    | DNS                       | Edit'
     Write-Host '  Zone    | Transform Rules           | Edit'
-    Write-Host '  Zone    | Rate Limit Rules          | Edit'
+    Write-Host '  Zone    | Zone WAF                  | Edit   (this is what rate limiting needs)'
     Write-Host ''
     Write-Host 'Optional, to pin the login methods on the app:'
     Write-Host '  Account | Access: Organizations, Identity Providers, and Groups | Read'
