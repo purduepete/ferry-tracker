@@ -70,9 +70,9 @@ param(
     [string] $CatchAppName = 'Ferry Tracker watch endpoint',
     [string] $CatchPolicyName = 'Ferry Tracker watch bypass',
 
-    # A watch complication refreshes a few times an hour. Ten a minute leaves room for a manual
-    # tap without letting anyone who finds the path grind against the token check.
-    [int] $CatchRequestsPerMinute = 10,
+    # The free plan only counts over a 10 second window, so this is requests per 10 seconds, not
+    # per minute. Five covers a manual tap or three without letting anyone grind the token check.
+    [int] $CatchRequestsPerPeriod = 5,
 
     # Mirrors frontend/test/csp.test.tsx. If that test fails, it prints the new value.
     [string] $CspScriptHash = 'sha256-zmWzz+eVIE4YDlhZ1idw65PsmpiOGcNg1ZceiykhvJk=',
@@ -87,6 +87,10 @@ $ErrorActionPreference = 'Stop'
 $ApiBase = 'https://api.cloudflare.com/client/v4'
 $RuleRef = 'ferry_tracker_security_headers'
 $RateLimitRef = 'ferry_tracker_catch_ratelimit'
+
+# 10 is the only counting period and the only mitigation timeout the free plan is entitled to.
+# Anything else comes back as "not entitled to use the period 60, can only use a period among [10]".
+$RateLimitPeriodSeconds = 10
 $CatchPath = '/api/catch'
 $script:PlannedWrites = 0
 
@@ -537,14 +541,16 @@ Write-Step "Rate limiting rule on $CatchPath"
 $catchRule = @{
     ref         = $RateLimitRef
     description = 'Ferry Tracker watch endpoint'
-    expression  = "(http.host eq `"$Hostname`" and starts_with(http.request.uri.path, `"$CatchPath`"))"
+    # Path is the only request field the free plan can match on, so the rule cannot be pinned to a
+    # hostname. No other host in the zone serves this path, and the worst case is a 429 there too.
+    expression  = "(starts_with(http.request.uri.path, `"$CatchPath`"))"
     action      = 'block'
     ratelimit   = @{
         # ip.src paired with cf.colo.id is the only characteristic set the free plan allows.
         characteristics     = @('ip.src', 'cf.colo.id')
-        period              = 60
-        requests_per_period = $CatchRequestsPerMinute
-        mitigation_timeout  = 60
+        period              = $RateLimitPeriodSeconds
+        requests_per_period = $CatchRequestsPerPeriod
+        mitigation_timeout  = $RateLimitPeriodSeconds
     }
 }
 
@@ -561,7 +567,7 @@ if (-not $rateRuleset) {
         phase       = 'http_ratelimit'
         rules       = @($catchRule)
     } `
-        -Description "create the rate limiting ruleset capping $CatchPath at $CatchRequestsPerMinute/min" | Out-Null
+        -Description "create the rate limiting ruleset capping $CatchPath at $CatchRequestsPerPeriod per ${RateLimitPeriodSeconds}s" | Out-Null
 }
 else {
     Write-Info "ruleset $($rateRuleset.id) exists"
@@ -581,7 +587,7 @@ else {
 
     Invoke-CFWrite -Method PUT -Path "/zones/$zoneId/rulesets/$($rateRuleset.id)" `
         -Body @{ rules = @($keptRate + $catchRule) } `
-        -Description "upsert the $CatchPath rate limit at $CatchRequestsPerMinute/min" | Out-Null
+        -Description "upsert the $CatchPath rate limit at $CatchRequestsPerPeriod per ${RateLimitPeriodSeconds}s" | Out-Null
 }
 
 # ---------------------------------------------------------------- web analytics beacon
