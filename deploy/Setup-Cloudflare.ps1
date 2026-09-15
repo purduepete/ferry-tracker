@@ -174,7 +174,9 @@ function Invoke-CFWrite {
 
 # ---------------------------------------------------------------- token
 
-$script:Token = $env:CLOUDFLARE_API_TOKEN
+# A token pasted into a terminal often arrives with a trailing space or newline, and Cloudflare
+# answers that with a bare "1000: Invalid API Token" that looks like a permissions problem.
+$script:Token = "$env:CLOUDFLARE_API_TOKEN".Trim()
 if ([string]::IsNullOrWhiteSpace($script:Token)) {
     Write-Host ''
     Write-Host 'CLOUDFLARE_API_TOKEN is not set.' -ForegroundColor Red
@@ -185,6 +187,7 @@ if ([string]::IsNullOrWhiteSpace($script:Token)) {
     Write-Host '  Account | Account Rulesets          | Read'
     Write-Host '  Zone    | DNS                       | Edit'
     Write-Host '  Zone    | Transform Rules           | Edit'
+    Write-Host '  Zone    | Rate Limit Rules          | Edit'
     Write-Host ''
     Write-Host 'Optional, to pin the login methods on the app:'
     Write-Host '  Account | Access: Organizations, Identity Providers, and Groups | Read'
