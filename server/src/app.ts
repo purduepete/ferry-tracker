@@ -1,7 +1,8 @@
 import path from 'node:path';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import express, { type Request, type Response } from 'express';
-import { type ApiEnvelope, redactSecrets } from '@ferry-tracker/shared';
+import { CATCH_QUEUE_MINUTES, CATCH_TRAFFIC_MINUTES, type ApiEnvelope, redactSecrets } from '@ferry-tracker/shared';
 import { ZodError } from 'zod';
 import type { CaptureService } from './capture/captureService.js';
 import type { AppConfig } from './config.js';
@@ -13,6 +14,24 @@ function terminalId(value: unknown): number | null {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+// Three hours of padding is already absurd; anything past it is a typo or someone probing.
+const MAX_PAD_MINUTES = 180;
+
+function minutes(value: unknown, fallback: number): number {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return fallback;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? Math.min(parsed, MAX_PAD_MINUTES) : fallback;
+}
+
+// Hashing first gives both sides a fixed 32 bytes, so timingSafeEqual never throws on a length
+// mismatch and never leaks the token's length through an early return.
+function tokenMatches(supplied: unknown, expected: string): boolean {
+  if (typeof supplied !== 'string' || supplied.length === 0) return false;
+  const left = createHash('sha256').update(supplied, 'utf8').digest();
+  const right = createHash('sha256').update(expected, 'utf8').digest();
+  return timingSafeEqual(left, right);
 }
 
 export function createApp(
@@ -72,8 +91,31 @@ export function createApp(
     try { send(response, await service.schedule(departingId, arrivingId, onlyRemaining)); } catch (error) { next(error); }
   });
 
-  app.get('/api/crossings', (_request, response, next) => {
-    if (!history) {
+  // The Apple Watch complication's only endpoint. It sits outside the Cloudflare Access login, so
+  // the shared secret below is the whole gate, and an unset token leaves the route off the app.
+  app.get('/api/catch', async (request, response, next) => {
+    if (!config.catchToken) {
+      response.status(404).json({ error: 'The catch endpoint is not available.' });
+      return;
+    }
+    if (!tokenMatches(request.get('x-ferry-token'), config.catchToken)) {
+      response.status(401).json({ error: 'Unauthorized.' });
+      return;
+    }
+    const departingId = terminalId(request.query.departingTerminalId);
+    const arrivingId = terminalId(request.query.arrivingTerminalId);
+    if (!departingId || !arrivingId || departingId === arrivingId) {
+      response.status(400).json({ error: 'Valid, different departingTerminalId and arrivingTerminalId values are required.' });
+      return;
+    }
+    const timing = {
+      trafficMinutes: minutes(request.query.traffic, CATCH_TRAFFIC_MINUTES),
+      queueMinutes: minutes(request.query.queue, CATCH_QUEUE_MINUTES),
+    };
+    try { send(response, await service.catchWindows(departingId, arrivingId, timing)); } catch (error) { next(error); }
+  });
+
+  app.get('/api/crossings', (_request, response, next) => {    if (!history) {
       response.status(404).json({ error: 'Recorded crossings are not available.' });
       return;
     }
@@ -129,7 +171,7 @@ export function createApp(
     const message = error instanceof ZodError
       ? `WSDOT returned an unexpected data shape (${error.issues.length} validation ${error.issues.length === 1 ? 'issue' : 'issues'}).`
       : error instanceof Error ? error.message : 'Unknown server error.';
-    const safeMessage = redactSecrets(message, config.apiAccessCode);
+    const safeMessage = redactSecrets(message, config.secrets);
     response.status(502).json({ error: safeMessage });
   });
 

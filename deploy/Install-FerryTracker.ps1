@@ -11,8 +11,9 @@
     Safe to re-run. Every step checks for the existing state first.
 
 .PARAMETER StagedEnvFile
-    A .env.local to copy WSDOT_API_ACCESS_CODE out of. Only the access code is
-    taken; every other setting is written fresh. The value is never printed.
+    A .env.local to copy WSDOT_API_ACCESS_CODE out of. CATCH_TOKEN is copied too when
+    present. Only those two are taken; every other setting is written fresh. Neither
+    value is ever printed.
 
 .EXAMPLE
     .\Install-FerryTracker.ps1 -Verbose
@@ -157,6 +158,17 @@ if (-not $accessCodeLine) {
     throw ("No WSDOT_API_ACCESS_CODE found. Checked:`n  " + ($candidates -join "`n  ") + "`nPut a line reading WSDOT_API_ACCESS_CODE=<key> in any one of those and re-run.")
 }
 
+# The watch token is optional: with no line here the server 404s /api/catch. A staged file wins
+# over the installed one so a rotation is a drop-and-rerun, and the installed file is the fallback
+# so an ordinary redeploy does not silently wipe the token the Shortcut is already using.
+$catchTokenLine = $null
+foreach ($candidate in (@($candidates | Where-Object { $_ -ne $envPath }) + $envPath)) {
+    if (-not (Test-Path -LiteralPath $candidate)) { continue }
+    $catchTokenLine = Get-Content -LiteralPath $candidate | Where-Object { $_ -match '^\s*CATCH_TOKEN\s*=\s*\S' } | Select-Object -First 1
+    if ($catchTokenLine) { Write-Ok ("watch token carried over from {0}" -f $candidate); break }
+}
+if (-not $catchTokenLine) { Write-Info 'no CATCH_TOKEN found, so /api/catch will return 404' }
+
 $lines = @(
     '# Written by deploy/Install-FerryTracker.ps1. Hand edits survive only until the next run.'
     'DATA_SOURCE=live'
@@ -173,6 +185,7 @@ $lines = @(
     "CAPTURE_MIN_FREE_DISK_MB=$MinFreeDiskMb"
     'CAPTURE_STATUS_ENABLED=true'
 )
+if ($catchTokenLine) { $lines += @('', $catchTokenLine.Trim()) }
 # Windows PowerShell 5.1 writes a BOM with -Encoding utf8, and dotenv should never see one.
 [IO.File]::WriteAllLines($envPath, [string[]]$lines, (New-Object Text.UTF8Encoding($false)))
 Write-Ok ("wrote {0}" -f $envPath)

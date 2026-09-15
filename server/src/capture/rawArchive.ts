@@ -20,12 +20,12 @@ export class RawArchive {
     private readonly db: Db,
     private readonly directory: string,
     private readonly minFreeDiskMb: number,
-    private readonly secret?: string,
+    private readonly secrets?: readonly string[],
   ) {}
 
   /** `context` separates a fan-out endpoint's variants, such as one schedule per terminal pair. */
   async append(endpointId: EndpointId, capturedAt: string, body: unknown, context?: string): Promise<ArchiveResult> {
-    const payload = redactSecrets(canonical(body), this.secret);
+    const payload = redactSecrets(canonical(body), this.secrets);
     const hash = sha256(payload);
     const dedupeKey = context ? `${endpointId}|${context}` : endpointId;
     if (this.lastHash.get(dedupeKey) === hash) return { hash, written: false, reason: 'unchanged' };

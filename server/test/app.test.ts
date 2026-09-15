@@ -8,11 +8,13 @@ import { isScheduleVisible } from '../src/ferryDataService';
 
 const fixtureNow = Date.parse('2026-09-01T18:30:00.000Z');
 
-function testConfig(rawInspector: boolean): AppConfig {
+function testConfig(rawInspector: boolean, catchToken?: string): AppConfig {
   return {
     host: '127.0.0.1',
     port: 8787,
     dataSource: 'fixture',
+    catchToken,
+    secrets: catchToken ? [catchToken] : [],
     rawInspector,
     capture: {
       enabled: false,
@@ -113,6 +115,48 @@ describe('Ferry Tracker API', () => {
     const privateApp = createApp(testConfig(false));
     const response = await request(privateApp).get('/api/terminals').expect(200);
     expect(response.body.raw).toBeNull();
+  });
+});
+
+describe('the watch catch endpoint', () => {
+  const token = 'a'.repeat(64);
+  const query = 'departingTerminalId=7&arrivingTerminalId=3&traffic=15&queue=15';
+  // An hour before the fixture's first Seattle departure, so there is something left to catch.
+  const beforeDeparture = Date.parse('2026-09-01T16:00:00.000Z');
+  const gated = createApp(testConfig(false, token), () => beforeDeparture);
+
+  it('stays off the app entirely when no token is configured', async () => {
+    await request(createApp(testConfig(false), () => beforeDeparture)).get(`/api/catch?${query}`).expect(404);
+  });
+
+  it('refuses a missing or wrong token', async () => {
+    await request(gated).get(`/api/catch?${query}`).expect(401);
+    await request(gated).get(`/api/catch?${query}`).set('X-Ferry-Token', 'b'.repeat(64)).expect(401);
+  });
+
+  it('rejects a malformed terminal pair', async () => {
+    await request(gated).get('/api/catch?departingTerminalId=x&arrivingTerminalId=3').set('X-Ferry-Token', token).expect(400);
+    await request(gated).get('/api/catch?departingTerminalId=3&arrivingTerminalId=3').set('X-Ferry-Token', token).expect(400);
+  });
+
+  it('answers with a one-line summary and the windows behind it', async () => {
+    const response = await request(gated).get(`/api/catch?${query}`).set('X-Ferry-Token', token).expect(200);
+    expect(response.body.data.summary).toBe('Leave by 09:30 for the 10:00 Tacoma, 30 min');
+    expect(response.body.data.windows[0]).toEqual(expect.objectContaining({
+      departureAt: '2026-09-01T17:00:00.000Z',
+      leaveByAt: '2026-09-01T16:30:00.000Z',
+      minutesAway: 30,
+      vesselName: 'Tacoma',
+    }));
+    // The payload crosses a path Cloudflare Access does not guard, so raw never rides along.
+    expect(response.body.raw).toBeNull();
+  });
+
+  it('says so when every sailing has sailed', async () => {
+    const tooLate = createApp(testConfig(false, token), () => fixtureNow);
+    const response = await request(tooLate).get(`/api/catch?${query}`).set('X-Ferry-Token', token).expect(200);
+    expect(response.body.data.summary).toBe('No sailings you can still catch.');
+    expect(response.body.data.windows).toEqual([]);
   });
 });
 

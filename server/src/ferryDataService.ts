@@ -1,4 +1,8 @@
 import {
+  catchWindowLevel,
+  catchWindows as computeCatchWindows,
+  crossingKey,
+  pacificParts,
   parseWsdotDate,
   spaceCount,
   terminalSailingSpaceSchema,
@@ -7,6 +11,9 @@ import {
   terminalLocationSchema,
   vesselBasicSchema,
   vesselLocationSchema,
+  type CatchTiming,
+  type CatchWindow,
+  type Crossings,
   type SailingView,
   type SailingSpaceView,
   type SourceRecord,
@@ -65,6 +72,35 @@ function backfill(
     spaceObservedAt: match.observedAt,
     spaceLeadSeconds: match.leadSeconds,
   };
+}
+
+export interface CatchAnswer {
+  summary: string;
+  windows: CatchWindow[];
+}
+
+// Pacific, not the server's zone, because the reader is standing in a ferry queue in Washington.
+function pacificClock(iso: string): string {
+  const parts = pacificParts(iso);
+  return parts === null ? '??:??' : `${String(parts.hourLocal).padStart(2, '0')}:${String(parts.minuteLocal).padStart(2, '0')}`;
+}
+
+// One line, read on a watch face at arm's length, so it names the next boat and nothing else.
+export function catchSummary(windows: CatchWindow[]): string {
+  const next = windows[0];
+  if (next === undefined) return 'No sailings you can still catch.';
+
+  const boat = next.vesselName ? `${pacificClock(next.departureAt)} ${next.vesselName}` : `${pacificClock(next.departureAt)} boat`;
+  const delayed = next.expectedDepartureAt === null ? '' : ` (exp ${pacificClock(next.expectedDepartureAt)})`;
+  const queueLeft = next.estimatedMinutesAway === null ? next.queueMinutesRemaining : next.estimatedQueueMinutesRemaining;
+  const leaveBy = next.estimatedLeaveByAt ?? next.leaveByAt;
+  const minutesAway = next.estimatedMinutesAway ?? next.minutesAway;
+  const body = queueLeft === null
+    ? `Leave by ${pacificClock(leaveBy)} for the ${boat}${delayed}, ${minutesAway} min`
+    : `Leave now for the ${boat}${delayed}, ${queueLeft} min of queue left`;
+
+  // The marker carries the same warning the Catch tab paints red, which a one-line string cannot.
+  return catchWindowLevel(next) === 'imminent' ? `! ${body}` : body;
 }
 
 export class FerryDataService {
@@ -266,5 +302,23 @@ export class FerryDataService {
         .sort((left, right) => (left.departingTime ?? '').localeCompare(right.departingTime ?? '')),
       raw: { schedule: raw, sailingSpace: spacesRaw },
     };
+  }
+
+  // The same rules the Catch tab runs, answered server-side so a watch complication can read one
+  // line without shipping the schedule, the fleet and the crossing medians to the wrist.
+  async catchWindows(departingId: number, arrivingId: number, timing: CatchTiming): Promise<{ data: CatchAnswer; raw: unknown }> {
+    const now = this.now();
+    const [schedule, vessels] = await Promise.all([
+      this.schedule(departingId, arrivingId, true),
+      this.vessels(),
+    ]);
+    const crossings: Crossings = new Map();
+    for (const crossing of this.history?.crossings() ?? []) {
+      const key = crossingKey(crossing.departingTerminalId, crossing.arrivingTerminalId);
+      if (key !== null) crossings.set(key, crossing);
+    }
+    const windows = computeCatchWindows(schedule.data, now, timing, vessels.data, crossings);
+    // Raw stays null however the inspector is configured: this payload crosses a metered path.
+    return { data: { summary: catchSummary(windows), windows }, raw: null };
   }
 }

@@ -6,13 +6,20 @@
     Replaces the dashboard click-through. Creates, in this order:
       1. A reusable Access policy allowing only the given emails
       2. A self-hosted Access application on the exact hostname
-      3. A remotely-managed tunnel
-      4. The tunnel ingress rule pointing at the local app
-      5. A proxied CNAME to <tunnel-id>.cfargotunnel.com
-      6. A response header transform rule (nosniff, X-Frame-Options, CSP)
+      3. A path-scoped Access application on /api/catch carrying a bypass policy
+      4. A remotely-managed tunnel
+      5. The tunnel ingress rule pointing at the local app
+      6. A proxied CNAME to <tunnel-id>.cfargotunnel.com
+      7. A response header transform rule (nosniff, X-Frame-Options, CSP)
+      8. A rate limiting rule capping /api/catch
 
     Access comes before the DNS record on purpose. Creating the route first would publish the
     app to the internet with no policy in front of it.
+
+    The /api/catch bypass is deliberately narrow. That path answers the Apple Watch complication,
+    which cannot complete an Access email login, so the Express shared-secret header is the only
+    gate on it. Deploy the token-enforcing server BEFORE creating the bypass, or the path is
+    briefly public with nothing in front of it.
 
     Every step is idempotent: it looks for an existing object by name before creating one, so a
     failed run is safe to re-run. Nothing is written without -Apply.
@@ -39,6 +46,7 @@
       Account | Account Rulesets         | Read
       Zone    | DNS                      | Edit
       Zone    | Transform Rules          | Edit
+      Zone    | Rate Limit Rules         | Edit
 
     Optional:
       Account | Access: Organizations, Identity Providers, and Groups | Read
@@ -56,6 +64,12 @@ param(
     [string] $ServiceUrl = 'http://127.0.0.1:8787',
     [string] $AppName = 'Ferry Tracker',
     [string] $PolicyName = 'Ferry Tracker owner',
+    [string] $CatchAppName = 'Ferry Tracker watch endpoint',
+    [string] $CatchPolicyName = 'Ferry Tracker watch bypass',
+
+    # A watch complication refreshes a few times an hour. Ten a minute leaves room for a manual
+    # tap without letting anyone who finds the path grind against the token check.
+    [int] $CatchRequestsPerMinute = 10,
 
     # Mirrors frontend/test/csp.test.tsx. If that test fails, it prints the new value.
     [string] $CspScriptHash = 'sha256-zmWzz+eVIE4YDlhZ1idw65PsmpiOGcNg1ZceiykhvJk=',
@@ -69,6 +83,8 @@ $ErrorActionPreference = 'Stop'
 
 $ApiBase = 'https://api.cloudflare.com/client/v4'
 $RuleRef = 'ferry_tracker_security_headers'
+$RateLimitRef = 'ferry_tracker_catch_ratelimit'
+$CatchPath = '/api/catch'
 $script:PlannedWrites = 0
 
 # ---------------------------------------------------------------- helpers
@@ -77,6 +93,17 @@ function Write-Step { param([string] $Text) Write-Host "`n=== $Text" -Foreground
 function Write-Ok { param([string] $Text) Write-Host "    [ok]   $Text" -ForegroundColor Green }
 function Write-Info { param([string] $Text) Write-Host "    $Text" -ForegroundColor Gray }
 function Write-Plan { param([string] $Text) Write-Host "    [plan] $Text" -ForegroundColor Yellow }
+
+function Copy-Rule {
+    <# Projects an existing ruleset rule back into a writable body, dropping server-set fields. #>
+    param([Parameter(Mandatory)][object] $Rule)
+
+    $copy = @{ expression = $Rule.expression; action = $Rule.action }
+    foreach ($field in 'ref', 'description', 'action_parameters', 'enabled', 'ratelimit') {
+        if ($Rule.PSObject.Properties.Name -contains $field) { $copy[$field] = $Rule.$field }
+    }
+    return $copy
+}
 
 function Invoke-CF {
     <# Thin wrapper that surfaces Cloudflare's own error text instead of a bare 400. #>
@@ -315,6 +342,48 @@ else {
         -Body $appBody -Description "create self-hosted app on $Hostname" | Out-Null
 }
 
+# ---------------------------------------------------------------- watch endpoint bypass
+
+Write-Step "Access bypass on $Hostname$CatchPath"
+Write-Info 'Only create this once the server enforcing CATCH_TOKEN is already deployed.'
+
+$catchDomain = "$Hostname$CatchPath"
+$catchApp = $apps | Where-Object { $_.domain -eq $catchDomain } | Select-Object -First 1
+
+if ($catchApp) {
+    Write-Ok "already exists ($($catchApp.id)), named '$($catchApp.name)'"
+
+    $catchPolicies = @($catchApp.policies)
+    if ($catchPolicies.Count -eq 0) {
+        $catchPolicies = @(Invoke-CF -Method GET -Path "/accounts/$AccountId/access/apps/$($catchApp.id)/policies")
+    }
+    if (@($catchPolicies | Where-Object { $_.decision -eq 'bypass' }).Count -gt 0) {
+        Write-Ok 'bypass policy is attached'
+    }
+    else {
+        # Without a bypass the watch gets Cloudflare's login HTML instead of JSON, and with the
+        # wrong decision the path could be sitting behind nothing at all. Neither is safe to patch
+        # around, so stop and let a human look.
+        throw "The app on $catchDomain has no bypass policy. Delete it under Zero Trust > Access > Applications and re-run."
+    }
+}
+else {
+    $created = Invoke-CFWrite -Method POST -Path "/accounts/$AccountId/access/policies" `
+        -Body @{ name = $CatchPolicyName; decision = 'bypass'; include = @(@{ everyone = @{} }) } `
+        -Description "create the bypass policy for $CatchPath"
+    $catchPolicyId = if ($created) { $created.id } else { '<policy-id-from-this-run>' }
+
+    Invoke-CFWrite -Method POST -Path "/accounts/$AccountId/access/apps" `
+        -Body @{
+        name                 = $CatchAppName
+        domain               = $catchDomain          # path-scoped, so it wins over the root app
+        type                 = 'self_hosted'
+        app_launcher_visible = $false
+        policies             = @($catchPolicyId)
+    } `
+        -Description "create the path-scoped bypass app on $catchDomain" | Out-Null
+}
+
 # ---------------------------------------------------------------- tunnel
 
 Write-Step "Tunnel: $TunnelName"
@@ -429,19 +498,68 @@ else {
     # Keep every other rule in the zone untouched; replace only ours.
     $kept = @($existingRules | Where-Object {
             -not ($_.PSObject.Properties.Name -contains 'ref' -and $_.ref -eq $RuleRef)
-        } | ForEach-Object {
-            $r = @{ expression = $_.expression; action = $_.action }
-            if ($_.PSObject.Properties.Name -contains 'ref') { $r.ref = $_.ref }
-            if ($_.PSObject.Properties.Name -contains 'description') { $r.description = $_.description }
-            if ($_.PSObject.Properties.Name -contains 'action_parameters') { $r.action_parameters = $_.action_parameters }
-            if ($_.PSObject.Properties.Name -contains 'enabled') { $r.enabled = $_.enabled }
-            $r
-        })
+        } | ForEach-Object { Copy-Rule $_ })
     Write-Info "preserving $($kept.Count) unrelated rule(s)"
 
     Invoke-CFWrite -Method PUT -Path "/zones/$zoneId/rulesets/$($phaseRuleset.id)" `
         -Body @{ rules = @($kept + $ourRule) } `
         -Description 'upsert the Ferry Tracker security header rule' | Out-Null
+}
+
+# ---------------------------------------------------------------- watch endpoint rate limit
+
+Write-Step "Rate limiting rule on $CatchPath"
+
+# The endpoint sits outside Access, so the edge caps it before the token check ever runs. Upstream
+# WSDOT calls are cached for 30s inside the server, so this protects the box, not the WSDOT quota.
+$catchRule = @{
+    ref         = $RateLimitRef
+    description = 'Ferry Tracker watch endpoint'
+    expression  = "(http.host eq `"$Hostname`" and starts_with(http.request.uri.path, `"$CatchPath`"))"
+    action      = 'block'
+    ratelimit   = @{
+        # ip.src paired with cf.colo.id is the only characteristic set the free plan allows.
+        characteristics     = @('ip.src', 'cf.colo.id')
+        period              = 60
+        requests_per_period = $CatchRequestsPerMinute
+        mitigation_timeout  = 60
+    }
+}
+
+$rateRuleset = $rulesets |
+Where-Object { $_.phase -eq 'http_ratelimit' -and $_.kind -eq 'zone' } |
+Select-Object -First 1
+
+if (-not $rateRuleset) {
+    Invoke-CFWrite -Method POST -Path "/zones/$zoneId/rulesets" `
+        -Body @{
+        name        = 'Zone-level Rate Limiting Ruleset'
+        description = 'Created by Setup-Cloudflare.ps1'
+        kind        = 'zone'
+        phase       = 'http_ratelimit'
+        rules       = @($catchRule)
+    } `
+        -Description "create the rate limiting ruleset capping $CatchPath at $CatchRequestsPerMinute/min" | Out-Null
+}
+else {
+    Write-Info "ruleset $($rateRuleset.id) exists"
+    $rateDetail = Invoke-CF -Method GET -Path "/zones/$zoneId/rulesets/$($rateRuleset.id)"
+    $existingRateRules = @()
+    if ($rateDetail.PSObject.Properties.Name -contains 'rules' -and $rateDetail.rules) {
+        $existingRateRules = @($rateDetail.rules)
+    }
+
+    $keptRate = @($existingRateRules | Where-Object {
+            -not ($_.PSObject.Properties.Name -contains 'ref' -and $_.ref -eq $RateLimitRef)
+        } | ForEach-Object { Copy-Rule $_ })
+    Write-Info "preserving $($keptRate.Count) unrelated rule(s)"
+    if ($keptRate.Count -gt 0) {
+        Write-Info 'The free plan allows a single rate limiting rule, so this write may be rejected.'
+    }
+
+    Invoke-CFWrite -Method PUT -Path "/zones/$zoneId/rulesets/$($rateRuleset.id)" `
+        -Body @{ rules = @($keptRate + $catchRule) } `
+        -Description "upsert the $CatchPath rate limit at $CatchRequestsPerMinute/min" | Out-Null
 }
 
 # ---------------------------------------------------------------- web analytics beacon

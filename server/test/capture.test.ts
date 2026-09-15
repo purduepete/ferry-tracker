@@ -17,6 +17,7 @@ function captureConfig(overrides: Partial<AppConfig['capture']> = {}): AppConfig
     port: 8787,
     dataSource: 'live',
     apiAccessCode: ACCESS_CODE,
+    secrets: [ACCESS_CODE],
     rawInspector: false,
     capture: {
       enabled: true,

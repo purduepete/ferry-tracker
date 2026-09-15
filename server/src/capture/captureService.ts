@@ -45,7 +45,7 @@ export class CaptureService {
     private readonly now: () => number = Date.now,
   ) {
     const capture = config.capture;
-    this.archive = new RawArchive(db, capture.rawArchiveDir, capture.minFreeDiskMb, config.apiAccessCode);
+    this.archive = new RawArchive(db, capture.rawArchiveDir, capture.minFreeDiskMb, config.secrets);
     const definitions: TaskDefinition[] = [
       {
         name: 'vessel_locations',
@@ -197,7 +197,7 @@ export class CaptureService {
         new Date(this.now()).toISOString(),
         this.now() - startedMs,
         categorize(error),
-        redactSecrets(error, this.config.apiAccessCode).slice(0, 2000),
+        redactSecrets(error, this.config.secrets).slice(0, 2000),
         pacificParts(startedAt)?.serviceDate ?? null,
       );
   }

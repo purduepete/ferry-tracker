@@ -6,10 +6,11 @@ const ACCESS_CODE_PARAM = /([?&](?:api)?accesscode=)[^&\s"']+/gi;
  * The Express error middleware only covers HTTP responses, so capture errors, archive
  * bodies, log lines and the status payload all route through here instead.
  */
-export function redactSecrets(value: unknown, secret?: string): string {
+export function redactSecrets(value: unknown, secret?: string | ReadonlyArray<string | undefined>): string {
   const text = toText(value);
   const withoutParam = text.replace(ACCESS_CODE_PARAM, '$1[redacted]');
-  return secret ? withoutParam.replaceAll(secret, '[redacted]') : withoutParam;
+  const secrets = (Array.isArray(secret) ? secret : [secret]).filter((entry): entry is string => Boolean(entry));
+  return secrets.reduce((redacted, entry) => redacted.replaceAll(entry, '[redacted]'), withoutParam);
 }
 
 function toText(value: unknown): string {

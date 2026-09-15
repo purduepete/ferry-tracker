@@ -292,6 +292,7 @@ function testConfig(): AppConfig {
     host: '127.0.0.1',
     port: 8787,
     dataSource: 'fixture',
+    secrets: [],
     rawInspector: false,
     capture: {
       enabled: false,

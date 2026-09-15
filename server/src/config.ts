@@ -29,6 +29,10 @@ export interface AppConfig {
   port: number;
   dataSource: 'live' | 'fixture';
   apiAccessCode?: string;
+  /** Shared secret for /api/catch. Unset leaves the route off entirely. */
+  catchToken?: string;
+  /** Every secret that must never reach a response, a log line or the raw archive. */
+  secrets: string[];
   rawInspector: boolean;
   fixtureNow?: string;
   capture: CaptureConfig;
@@ -36,11 +40,15 @@ export interface AppConfig {
 
 export function getConfig(): AppConfig {
   const dataSource = process.env.DATA_SOURCE === 'live' ? 'live' : 'fixture';
+  const apiAccessCode = process.env.WSDOT_API_ACCESS_CODE;
+  const catchToken = process.env.CATCH_TOKEN || undefined;
   return {
     host: process.env.HOST || '0.0.0.0',
     port: Number(process.env.PORT ?? 8787),
     dataSource,
-    apiAccessCode: process.env.WSDOT_API_ACCESS_CODE,
+    apiAccessCode,
+    catchToken,
+    secrets: [apiAccessCode, catchToken].filter((secret): secret is string => Boolean(secret)),
     rawInspector: process.env.ENABLE_RAW_INSPECTOR !== 'false',
     fixtureNow: dataSource === 'fixture' ? process.env.FIXTURE_NOW : undefined,
     capture: getCaptureConfig(),

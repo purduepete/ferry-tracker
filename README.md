@@ -125,6 +125,26 @@ Partitioning by vessel as well as pair moved the mean error by 0.01 min, and no 
 node deploy/backtest-crossings.mjs C:\ProgramData\ferry-tracker\ferry-capture.db
 ```
 
+## Watch endpoint
+
+`GET /api/catch` returns the Catch tab's answer as one line of text, so an Apple Shortcut can put it on a watch face:
+
+```json
+{ "data": { "summary": "Leave by 09:30 for the 10:00 Tacoma, 30 min", "windows": [ ... ] }, "raw": null }
+```
+
+Query parameters are `departingTerminalId`, `arrivingTerminalId`, and optional `traffic`, `queue` and `pad` minutes (0 to 180). The summary is built from `shared/src/catch.ts`, the same module the browser renders from, so the two cannot drift.
+
+The route only exists when `CATCH_TOKEN` is set, and every request must carry that value in an `X-Ferry-Token` header. Without the header it returns a bare 401. Put the token in a header rather than the query string so it stays out of logs and referrers.
+
+```dotenv
+CATCH_TOKEN=<32 random bytes, hex>
+```
+
+Behind Cloudflare, this path carries an Access bypass so the watch can reach it without an email login, which leaves the token as the only gate on it. Deploy the token-enforcing server before creating that bypass. `deploy/Setup-Cloudflare.ps1` creates the bypass and caps the path at 10 requests a minute.
+
+Rotating the token means editing `.env.local`, restarting the scheduled task, and editing the Shortcut.
+
 ## Checks
 
 ```powershell
