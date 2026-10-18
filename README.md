@@ -22,8 +22,8 @@ respectively. The listener audit confirms source port 8787, and the redacted
 configuration confirms `C:\ProgramData\ferry-tracker` as its capture directory.
 It builds
 with Node 22 or newer and launches `server\dist\index.js` directly on
-`127.0.0.1:8787`. Both `ferry-tracker.jimlertech.com` and the legacy
-`ferry.jimlertech.com` route retain `/api/catch`.
+`127.0.0.1:8787`. The `ferry-tracker.jimlertech.com` route keeps the
+`/api/catch` Access bypass.
 
 All build commands use the staged release root (`workingDirectory: "."`).
 Deployment installs locked dependencies with `npm ci --ignore-scripts`, runs

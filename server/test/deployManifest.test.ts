@@ -31,7 +31,6 @@ it('keeps the release stateless and preserves both catch aliases and source task
   expect(manifest.launch.environment.DATABASE_URL).toBeUndefined();
   expect(manifest.routes).toEqual([
     { hostname: 'ferry-tracker.jimlertech.com', catchPath: '/api/catch' },
-    { hostname: 'ferry.jimlertech.com', catchPath: '/api/catch' },
   ]);
   expect(manifest.source.tasks).toEqual(['FerryTracker', 'FerryTracker-Watchdog', 'FerryTracker-Backup']);
   expect(manifest.state).toContainEqual(expect.objectContaining({ source: '.env.local', target: 'secrets\\source\\app.env', required: true }));
