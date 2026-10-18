@@ -1,7 +1,7 @@
 # Ferry Tracker
 
 Repository: [purduepete/ferrytracker](https://github.com/purduepete/ferrytracker).
-The laptop checkout is `C:\Files\Dev\main\ferrytrackers`. The running source
+The laptop checkout is `C:\Files\Dev\main\ferrytracker`. The running source
 checkout on `jimbrownhome` remains `C:\Files\Dev\main\ferry_tracker` until cutover.
 The `ferry_tracker` PostgreSQL database, application ID, and public hostnames stay unchanged.
 
