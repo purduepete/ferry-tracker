@@ -25,7 +25,13 @@ with Node 22 or newer and launches `server\dist\index.js` directly on
 `127.0.0.1:8787`. Both `ferry-tracker.jimlertech.com` and the legacy
 `ferry.jimlertech.com` route retain `/api/catch`.
 
-Both build commands use the staged release root (`workingDirectory: "."`).
+All build commands use the staged release root (`workingDirectory: "."`).
+Deployment installs locked dependencies with `npm ci --ignore-scripts`, runs
+only esbuild's install hook with `npm rebuild esbuild`, then executes
+`npm run verify:dependencies` before building. This avoids npm's implicit
+`node-gyp rebuild` for `better-sqlite3`, which already ships Windows binaries.
+The check opens an in-memory SQLite database, runs an esbuild transform, and
+loads the PostgreSQL driver. Missing or incompatible binaries fail staging.
 The root workspace build compiles shared types, `server\dist\index.js`, and the
 frontend. The archive must contain committed source and dependency manifests;
 local build output and private environment files are excluded.

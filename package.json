@@ -14,6 +14,7 @@
   "scripts": {
     "dev": "concurrently -k -n server,web -c cyan,green \"npm run dev --workspace @ferry-tracker/server\" \"npm run dev --workspace @ferry-tracker/frontend\"",
     "build": "npm run build --workspace @ferry-tracker/shared && npm run build --workspace @ferry-tracker/server && npm run build --workspace @ferry-tracker/frontend",
+    "verify:dependencies": "node deploy/verify-dependencies.mjs",
     "start": "npm run start --workspace @ferry-tracker/server",
     "capture:report": "npm run capture:report --workspace @ferry-tracker/server",
     "lint": "eslint .",

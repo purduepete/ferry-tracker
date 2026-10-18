@@ -10,7 +10,9 @@
   "runtime": { "kind": "node", "minimumVersion": "22.0.0" },
   "build": {
     "commands": [
-      { "tool": "npm", "arguments": ["ci"], "workingDirectory": "." },
+      { "tool": "npm", "arguments": ["ci", "--ignore-scripts"], "workingDirectory": "." },
+      { "tool": "npm", "arguments": ["rebuild", "esbuild"], "workingDirectory": "." },
+      { "tool": "npm", "arguments": ["run", "verify:dependencies"], "workingDirectory": "." },
       { "tool": "npm", "arguments": ["run", "build"], "workingDirectory": "." }
     ]
   },

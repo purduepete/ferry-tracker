@@ -7,7 +7,9 @@ it('keeps the release stateless and preserves both catch aliases and source task
   expect(manifest.id).toBe('ferry-tracker');
   expect(manifest.repository).toBe('https://github.com/purduepete/ferrytracker.git');
   expect(manifest.build.commands).toEqual([
-    { tool: 'npm', arguments: ['ci'], workingDirectory: '.' },
+    { tool: 'npm', arguments: ['ci', '--ignore-scripts'], workingDirectory: '.' },
+    { tool: 'npm', arguments: ['rebuild', 'esbuild'], workingDirectory: '.' },
+    { tool: 'npm', arguments: ['run', 'verify:dependencies'], workingDirectory: '.' },
     { tool: 'npm', arguments: ['run', 'build'], workingDirectory: '.' },
   ]);
   expect(manifest.source.root).toBe('C:\\Files\\Dev\\main\\ferry_tracker');
