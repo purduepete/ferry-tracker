@@ -19,10 +19,11 @@ it('keeps the release stateless and preserves both catch aliases and source task
     environment: {
       HOST: '127.0.0.1', PORT: '8787', DATA_SOURCE: 'live', CAPTURE_ENABLED: 'true',
       CAPTURE_DB_PATH: '{data}\\ferry-capture.db', CAPTURE_ARCHIVE_DIR: '{data}\\raw',
-      BACKUP_DIR: '{backups}', SOLUTIONDEPLOY_STOP_FILE: '{run}\\stop.request',
+      BACKUP_DIR: '{backups}',
       STORAGE_BACKEND: 'postgresql',
     },
   });
+  expect(manifest.launch.environment).not.toHaveProperty(manifest.launch.stopFileEnvironment);
   expect(manifest.database).toMatchObject({ engine: 'postgresql', name: 'ferry_tracker', schemaVersion: 1 });
   expect(manifest.managedState).toEqual([
     { source: 'data\\raw', target: 'data\\raw', kind: 'directory', required: true },

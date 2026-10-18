@@ -29,8 +29,7 @@
       "CAPTURE_DATA_DIR": "{data}",
       "CAPTURE_DB_PATH": "{data}\\ferry-capture.db",
       "CAPTURE_ARCHIVE_DIR": "{data}\\raw",
-      "BACKUP_DIR": "{backups}",
-      "SOLUTIONDEPLOY_STOP_FILE": "{run}\\stop.request"
+      "BACKUP_DIR": "{backups}"
     },
     "secretFile": "app.env",
     "stopFileEnvironment": "SOLUTIONDEPLOY_STOP_FILE"
