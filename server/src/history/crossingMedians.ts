@@ -45,9 +45,9 @@ const key = (departingId: number, arrivingId: number) => `${departingId}-${arriv
 
 const round = (value: number) => Math.round(value * 10) / 10;
 
-export function computeCrossings(db: Db, nowMs: number): CrossingView[] {
+export async function computeCrossings(db: Db, nowMs: number): Promise<CrossingView[]> {
   const since = new Date(nowMs - MAX_CROSSING_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const rows = db.prepare(CROSSING_SQL).all(since, CROSSING_WINDOW) as CrossingRow[];
+  const rows = (await db.prepare(CROSSING_SQL).all(since, CROSSING_WINDOW)) as CrossingRow[];
 
   const buckets = new Map<string, { dep: number; arr: number; minutes: number[] }>();
   for (const row of rows) {
@@ -102,16 +102,20 @@ export function computeCrossings(db: Db, nowMs: number): CrossingView[] {
 export class CrossingCache {
   private cached: CrossingView[] | null = null;
   private expiresAt = 0;
+  private pending: Promise<CrossingView[]> | null = null;
 
   constructor(private readonly db: Db, private readonly now: () => number = Date.now) {}
 
-  // The read is synchronous, so nothing else can run between the miss and the store and a
-  // burst of polls cannot stampede the query. The window only moves when a crossing closes.
-  read(): CrossingView[] {
+  async read(): Promise<CrossingView[]> {
     const nowMs = this.now();
     if (this.cached && nowMs < this.expiresAt) return this.cached;
-    this.cached = computeCrossings(this.db, nowMs);
-    this.expiresAt = nowMs + CROSSING_CACHE_MS;
-    return this.cached;
+    if (!this.pending) {
+      this.pending = computeCrossings(this.db, nowMs).then(rows => {
+        this.cached = rows;
+        this.expiresAt = this.now() + CROSSING_CACHE_MS;
+        return rows;
+      }).finally(() => { this.pending = null; });
+    }
+    return this.pending;
   }
 }

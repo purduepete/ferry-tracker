@@ -1,5 +1,5 @@
 import { pacificParts, parseWsdotDate, terminalSailingSpaceSchema, vesselLocationSchema } from '@ferry-tracker/shared';
-import type { Db, Stmt } from '../db/database.js';
+import { transaction, type Db, type Stmt } from '../db/database.js';
 import { canonical, sha256 } from './hash.js';
 
 export interface WriteResult {
@@ -20,13 +20,13 @@ WHERE NOT EXISTS (
   WHERE vessel_id = ? AND source_timestamp = ? AND content_hash = ?
 )`;
 
-export function writeVesselObservations(db: Db, payload: unknown, capturedAt: string): WriteResult {
+export async function writeVesselObservations(db: Db, payload: unknown, capturedAt: string): Promise<WriteResult> {
   const records = Array.isArray(payload) ? payload : [];
   const result: WriteResult = { written: 0, skipped: 0, invalid: 0 };
   const insert = db.prepare(insertVessel);
   const latest = db.prepare('SELECT content_hash FROM vessel_observation WHERE vessel_id = ? ORDER BY id DESC LIMIT 1');
 
-  const run = db.transaction(() => {
+  const run = transaction(db, async () => {
     for (const record of records) {
       const parsed = vesselLocationSchema.safeParse(record);
       if (!parsed.success) {
@@ -57,14 +57,14 @@ export function writeVesselObservations(db: Db, payload: unknown, capturedAt: st
       // Without a source timestamp the unique index cannot help, so compare against the
       // vessel's previous row. That still records a genuine A -> B -> A sequence.
       if (sourceTimestamp === null) {
-        const previous = latest.get(vessel.VesselID) as { content_hash: string } | undefined;
+        const previous = (await latest.get(vessel.VesselID)) as { content_hash: string } | undefined;
         if (previous?.content_hash === contentHash) {
           result.skipped += 1;
           continue;
         }
       }
 
-      const info = insert.run(
+      const info = (await insert.run(
         vessel.VesselID,
         vessel.VesselName,
         sourceTimestamp,
@@ -88,13 +88,13 @@ export function writeVesselObservations(db: Db, payload: unknown, capturedAt: st
         vessel.VesselID,
         sourceTimestamp,
         contentHash,
-      );
+      ));
       if (info.changes > 0) result.written += 1;
       else result.skipped += 1;
     }
   });
 
-  run();
+  (await run());
   return result;
 }
 
@@ -118,7 +118,7 @@ const insertSpace = `INSERT INTO sailing_space_observation (
   max_space_count, observation_kind, service_date, weekday, hour_local
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-export function writeSailingSpaceObservations(db: Db, payload: unknown, capturedAt: string): WriteResult {
+export async function writeSailingSpaceObservations(db: Db, payload: unknown, capturedAt: string): Promise<WriteResult> {
   const result: WriteResult = { written: 0, skipped: 0, invalid: 0 };
   const rows = flattenSpaces(payload, result);
   if (rows.length === 0) return result;
@@ -141,7 +141,7 @@ export function writeSailingSpaceObservations(db: Db, payload: unknown, captured
 
   const seen = new Set<string>();
 
-  const run = db.transaction(() => {
+  const run = transaction(db, async () => {
     for (const row of rows) {
       const parts = pacificParts(row.departure);
       if (!parts) {
@@ -150,12 +150,12 @@ export function writeSailingSpaceObservations(db: Db, payload: unknown, captured
       }
       seen.add(`${row.departingTerminalId}|${row.arrivingTerminalId}|${row.departure}`);
       const beforeDeparture = capturedAt < row.departure ? 1 : 0;
-      const existing = findDeparture.get(row.departingTerminalId, row.arrivingTerminalId, row.departure) as
+      const existing = (await findDeparture.get(row.departingTerminalId, row.arrivingTerminalId, row.departure)) as
         | { id: number; vessel_id: number | null }
         | undefined;
 
       if (!existing) {
-        insertDeparture.run(
+        (await insertDeparture.run(
           row.departingTerminalId,
           row.arrivingTerminalId,
           row.departure,
@@ -166,40 +166,40 @@ export function writeSailingSpaceObservations(db: Db, payload: unknown, captured
           parts.serviceDate,
           parts.weekday,
           parts.hourLocal,
-        );
-        writeObservation(insertObservation, row, capturedAt, 'baseline', parts);
+        ));
+        (await writeObservation(insertObservation, row, capturedAt, 'baseline', parts));
         result.written += 1;
         continue;
       }
 
-      touchDeparture.run(capturedAt, beforeDeparture, row.vesselId, existing.id);
-      const previous = latestObservation.get(row.departingTerminalId, row.arrivingTerminalId, row.departure) as
+      (await touchDeparture.run(capturedAt, beforeDeparture, row.vesselId, existing.id));
+      const previous = (await latestObservation.get(row.departingTerminalId, row.arrivingTerminalId, row.departure)) as
         | Record<string, unknown>
         | undefined;
       if (previous && !spaceChanged(previous, row)) {
         result.skipped += 1;
         continue;
       }
-      writeObservation(insertObservation, row, capturedAt, 'change', parts);
+      (await writeObservation(insertObservation, row, capturedAt, 'change', parts));
       result.written += 1;
     }
 
-    result.written += finalizeDepartures(db, insertObservation, seen, capturedAt);
+    result.written += (await finalizeDepartures(db, insertObservation, seen, capturedAt));
   });
 
-  run();
+  (await run());
   return result;
 }
 
-function finalizeDepartures(
+async function finalizeDepartures(
   db: Db,
   insertObservation: Stmt,
   seen: Set<string>,
   capturedAt: string,
-): number {
-  const open = db
+): Promise<number> {
+  const open = (await db
     .prepare('SELECT * FROM sailing_space_departure WHERE finalized = 0')
-    .all() as Array<Record<string, unknown>>;
+    .all()) as Array<Record<string, unknown>>;
   const finalize = db.prepare('UPDATE sailing_space_departure SET finalized = 1 WHERE id = ?');
   const latestObservation = db.prepare(`SELECT * FROM sailing_space_observation
     WHERE departing_terminal_id = ? AND arriving_terminal_id = ? AND departure = ?
@@ -210,13 +210,13 @@ function finalizeDepartures(
     const key = `${departure.departing_terminal_id}|${departure.arriving_terminal_id}|${departure.departure}`;
     if (seen.has(key)) continue;
 
-    const last = latestObservation.get(
+    const last = (await latestObservation.get(
       departure.departing_terminal_id,
       departure.arriving_terminal_id,
       departure.departure,
-    ) as Record<string, unknown> | undefined;
+    )) as Record<string, unknown> | undefined;
     if (last) {
-      insertObservation.run(
+      (await insertObservation.run(
         departure.last_seen_at ?? capturedAt,
         last.departing_terminal_id,
         last.departing_terminal_name,
@@ -233,22 +233,22 @@ function finalizeDepartures(
         last.service_date,
         last.weekday,
         last.hour_local,
-      );
+      ));
       written += 1;
     }
-    finalize.run(departure.id);
+    (await finalize.run(departure.id));
   }
   return written;
 }
 
-function writeObservation(
+async function writeObservation(
   statement: Stmt,
   row: SpaceRow,
   capturedAt: string,
   kind: 'baseline' | 'change' | 'final',
   parts: { serviceDate: string; weekday: number; hourLocal: number },
-): void {
-  statement.run(
+): Promise<void> {
+  (await statement.run(
     capturedAt,
     row.departingTerminalId,
     row.departingTerminalName,
@@ -265,7 +265,7 @@ function writeObservation(
     parts.serviceDate,
     parts.weekday,
     parts.hourLocal,
-  );
+  ));
 }
 
 function spaceChanged(previous: Record<string, unknown>, row: SpaceRow): boolean {

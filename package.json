@@ -19,6 +19,8 @@
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspace @ferry-tracker/shared && npm run typecheck --workspace @ferry-tracker/server && npm run typecheck --workspace @ferry-tracker/frontend",
     "test": "vitest run",
+    "test:postgres": "vitest run --config vitest.postgres.config.ts",
+    "test:postgres:import": "vitest run --config vitest.postgres-import.config.ts",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

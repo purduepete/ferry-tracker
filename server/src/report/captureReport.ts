@@ -3,23 +3,23 @@ import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getConfig } from '../config.js';
-import { openDatabase } from '../db/database.js';
+import { openConfiguredDatabase } from '../db/database.js';
 import { renderReport } from './html.js';
 import { collectReport } from './metrics.js';
 
 const config = getConfig();
 const dbPath = process.argv[2] ?? config.capture.dbPath;
 
-if (!existsSync(dbPath)) {
+if (process.env.STORAGE_BACKEND !== 'postgresql' && !existsSync(dbPath)) {
   console.error(`No capture database at ${dbPath}. Run the server with CAPTURE_ENABLED=true first.`);
   process.exit(1);
 }
 
 const outputPath = path.join(path.dirname(path.resolve(dbPath)), 'capture-report.html');
-const db = openDatabase(dbPath);
+const db = await openConfiguredDatabase(dbPath);
 
 try {
-  const data = collectReport(db, dbPath, {
+  const data = await collectReport(db, process.env.STORAGE_BACKEND === 'postgresql' ? 'PostgreSQL: ferry_tracker' : dbPath, {
     vessel_locations: config.capture.vesselIntervalMs,
     terminal_sailing_space: config.capture.spaceIntervalMs,
     reference: config.capture.referenceIntervalMs,
@@ -29,7 +29,7 @@ try {
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, renderReport(data), 'utf8');
 } finally {
-  db.close();
+  await db.close();
 }
 
 console.log(outputPath);

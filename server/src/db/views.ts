@@ -1,8 +1,8 @@
-import type { Db } from './database.js';
+import type Database from 'better-sqlite3';
 
 // Views are derived, so they are dropped and recreated on every open rather than
 // versioned. Every one is a plain GROUP BY over columns bucketed in TypeScript.
-const views: Array<{ name: string; sql: string }> = [
+export const views: Array<{ name: string; sql: string }> = [
   {
     name: 'v_departure_delay',
     sql: `CREATE VIEW v_departure_delay AS
@@ -100,7 +100,7 @@ const views: Array<{ name: string; sql: string }> = [
   },
 ];
 
-export function applyViews(db: Db): void {
+export function applyViews(db: Database.Database): void {
   for (const view of views) {
     db.exec(`DROP VIEW IF EXISTS ${view.name}`);
     db.exec(view.sql);

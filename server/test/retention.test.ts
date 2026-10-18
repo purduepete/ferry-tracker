@@ -22,14 +22,14 @@ beforeEach(async () => {
 
   const vessel = db.prepare(`INSERT INTO vessel_observation (vessel_id, vessel_name, source_timestamp, captured_at, content_hash)
     VALUES (1, 'Tacoma', ?, ?, ?)`);
-  vessel.run(daysAgo(60), daysAgo(60), 'old');
-  vessel.run(daysAgo(10), daysAgo(10), 'recent');
+  (await vessel.run(daysAgo(60), daysAgo(60), 'old'));
+  (await vessel.run(daysAgo(10), daysAgo(10), 'recent'));
 
-  db.prepare(`INSERT INTO capture_run (task, started_at, outcome) VALUES ('vessel_locations', ?, 'success')`).run(daysAgo(60));
-  db.prepare(`INSERT INTO capture_run (task, started_at, outcome) VALUES ('vessel_locations', ?, 'success')`).run(daysAgo(10));
+  (await db.prepare(`INSERT INTO capture_run (task, started_at, outcome) VALUES ('vessel_locations', ?, 'success')`).run(daysAgo(60)));
+  (await db.prepare(`INSERT INTO capture_run (task, started_at, outcome) VALUES ('vessel_locations', ?, 'success')`).run(daysAgo(10)));
 
-  db.prepare("INSERT INTO rollup_state (name, watermark, updated_at) VALUES ('sailing_leg', ?, ?)")
-    .run(daysAgo(1), daysAgo(0));
+  (await db.prepare("INSERT INTO rollup_state (name, watermark, updated_at) VALUES ('sailing_leg', ?, ?)")
+    .run(daysAgo(1), daysAgo(0)));
 });
 
 afterEach(async () => {
@@ -47,7 +47,7 @@ describe('retention prune', () => {
   });
 
   it('deletes nothing until the rollup has established a watermark', async () => {
-    db.prepare('DELETE FROM rollup_state').run();
+    (await db.prepare('DELETE FROM rollup_state').run());
 
     const result = await pruneOldData(db, { retentionDays: 30, now });
 
@@ -66,7 +66,7 @@ describe('retention prune', () => {
   });
 
   it('never deletes past the rollup watermark', async () => {
-    db.prepare("UPDATE rollup_state SET watermark = ? WHERE name = 'sailing_leg'").run(daysAgo(90));
+    (await db.prepare("UPDATE rollup_state SET watermark = ? WHERE name = 'sailing_leg'").run(daysAgo(90)));
 
     const result = await pruneOldData(db, { retentionDays: 30, now });
 
@@ -83,8 +83,8 @@ describe('retention prune', () => {
 
     const insert = db.prepare(`INSERT INTO archive_file (endpoint_id, service_date, path, member_count, byte_size, created_at, updated_at)
       VALUES ('vessel_locations', ?, ?, 1, 1, ?, ?)`);
-    insert.run('2026-06-01', oldFile, daysAgo(90), daysAgo(90));
-    insert.run('2026-08-30', keptFile, daysAgo(2), daysAgo(2));
+    (await insert.run('2026-06-01', oldFile, daysAgo(90), daysAgo(90)));
+    (await insert.run('2026-08-30', keptFile, daysAgo(2), daysAgo(2)));
 
     const result = await pruneOldData(db, { retentionDays: 30, now });
 
@@ -99,8 +99,8 @@ describe('retention prune', () => {
       departing_terminal_id, arriving_terminal_id, departure, vessel_id,
       first_seen_at, last_seen_at, last_seen_before_departure, finalized, service_date, weekday, hour_local
     ) VALUES (7, 3, ?, 1, ?, ?, 1, 1, '2026-09-01', 2, 9)`);
-    insert.run(daysAgo(60), daysAgo(60), daysAgo(60));
-    insert.run(daysAgo(5), daysAgo(5), daysAgo(5));
+    (await insert.run(daysAgo(60), daysAgo(60), daysAgo(60)));
+    (await insert.run(daysAgo(5), daysAgo(5), daysAgo(5)));
 
     const result = await pruneOldData(db, { retentionDays: 30, now });
 

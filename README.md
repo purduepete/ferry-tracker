@@ -1,5 +1,67 @@
 # Ferry Tracker
 
+Repository: [purduepete/ferrytracker](https://github.com/purduepete/ferrytracker).
+The repository rename leaves the existing `ferry_tracker` checkout directory,
+`ferry_tracker` PostgreSQL database, application ID, and public hostnames unchanged.
+
+## SolutionDeploy handoff
+
+Target structured storage is PostgreSQL in the dedicated `ferry_tracker`
+database. See [the PostgreSQL cutover procedure](deploy/postgresql/README.md) for
+the explicit SQL/import steps, source hashes, review gates, and backup/restore
+checks. `STORAGE_BACKEND=postgresql` requires private `DATABASE_URL` and schema
+version 1. Connection/schema errors stop startup without SQLite fallback.
+
+`deploy\application.json` describes the `jimbrownhome` checkout and its
+`FerryTracker`, `FerryTracker-Watchdog`, and `FerryTracker-Backup` tasks. The
+2026-10-17 hosting audit (3:16 PM local) confirms those exact task names and
+`C:\Files\Dev\main\ferry_tracker` working directory; the entrypoint audit confirms
+`server\dist\index.js`, `deploy\watchdog.mjs`, and `deploy\backup-db.mjs`,
+respectively. The listener audit confirms source port 8787, and the redacted
+configuration confirms `C:\ProgramData\ferry-tracker` as its capture directory.
+It builds
+with Node 22 or newer and launches `server\dist\index.js` directly on
+`127.0.0.1:8787`. Both `ferry-tracker.jimlertech.com` and the legacy
+`ferry.jimlertech.com` route retain `/api/catch`.
+
+Both build commands use the staged release root (`workingDirectory: "."`).
+The root workspace build compiles shared types, `server\dist\index.js`, and the
+frontend. The archive must contain committed source and dependency manifests;
+local build output and private environment files are excluded.
+
+The state inventory uses the existing installer's `C:\ProgramData\ferry-tracker`
+defaults. Verify the source task's effective paths before migration. Stop every
+writer before exporting the SQLite source through the framework's coherent
+snapshot procedure. The snapshot is retained under shared backups for explicit
+PostgreSQL import, never used as the target database. Preserve the raw archive, backups, watchdog
+record, and both environment files. Source `.env.local` is archived as
+`secrets\source\app.env`; source `.env` is archived as
+`secrets\source\fallback.env`. Neither is loaded by the target manifest.
+Reserve runtime `secrets\app.env` for operator-prepared target configuration.
+Before activation, prepare it in a secure terminal outside VS Code from the
+reviewed frozen export, retaining needed service keys and adding the target
+`DATABASE_URL`. Exclude keys declared in `launch.environment`, which the framework
+sets explicitly. No automatic credential merge occurs. Restrict access to the
+runtime account and administrators, then verify its readability, target database
+identity and readiness through the reviewed activation checks.
+Never import old locks or PIDs. Confirm `WSDOT_API_ACCESS_CODE` and `CATCH_TOKEN` are present
+without printing their values.
+
+The lifecycle's explicit environment wins over dotenv and the migrated secret
+file. Capture data, raw responses, and backups use shared directories outside
+the release. Readiness requires `/api/health` to return `status: "ok"` and
+`source: "live"`.
+
+`SOLUTIONDEPLOY_STOP_FILE` points to a private `{run}\stop.request` file. The
+entrypoint checks it every 250 ms and uses the signal shutdown path: cancel future
+captures, drain in-flight capture and archive writes, finish HTTP requests, then
+close the selected database connection/pool. The lifecycle must remove a previous request before starting a
+release and wait for process exit after requesting a stop. Windows process
+termination does not guarantee this shutdown path. PostgreSQL startup only checks
+the migration ledger. Its DDL/import steps require independent review before
+execution. The legacy SQLite backend still applies its original migrations/views
+when explicitly used on the unmigrated source.
+
 A local Phase 0 explorer for Washington State Ferries terminal, vessel, and schedule data.
 
 ## Run the POC

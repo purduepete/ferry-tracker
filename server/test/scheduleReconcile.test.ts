@@ -54,9 +54,9 @@ afterEach(() => {
   db.close();
 });
 
-function rows(): Array<{ departing_time: string; vessel_name: string | null; withdrawn_at: string | null; service_date: string }> {
-  return db.prepare(`SELECT service_date, departing_time, vessel_name, withdrawn_at
-    FROM schedule_snapshot ORDER BY service_date, departing_time`).all() as never;
+async function rows(): Promise<Array<{ departing_time: string; vessel_name: string | null; withdrawn_at: string | null; service_date: string }>> {
+  return (await db.prepare(`SELECT service_date, departing_time, vessel_name, withdrawn_at
+    FROM schedule_snapshot ORDER BY service_date, departing_time`).all()) as never;
 }
 
 async function capture(response: unknown, now = NOW): Promise<void> {
@@ -68,27 +68,27 @@ describe('schedule snapshot reconcile', () => {
     await capture(payload([{ departing: '2026-09-12T22:00:00.000Z' }, { departing: '2026-09-12T23:00:00.000Z' }]));
     await capture(payload([{ departing: '2026-09-12T22:00:00.000Z' }, { departing: '2026-09-12T23:30:00.000Z' }]));
 
-    const withdrawn = rows().filter((row) => row.withdrawn_at !== null).map((row) => row.departing_time);
+    const withdrawn = (await rows()).filter((row) => row.withdrawn_at !== null).map((row) => row.departing_time);
     expect(withdrawn).toEqual(['2026-09-12T23:00:00.000Z']);
     // Nothing is deleted: the rollup still needs the slot to pair a leg that ran anyway.
-    expect(rows()).toHaveLength(3);
+    expect((await rows())).toHaveLength(3);
   });
 
   it('clears the mark when WSDOT publishes the slot again', async () => {
     const full = payload([{ departing: '2026-09-12T22:00:00.000Z' }, { departing: '2026-09-12T23:00:00.000Z' }]);
     await capture(full);
     await capture(payload([{ departing: '2026-09-12T22:00:00.000Z' }]));
-    expect(rows().filter((row) => row.withdrawn_at !== null)).toHaveLength(1);
+    expect((await rows()).filter((row) => row.withdrawn_at !== null)).toHaveLength(1);
 
     await capture(full);
-    expect(rows().filter((row) => row.withdrawn_at !== null)).toHaveLength(0);
+    expect((await rows()).filter((row) => row.withdrawn_at !== null)).toHaveLength(0);
   });
 
   it('never withdraws a sailing that has already departed', async () => {
     await capture(payload([{ departing: '2026-09-12T16:00:00.000Z' }, { departing: '2026-09-12T22:00:00.000Z' }]));
     await capture(payload([{ departing: '2026-09-12T22:00:00.000Z' }]));
 
-    const past = rows().find((row) => row.departing_time === '2026-09-12T16:00:00.000Z');
+    const past = (await rows()).find((row) => row.departing_time === '2026-09-12T16:00:00.000Z');
     expect(past?.withdrawn_at).toBeNull();
   });
 
@@ -96,7 +96,7 @@ describe('schedule snapshot reconcile', () => {
     await capture(payload([{ departing: '2026-09-12T22:00:00.000Z' }]));
     await capture(payload([]));
 
-    expect(rows().every((row) => row.withdrawn_at === null)).toBe(true);
+    expect((await rows()).every((row) => row.withdrawn_at === null)).toBe(true);
   });
 
   it('leaves tomorrow alone when a post-midnight sailing arrives in today\'s payload', async () => {
@@ -113,7 +113,7 @@ describe('schedule snapshot reconcile', () => {
       { departing: '2026-09-13T07:30:00.000Z' },
     ]));
 
-    const tomorrow = rows().filter((row) => row.service_date === '2026-09-13');
+    const tomorrow = (await rows()).filter((row) => row.service_date === '2026-09-13');
     expect(tomorrow).toHaveLength(3);
     expect(tomorrow.every((row) => row.withdrawn_at === null)).toBe(true);
   });
@@ -122,7 +122,7 @@ describe('schedule snapshot reconcile', () => {
     await capture(payload([{ departing: '2026-09-12T22:00:00.000Z', vesselName: 'Tacoma' }]));
     await capture(payload([{ departing: '2026-09-12T22:00:00.000Z', vesselName: 'Chimacum' }]));
 
-    expect(rows()).toEqual([expect.objectContaining({ vessel_name: 'Chimacum', withdrawn_at: null })]);
+    expect((await rows())).toEqual([expect.objectContaining({ vessel_name: 'Chimacum', withdrawn_at: null })]);
   });
 
   it('reconciles a pair WSDOT dropped from terminalmates', async () => {
@@ -138,7 +138,7 @@ describe('schedule snapshot reconcile', () => {
       () => NOW,
     );
 
-    expect(rows().filter((row) => row.withdrawn_at !== null).map((row) => row.departing_time))
+    expect((await rows()).filter((row) => row.withdrawn_at !== null).map((row) => row.departing_time))
       .toEqual(['2026-09-12T23:00:00.000Z']);
   });
 
@@ -153,16 +153,16 @@ describe('schedule snapshot reconcile', () => {
     // departure "future" and withdraw it.
     let clock = NOW;
     const stub = {
-      getSchedule: vi.fn().mockImplementation(() => {
+      getSchedule: vi.fn().mockImplementation(async () => {
         clock += 3_600_000;
-        return Promise.resolve(payload([{ departing: '2026-09-12T22:00:00.000Z' }]));
+        return (await Promise.resolve(payload([{ departing: '2026-09-12T22:00:00.000Z' }])));
       }),
     } as unknown as WsdotClient;
 
     await capture(payload([{ departing: '2026-09-12T20:30:00.000Z' }, { departing: '2026-09-12T22:00:00.000Z' }]));
     await writeScheduleSnapshots(db, stub, mates, new Date(NOW).toISOString(), undefined, () => clock);
 
-    const early = rows().find((row) => row.departing_time === '2026-09-12T20:30:00.000Z');
+    const early = (await rows()).find((row) => row.departing_time === '2026-09-12T20:30:00.000Z');
     expect(early?.withdrawn_at).toBeNull();
   });
 });

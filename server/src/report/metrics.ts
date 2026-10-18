@@ -84,8 +84,8 @@ const TABLES = [
   'archive_file',
 ];
 
-export function collectReport(db: Db, dbPath: string, intervals: Record<string, number> = {}): ReportData {
-  const window = db.prepare('SELECT MIN(started_at) AS first, MAX(started_at) AS last FROM capture_run').get() as {
+export async function collectReport(db: Db, dbPath: string, intervals: Record<string, number> = {}): Promise<ReportData> {
+  const window = (await db.prepare('SELECT MIN(started_at) AS first, MAX(started_at) AS last FROM capture_run').get()) as {
     first: string | null;
     last: string | null;
   };
@@ -94,41 +94,41 @@ export function collectReport(db: Db, dbPath: string, intervals: Record<string, 
     generatedAt: new Date(),
     dbPath,
     window,
-    counts: TABLES.map((table) => ({
+    counts: await Promise.all(TABLES.map(async (table) => ({
       table,
-      rows: (db.prepare(`SELECT COUNT(*) AS rows FROM ${table}`).get() as { rows: number }).rows,
-    })),
-    cadence: cadence(db, intervals),
-    vesselRatio: vesselRatio(db),
-    fillGrid: fillGrid(db),
-    fillByRoute: fillByRoute(db),
-    delays: delays(db),
-    delayExcluded: (db.prepare(
+      rows: ((await db.prepare(`SELECT COUNT(*) AS rows FROM ${table}`).get()) as { rows: number }).rows,
+    }))),
+    cadence: (await cadence(db, intervals)),
+    vesselRatio: (await vesselRatio(db)),
+    fillGrid: (await fillGrid(db)),
+    fillByRoute: (await fillByRoute(db)),
+    delays: (await delays(db)),
+    delayExcluded: ((await db.prepare(
       "SELECT COUNT(*) AS n FROM v_departure_delay WHERE confidence = 'low' OR exclusion_reason IS NOT NULL",
-    ).get() as { n: number }).n,
-    crossings: durations(db, 'v_crossing_duration', 'crossing_minutes'),
-    loads: durations(db, 'v_load_duration', 'load_minutes'),
-    confidence: quality(db, 'confidence'),
-    exclusions: quality(db, 'exclusion_reason'),
-    loadExclusions: quality(db, 'load_exclusion_reason'),
+    ).get()) as { n: number }).n,
+    crossings: (await durations(db, 'v_crossing_duration', 'crossing_minutes')),
+    loads: (await durations(db, 'v_load_duration', 'load_minutes')),
+    confidence: (await quality(db, 'confidence')),
+    exclusions: (await quality(db, 'exclusion_reason')),
+    loadExclusions: (await quality(db, 'load_exclusion_reason')),
   };
 }
 
-function cadence(db: Db, intervals: Record<string, number>): CadenceRow[] {
-  const totals = db
+async function cadence(db: Db, intervals: Record<string, number>): Promise<CadenceRow[]> {
+  const totals = (await db
     .prepare('SELECT task, outcome, SUM(runs) AS runs FROM v_update_cadence GROUP BY task, outcome')
-    .all() as Array<{ task: string; outcome: string; runs: number }>;
+    .all()) as Array<{ task: string; outcome: string; runs: number }>;
 
   const tasks = [...new Set(totals.map((row) => row.task))].sort();
-  return tasks.map((task) => {
+  return Promise.all(tasks.map(async (task) => {
     const of = (outcome: string) => totals.find((row) => row.task === task && row.outcome === outcome)?.runs ?? 0;
     const changed = of('success');
     const unchanged = of('skipped_unchanged') + of('skipped_overlap') + of('skipped_disk_space');
     const polls = changed + unchanged;
 
-    const stamps = (db
+    const stamps = ((await db
       .prepare("SELECT started_at FROM capture_run WHERE task = ? AND outcome = 'success' ORDER BY started_at")
-      .all(task) as Array<{ started_at: string }>).map((row) => Date.parse(row.started_at));
+      .all(task)) as Array<{ started_at: string }>).map((row) => Date.parse(row.started_at));
     const gaps = stamps.slice(1).map((value, index) => (value - stamps[index]) / 1000);
 
     return {
@@ -140,11 +140,11 @@ function cadence(db: Db, intervals: Record<string, number>): CadenceRow[] {
       medianChangeGapSeconds: percentile(gaps, 0.5),
       intervalSeconds: intervals[task] ? intervals[task] / 1000 : null,
     };
-  });
+  }));
 }
 
-function vesselRatio(db: Db): VesselRatioRow[] {
-  return (db.prepare('SELECT * FROM v_vessel_update_ratio ORDER BY vessel_name').all() as Array<{
+async function vesselRatio(db: Db): Promise<VesselRatioRow[]> {
+  return ((await db.prepare('SELECT * FROM v_vessel_update_ratio ORDER BY vessel_name').all()) as Array<{
     vessel_name: string;
     observations: number;
     distinct_source_timestamps: number;
@@ -156,10 +156,10 @@ function vesselRatio(db: Db): VesselRatioRow[] {
   }));
 }
 
-function fillGrid(db: Db): FillCell[] {
-  const rows = db
+async function fillGrid(db: Db): Promise<FillCell[]> {
+  const rows = (await db
     .prepare('SELECT weekday, hour_local, total_pct_full FROM v_sailing_fill WHERE total_pct_full IS NOT NULL')
-    .all() as Array<{ weekday: number; hour_local: number; total_pct_full: number }>;
+    .all()) as Array<{ weekday: number; hour_local: number; total_pct_full: number }>;
 
   const buckets = new Map<string, number[]>();
   for (const row of rows) {
@@ -181,12 +181,12 @@ function fillGrid(db: Db): FillCell[] {
   });
 }
 
-function fillByRoute(db: Db): RouteFillRow[] {
-  const names = terminalNames(db);
-  const rows = db
+async function fillByRoute(db: Db): Promise<RouteFillRow[]> {
+  const names = (await terminalNames(db));
+  const rows = (await db
     .prepare(`SELECT departing_terminal_id AS dep, arriving_terminal_id AS arr, hour_local, total_pct_full
       FROM v_sailing_fill WHERE total_pct_full IS NOT NULL`)
-    .all() as Array<{ dep: number; arr: number; hour_local: number; total_pct_full: number }>;
+    .all()) as Array<{ dep: number; arr: number; hour_local: number; total_pct_full: number }>;
 
   const buckets = new Map<string, Array<{ hour: number; pct: number }>>();
   for (const row of rows) {
@@ -214,11 +214,11 @@ function fillByRoute(db: Db): RouteFillRow[] {
     .sort((a, b) => (b.avgPctFull ?? 0) - (a.avgPctFull ?? 0));
 }
 
-function delays(db: Db): DelayRow[] {
-  const rows = db
+async function delays(db: Db): Promise<DelayRow[]> {
+  const rows = (await db
     .prepare(`SELECT hour_local, departure_delay_minutes AS minutes FROM v_departure_delay
       WHERE confidence <> 'low' AND exclusion_reason IS NULL`)
-    .all() as Array<{ hour_local: number; minutes: number }>;
+    .all()) as Array<{ hour_local: number; minutes: number }>;
 
   const buckets = new Map<number, number[]>();
   for (const row of rows) buckets.set(row.hour_local, [...(buckets.get(row.hour_local) ?? []), row.minutes]);
@@ -234,12 +234,12 @@ function delays(db: Db): DelayRow[] {
     .sort((a, b) => a.hour - b.hour);
 }
 
-function durations(db: Db, view: string, column: string): DurationRow[] {
-  const names = terminalNames(db);
-  const rows = db
+async function durations(db: Db, view: string, column: string): Promise<DurationRow[]> {
+  const names = (await terminalNames(db));
+  const rows = (await db
     .prepare(`SELECT departing_terminal_id AS dep, arriving_terminal_id AS arr, ${column} AS minutes
       FROM ${view} WHERE confidence <> 'low'`)
-    .all() as Array<{ dep: number; arr: number; minutes: number }>;
+    .all()) as Array<{ dep: number; arr: number; minutes: number }>;
 
   const buckets = new Map<string, number[]>();
   for (const row of rows) {
@@ -259,15 +259,15 @@ function durations(db: Db, view: string, column: string): DurationRow[] {
     .sort((a, b) => b.legs - a.legs);
 }
 
-function quality(db: Db, column: string): QualityRow[] {
-  return (db
+async function quality(db: Db, column: string): Promise<QualityRow[]> {
+  return ((await db
     .prepare(`SELECT COALESCE(${column}, 'none') AS label, COUNT(*) AS legs
       FROM sailing_leg GROUP BY COALESCE(${column}, 'none') ORDER BY legs DESC`)
-    .all() as QualityRow[]);
+    .all()) as QualityRow[]);
 }
 
-function terminalNames(db: Db): (id: number | null) => string {
-  const rows = db.prepare('SELECT terminal_id, terminal_name FROM terminal_reference').all() as Array<{
+async function terminalNames(db: Db): Promise<(id: number | null) => string> {
+  const rows = (await db.prepare('SELECT terminal_id, terminal_name FROM terminal_reference').all()) as Array<{
     terminal_id: number;
     terminal_name: string | null;
   }>;

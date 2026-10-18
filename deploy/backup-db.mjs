@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import { getConfig } from '../server/dist/config.js';
 
 const KEEP = Number(process.env.BACKUP_KEEP ?? 8);
+if (process.env.STORAGE_BACKEND === 'postgresql') throw new Error('SQLite backup is disabled for PostgreSQL. Use the framework pg_dump backup.');
 
 const { capture } = getConfig();
 const dataDir = process.env.CAPTURE_DATA_DIR ?? path.dirname(capture.dbPath);

@@ -1,5 +1,5 @@
 import { pacificParts } from '@ferry-tracker/shared';
-import type { Db } from '../db/database.js';
+import { transaction, type Db } from '../db/database.js';
 
 export interface RollupOptions {
   dwellCeilingMinutes: number;
@@ -158,22 +158,22 @@ function dockRuns(observations: Observation[]): DockRun[] {
   return runs;
 }
 
-export function runLegRollup(db: Db, options: RollupOptions): RollupResult {
-  const vessels = db
+export async function runLegRollup(db: Db, options: RollupOptions): Promise<RollupResult> {
+  const vessels = (await db
     .prepare('SELECT DISTINCT vessel_id FROM vessel_observation ORDER BY vessel_id')
-    .all() as Array<{ vessel_id: number }>;
+    .all()) as Array<{ vessel_id: number }>;
 
   const result: RollupResult = { vessels: vessels.length, legsWritten: 0, legsRemoved: 0, watermark: null };
   const watermarks: string[] = [];
   const nowMs = options.now ?? Date.now();
 
-  const run = db.transaction(() => {
+  const run = transaction(db, async () => {
     for (const { vessel_id: vesselId } of vessels) {
-      const anchor = lastCompleteLeg(db, vesselId);
-      result.legsRemoved += clearFrom(db, vesselId, anchor?.departed_at ?? null);
+      const anchor = (await lastCompleteLeg(db, vesselId));
+      result.legsRemoved += (await clearFrom(db, vesselId, anchor?.departed_at ?? null));
 
       const observations = trimUnsettledTail(
-        debounceDockState(readObservations(db, vesselId, anchor?.dock_arrival_at ?? null), options.dockDebounceSeconds),
+        debounceDockState((await readObservations(db, vesselId, anchor?.dock_arrival_at ?? null)), options.dockDebounceSeconds),
         options.dockDebounceSeconds,
         nowMs,
       );
@@ -183,8 +183,8 @@ export function runLegRollup(db: Db, options: RollupOptions): RollupResult {
         ? { terminalId: anchor.arriving_terminal_id, at: anchor.dock_arrival_at, origin: 'observed' }
         : null;
 
-      for (const leg of buildLegs(db, vesselId, observations, seed, options)) {
-        insertLeg(db, leg);
+      for (const leg of (await buildLegs(db, vesselId, observations, seed, options))) {
+        (await insertLeg(db, leg));
         result.legsWritten += 1;
       }
       watermarks.push(anchor?.dock_arrival_at ?? observations[0].ts);
@@ -193,20 +193,20 @@ export function runLegRollup(db: Db, options: RollupOptions): RollupResult {
     result.watermark = watermarks.length === vessels.length && watermarks.length > 0
       ? watermarks.reduce((lowest, value) => (value < lowest ? value : lowest))
       : null;
-    saveWatermark(db, result.watermark);
+    (await saveWatermark(db, result.watermark));
   });
 
-  run();
+  (await run());
   return result;
 }
 
-function buildLegs(
+async function buildLegs(
   db: Db,
   vesselId: number,
   observations: Observation[],
   seed: Arrival | null,
   options: RollupOptions,
-): Leg[] {
+): Promise<Leg[]> {
   const legs: Leg[] = [];
   let open: Leg | null = null;
   let lastArrival = seed;
@@ -290,7 +290,7 @@ function buildLegs(
         const departedAt = observation.left_dock ?? observation.ts;
         legs.push({ ...finish(current, departedAt, current.arrivingTerminalId), confidence: 'low', exclusionReason: 'short_dock' });
         lastArrival = { terminalId: current.arrivingTerminalId, at: departedAt, origin: 'observed' };
-        open = start(db, vesselId, observation, previous, lastArrival, options, 'short_dock');
+        open = (await start(db, vesselId, observation, previous, lastArrival, options, 'short_dock'));
       } else if (movedLeftDock !== null && shift >= 0) {
         // A stamp that moves backward is never a correction worth taking: it would shift the leg
         // onto an earlier slot and read as leaving early.
@@ -300,7 +300,7 @@ function buildLegs(
       continue;
     }
 
-    open = start(db, vesselId, observation, previous, lastArrival, options, null);
+    open = (await start(db, vesselId, observation, previous, lastArrival, options, null));
     previous = observation;
   }
 
@@ -308,7 +308,7 @@ function buildLegs(
   return legs;
 }
 
-function start(
+async function start(
   db: Db,
   vesselId: number,
   observation: Observation,
@@ -316,10 +316,10 @@ function start(
   lastArrival: Arrival | null,
   options: RollupOptions,
   problem: string | null,
-): Leg {
+): Promise<Leg> {
   const cleanDeparture = previous !== null && previous.at_dock === 1;
   const departedAt = observation.left_dock ?? observation.ts;
-  const scheduled = resolveScheduledDeparture(db, observation, lastArrival, departedAt, options);
+  const scheduled = (await resolveScheduledDeparture(db, observation, lastArrival, departedAt, options));
   const dwell = resolveDwell(observation, lastArrival, departedAt, options);
 
   return {
@@ -374,13 +374,13 @@ function resolveDwell(
   return { minutes, reason: null };
 }
 
-function resolveScheduledDeparture(
+async function resolveScheduledDeparture(
   db: Db,
   observation: Observation,
   lastArrival: Arrival | null,
   departedAt: string,
   options: RollupOptions,
-): { value: string | null; source: string | null } {
+): Promise<{ value: string | null; source: string | null }> {
   // A ferry never leaves before its slot, so a later slot means the feed rolled forward
   // while left_dock still held the previous crossing. Fall through to the schedule instead.
   const departedMs = Date.parse(departedAt);
@@ -400,11 +400,11 @@ function resolveScheduledDeparture(
   const windowStart = new Date(arrivalMs - SLOT_LOOKBACK_MINUTES * 60_000).toISOString();
   const windowEnd = new Date(arrivalMs + options.dwellCeilingMinutes * 60_000).toISOString();
 
-  const slots = (db
+  const slots = ((await db
     .prepare(`SELECT departing_time FROM schedule_snapshot
       WHERE departing_terminal_id = ? AND arriving_terminal_id = ?
         AND departing_time >= ? AND departing_time <= ?`)
-    .all(observation.departing_terminal_id, observation.arriving_terminal_id, windowStart, windowEnd) as Array<{
+    .all(observation.departing_terminal_id, observation.arriving_terminal_id, windowStart, windowEnd)) as Array<{
       departing_time: string;
     }>).filter((slot) => sane(slot.departing_time));
   if (slots.length === 0) return { value: null, source: null };
@@ -417,11 +417,11 @@ function resolveScheduledDeparture(
   return { value: nearest.departing_time, source: 'schedule_snapshot' };
 }
 
-function insertLeg(db: Db, leg: Leg): void {
+async function insertLeg(db: Db, leg: Leg): Promise<void> {
   const parts = pacificParts(leg.departedAt);
   if (!parts) return;
 
-  db.prepare(`INSERT INTO sailing_leg (
+  (await db.prepare(`INSERT INTO sailing_leg (
     vessel_id, vessel_name, departing_terminal_id, arriving_terminal_id, op_route_abbrev,
     scheduled_departure, scheduled_departure_source, left_dock, departed_at, dock_arrival_at,
     previous_arrival_at, departure_delay_minutes, load_minutes, crossing_minutes,
@@ -454,45 +454,45 @@ function insertLeg(db: Db, leg: Leg): void {
       parts.hourLocal,
       leg.vesselId,
       leg.departedAt,
-    );
+    ));
 }
 
-function lastCompleteLeg(db: Db, vesselId: number) {
-  return db
+async function lastCompleteLeg(db: Db, vesselId: number) {
+  return (await db
     .prepare(`SELECT departed_at, dock_arrival_at, arriving_terminal_id FROM sailing_leg
       WHERE vessel_id = ? AND complete = 1 ORDER BY departed_at DESC LIMIT 1`)
-    .get(vesselId) as { departed_at: string; dock_arrival_at: string | null; arriving_terminal_id: number | null } | undefined;
+    .get(vesselId)) as { departed_at: string; dock_arrival_at: string | null; arriving_terminal_id: number | null } | undefined;
 }
 
-function clearFrom(db: Db, vesselId: number, departedAt: string | null): number {
+async function clearFrom(db: Db, vesselId: number, departedAt: string | null): Promise<number> {
   const info = departedAt === null
-    ? db.prepare('DELETE FROM sailing_leg WHERE vessel_id = ?').run(vesselId)
-    : db.prepare('DELETE FROM sailing_leg WHERE vessel_id = ? AND departed_at > ?').run(vesselId, departedAt);
+    ? (await db.prepare('DELETE FROM sailing_leg WHERE vessel_id = ?').run(vesselId))
+    : (await db.prepare('DELETE FROM sailing_leg WHERE vessel_id = ? AND departed_at > ?').run(vesselId, departedAt));
   return info.changes;
 }
 
-function readObservations(db: Db, vesselId: number, from: string | null): Observation[] {
+async function readObservations(db: Db, vesselId: number, from: string | null): Promise<Observation[]> {
   const columns = `id, vessel_name, COALESCE(source_timestamp, captured_at) AS ts,
     at_dock, in_service, departing_terminal_id, arriving_terminal_id,
     left_dock, scheduled_departure, op_route_abbrev`;
   const order = 'ORDER BY COALESCE(source_timestamp, captured_at), id';
 
   return (from === null
-    ? db.prepare(`SELECT ${columns} FROM vessel_observation WHERE vessel_id = ? ${order}`).all(vesselId)
-    : db
+    ? (await db.prepare(`SELECT ${columns} FROM vessel_observation WHERE vessel_id = ? ${order}`).all(vesselId))
+    : (await db
         .prepare(`SELECT ${columns} FROM vessel_observation
           WHERE vessel_id = ? AND COALESCE(source_timestamp, captured_at) >= ? ${order}`)
-        .all(vesselId, from)) as Observation[];
+        .all(vesselId, from))) as Observation[];
 }
 
-function saveWatermark(db: Db, watermark: string | null): void {
+async function saveWatermark(db: Db, watermark: string | null): Promise<void> {
   const updatedAt = new Date().toISOString();
-  const exists = db.prepare("SELECT name FROM rollup_state WHERE name = 'sailing_leg'").get();
+  const exists = (await db.prepare("SELECT name FROM rollup_state WHERE name = 'sailing_leg'").get());
   if (exists) {
-    db.prepare("UPDATE rollup_state SET watermark = ?, updated_at = ? WHERE name = 'sailing_leg'").run(watermark, updatedAt);
+    (await db.prepare("UPDATE rollup_state SET watermark = ?, updated_at = ? WHERE name = 'sailing_leg'").run(watermark, updatedAt));
     return;
   }
-  db.prepare("INSERT INTO rollup_state (name, watermark, updated_at) VALUES ('sailing_leg', ?, ?)").run(watermark, updatedAt);
+  (await db.prepare("INSERT INTO rollup_state (name, watermark, updated_at) VALUES ('sailing_leg', ?, ?)").run(watermark, updatedAt));
 }
 
 function minutesBetween(from: string, to: string): number | null {

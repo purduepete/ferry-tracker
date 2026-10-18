@@ -8,6 +8,7 @@ import process from 'node:process';
 import Database from 'better-sqlite3';
 
 const DEFAULT_SNAPSHOT = `${process.env.TEMP}\\ferry-prod\\ferry-capture.db`;
+if (process.env.STORAGE_BACKEND === 'postgresql') throw new Error('SQLite backtesting is disabled for PostgreSQL runtime. Use an explicitly reviewed source snapshot environment.');
 const dbPath = process.argv[2] ?? DEFAULT_SNAPSHOT;
 
 const WINDOW = Number(process.env.BACKTEST_WINDOW ?? 7);

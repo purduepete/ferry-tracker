@@ -37,6 +37,7 @@ export class CaptureService {
   private readonly tasks: TaskState[];
   private started = false;
   private stopping = false;
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(
     private readonly db: Db,
@@ -92,30 +93,35 @@ export class CaptureService {
     for (const task of this.tasks) this.schedule(task, 0);
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopping = true;
     this.started = false;
     for (const task of this.tasks) {
       if (task.timer) clearTimeout(task.timer);
       task.timer = null;
     }
+    await Promise.allSettled(this.inFlight);
   }
 
-  status(): unknown {
-    const rows = this.db
+  async ready(): Promise<void> {
+    await this.db.prepare('SELECT 1 AS ready').get();
+  }
+
+  async status(): Promise<unknown> {
+    const rows = (await this.db
       .prepare(`SELECT task, outcome, COUNT(*) AS runs, MAX(started_at) AS last_started_at
         FROM capture_run GROUP BY task, outcome`)
-      .all() as Array<{ task: string; outcome: string; runs: number; last_started_at: string }>;
-    const errors = this.db
+      .all()) as Array<{ task: string; outcome: string; runs: number; last_started_at: string }>;
+    const errors = (await this.db
       .prepare(`SELECT task, error_category, COUNT(*) AS runs, MAX(started_at) AS last_started_at
         FROM capture_run WHERE error_category IS NOT NULL GROUP BY task, error_category`)
-      .all() as Array<{ task: string; error_category: string; runs: number; last_started_at: string }>;
-    const counts = this.db
+      .all()) as Array<{ task: string; error_category: string; runs: number; last_started_at: string }>;
+    const counts = (await this.db
       .prepare(`SELECT 'vessel_observation' AS name, COUNT(*) AS rows FROM vessel_observation
         UNION ALL SELECT 'sailing_space_observation', COUNT(*) FROM sailing_space_observation
         UNION ALL SELECT 'schedule_snapshot', COUNT(*) FROM schedule_snapshot
         UNION ALL SELECT 'sailing_leg', COUNT(*) FROM sailing_leg`)
-      .all() as Array<{ name: string; rows: number }>;
+      .all()) as Array<{ name: string; rows: number }>;
 
     return {
       running: this.started,
@@ -133,7 +139,12 @@ export class CaptureService {
 
   private schedule(task: TaskState, delayMs: number): void {
     if (this.stopping) return;
-    task.timer = setTimeout(() => void this.execute(task), delayMs);
+    task.timer = setTimeout(() => {
+      if (this.stopping) return;
+      const run = this.execute(task);
+      this.inFlight.add(run);
+      void run.then(() => this.inFlight.delete(run), () => this.inFlight.delete(run));
+    }, delayMs);
     task.timer.unref();
   }
 
@@ -142,7 +153,7 @@ export class CaptureService {
     const startedMs = this.now();
 
     if (task.running) {
-      this.record(task, startedAt, startedMs, { rowsWritten: 0, rowsSkipped: 0, outcome: 'skipped_overlap' });
+      (await this.record(task, startedAt, startedMs, { rowsWritten: 0, rowsSkipped: 0, outcome: 'skipped_overlap' }));
       this.schedule(task, task.definition.intervalMs);
       return;
     }
@@ -150,18 +161,18 @@ export class CaptureService {
     task.running = true;
     try {
       const result = await task.definition.run(startedAt);
-      this.record(task, startedAt, startedMs, result);
+      (await this.record(task, startedAt, startedMs, result));
     } catch (error) {
-      this.recordError(task, startedAt, startedMs, error);
+      (await this.recordError(task, startedAt, startedMs, error));
     } finally {
       task.running = false;
       this.schedule(task, task.definition.intervalMs);
     }
   }
 
-  private record(task: TaskState, startedAt: string, startedMs: number, result: TaskOutcome): void {
+  private async record(task: TaskState, startedAt: string, startedMs: number, result: TaskOutcome): Promise<void> {
     if (this.stopping) return;
-    this.db
+    (await this.db
       .prepare(`INSERT INTO capture_run (
         task, endpoint_id, started_at, finished_at, duration_ms, response_hash, changed,
         rows_written, rows_skipped, outcome, error_category, error_detail, service_date
@@ -178,14 +189,12 @@ export class CaptureService {
         result.rowsSkipped,
         result.outcome ?? 'success',
         pacificParts(startedAt)?.serviceDate ?? null,
-      );
+      ));
   }
 
-  private recordError(task: TaskState, startedAt: string, startedMs: number, error: unknown): void {
-    // stop() cannot cancel a request already in flight and the caller closes the database
-    // straight after, so a late run row would throw on a closed connection.
+  private async recordError(task: TaskState, startedAt: string, startedMs: number, error: unknown): Promise<void> {
     if (this.stopping) return;
-    this.db
+    (await this.db
       .prepare(`INSERT INTO capture_run (
         task, endpoint_id, started_at, finished_at, duration_ms, response_hash, changed,
         rows_written, rows_skipped, outcome, error_category, error_detail, service_date
@@ -199,15 +208,15 @@ export class CaptureService {
         categorize(error),
         redactSecrets(error, this.config.secrets).slice(0, 2000),
         pacificParts(startedAt)?.serviceDate ?? null,
-      );
+      ));
   }
 
   private async rollup(): Promise<TaskOutcome> {
-    const legs = runLegRollup(this.db, {
+    const legs = (await runLegRollup(this.db, {
       dwellCeilingMinutes: this.config.capture.dwellCeilingMinutes,
       dockDebounceSeconds: this.config.capture.dockDebounceSeconds,
       now: this.now(),
-    });
+    }));
     const pruned = await pruneOldData(this.db, { retentionDays: this.config.capture.retentionDays, now: this.now });
     const removed =
       pruned.vesselObservations + pruned.sailingSpaceObservations + pruned.sailingSpaceDepartures + pruned.captureRuns;
@@ -223,7 +232,7 @@ export class CaptureService {
     if (!archived.written) {
       return { rowsWritten: 0, rowsSkipped: 0, responseHash: archived.hash, changed: false, outcome: 'skipped_unchanged' };
     }
-    const result = writeVesselObservations(this.db, payload, capturedAt);
+    const result = (await writeVesselObservations(this.db, payload, capturedAt));
     return { rowsWritten: result.written, rowsSkipped: result.skipped, responseHash: archived.hash, changed: true };
   }
 
@@ -236,7 +245,7 @@ export class CaptureService {
     if (!archived.written) {
       return { rowsWritten: 0, rowsSkipped: 0, responseHash: archived.hash, changed: false, outcome: 'skipped_unchanged' };
     }
-    const result = writeSailingSpaceObservations(this.db, payload, capturedAt);
+    const result = (await writeSailingSpaceObservations(this.db, payload, capturedAt));
     return { rowsWritten: result.written, rowsSkipped: result.skipped, responseHash: archived.hash, changed: true };
   }
 
@@ -247,7 +256,7 @@ export class CaptureService {
     ]);
     await this.archive.append('vessel_basics', capturedAt, vessels);
     await this.archive.append('terminal_locations', capturedAt, terminals);
-    const result = writeReferenceData(this.db, vessels, terminals, capturedAt);
+    const result = (await writeReferenceData(this.db, vessels, terminals, capturedAt));
     return { rowsWritten: result.written, rowsSkipped: result.skipped };
   }
 

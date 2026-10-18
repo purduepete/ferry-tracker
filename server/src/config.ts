@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env.local', import.meta.url)) });
+if (process.env.FERRY_ENV_FALLBACK_FILE) dotenv.config({ path: process.env.FERRY_ENV_FALLBACK_FILE });
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -48,7 +49,7 @@ export function getConfig(): AppConfig {
     dataSource,
     apiAccessCode,
     catchToken,
-    secrets: [apiAccessCode, catchToken].filter((secret): secret is string => Boolean(secret)),
+    secrets: [apiAccessCode, catchToken, process.env.DATABASE_URL].filter((secret): secret is string => Boolean(secret)),
     rawInspector: process.env.ENABLE_RAW_INSPECTOR !== 'false',
     fixtureNow: dataSource === 'fixture' ? process.env.FIXTURE_NOW : undefined,
     capture: getCaptureConfig(),

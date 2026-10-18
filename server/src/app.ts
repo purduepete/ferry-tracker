@@ -58,13 +58,20 @@ export function createApp(
     response.json(envelope);
   };
 
-  app.get('/api/health', (_request, response) => response.json({ status: 'ok', source: config.dataSource }));
-  app.get('/api/capture/status', (_request, response, next) => {
+  app.get('/api/health', async (_request, response) => {
+    try {
+      await capture?.ready();
+      response.json({ status: 'ok', source: config.dataSource });
+    } catch {
+      response.status(503).json({ status: 'unavailable', source: config.dataSource });
+    }
+  });
+  app.get('/api/capture/status', async (_request, response, next) => {
     if (!capture || !config.capture.statusEnabled) {
       response.status(404).json({ error: 'Capture status is not available.' });
       return;
     }
-    try { response.json(capture.status()); } catch (error) { next(error); }
+    try { response.json(await capture.status()); } catch (error) { next(error); }
   });
   app.get('/api/terminals', async (_request, response, next) => {
     try { send(response, await service.terminals()); } catch (error) { next(error); }
@@ -122,14 +129,14 @@ export function createApp(
     try { send(response, await service.catchWindows(departingId, arrivingId, timing)); } catch (error) { next(error); }
   });
 
-  app.get('/api/crossings', (_request, response, next) => {    if (!history) {
+  app.get('/api/crossings', async (_request, response, next) => {    if (!history) {
       response.status(404).json({ error: 'Recorded crossings are not available.' });
       return;
     }
-    try { send(response, { data: history.crossings(), raw: null }); } catch (error) { next(error); }
+    try { send(response, { data: await history.crossings(), raw: null }); } catch (error) { next(error); }
   });
 
-  app.get('/api/history/dates', (request, response, next) => {
+  app.get('/api/history/dates', async (request, response, next) => {
     const departingId = terminalId(request.query.departingTerminalId);
     const arrivingId = terminalId(request.query.arrivingTerminalId);
     if (!departingId || !arrivingId || departingId === arrivingId) {
@@ -140,9 +147,9 @@ export function createApp(
       response.status(404).json({ error: 'Recorded sailings are not available.' });
       return;
     }
-    try { send(response, { data: history.serviceDates(departingId, arrivingId), raw: null }); } catch (error) { next(error); }
+    try { send(response, { data: await history.serviceDates(departingId, arrivingId), raw: null }); } catch (error) { next(error); }
   });
-  app.get('/api/history/sailings', (request, response, next) => {
+  app.get('/api/history/sailings', async (request, response, next) => {
     const departingId = terminalId(request.query.departingTerminalId);
     const arrivingId = terminalId(request.query.arrivingTerminalId);
     const serviceDate = typeof request.query.serviceDate === 'string' ? request.query.serviceDate : '';
@@ -154,7 +161,7 @@ export function createApp(
       response.status(404).json({ error: 'Recorded sailings are not available.' });
       return;
     }
-    try { send(response, { data: history.daySailings(departingId, arrivingId, serviceDate), raw: null }); } catch (error) { next(error); }
+    try { send(response, { data: await history.daySailings(departingId, arrivingId, serviceDate), raw: null }); } catch (error) { next(error); }
   });
 
   const frontendDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../frontend/dist');

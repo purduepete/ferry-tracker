@@ -9,10 +9,11 @@ import path from 'node:path';
 import process from 'node:process';
 import Database from 'better-sqlite3';
 import { getConfig } from '../server/dist/config.js';
-import { openDatabase } from '../server/dist/db/database.js';
+import { openDatabase, transaction } from '../server/dist/db/database.js';
 import { runLegRollup } from '../server/dist/rollup/legRollup.js';
 
 const KEEP_FRACTION = 0.8;
+if (process.env.STORAGE_BACKEND === 'postgresql') throw new Error('Legacy SQLite rebuild is disabled for PostgreSQL. Use a separately reviewed PostgreSQL repair.');
 
 const config = getConfig();
 const { capture } = config;
@@ -87,10 +88,10 @@ try {
   let after;
   // The sanity check runs inside the transaction, so a rebuild that loses most of the history
   // rolls back instead of committing and leaving someone to restore the backup by hand.
-  const rebuild = db.transaction(() => {
+  const rebuild = transaction(db, async () => {
     db.prepare('DELETE FROM sailing_leg').run();
     db.prepare('DELETE FROM rollup_state').run();
-    const result = runLegRollup(db, {
+    const result = await runLegRollup(db, {
       dwellCeilingMinutes: capture.dwellCeilingMinutes,
       dockDebounceSeconds: capture.dockDebounceSeconds,
     });
@@ -107,7 +108,7 @@ try {
 
   let result;
   try {
-    result = rebuild();
+    result = await rebuild();
   } catch (error) {
     console.error(`rebuild rolled back: ${error.message}`);
     console.error('sailing_leg is unchanged. Nothing to restore.');

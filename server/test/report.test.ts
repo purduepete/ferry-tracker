@@ -5,20 +5,20 @@ import { collectReport, percentile } from '../src/report/metrics';
 
 let db: Db;
 
-beforeEach(() => {
+beforeEach(async () => {
   db = openDatabase(':memory:');
-  db.prepare("INSERT INTO terminal_reference (terminal_id, terminal_name, updated_at) VALUES (7, 'Seattle', '2026-09-01T00:00:00.000Z')").run();
-  db.prepare("INSERT INTO terminal_reference (terminal_id, terminal_name, updated_at) VALUES (3, 'Bainbridge Island', '2026-09-01T00:00:00.000Z')").run();
+  (await db.prepare("INSERT INTO terminal_reference (terminal_id, terminal_name, updated_at) VALUES (7, 'Seattle', '2026-09-01T00:00:00.000Z')").run());
+  (await db.prepare("INSERT INTO terminal_reference (terminal_id, terminal_name, updated_at) VALUES (3, 'Bainbridge Island', '2026-09-01T00:00:00.000Z')").run());
 });
 afterEach(() => db.close());
 
-function run(outcome: string, minute: number): void {
-  db.prepare(`INSERT INTO capture_run (task, started_at, outcome, service_date)
+async function run(outcome: string, minute: number): Promise<void> {
+  (await db.prepare(`INSERT INTO capture_run (task, started_at, outcome, service_date)
     VALUES ('vessel_locations', ?, ?, '2026-09-01')`)
-    .run(new Date(Date.parse('2026-09-01T15:00:00.000Z') + minute * 60_000).toISOString(), outcome);
+    .run(new Date(Date.parse('2026-09-01T15:00:00.000Z') + minute * 60_000).toISOString(), outcome));
 }
 
-function leg(overrides: Record<string, unknown> = {}): void {
+async function leg(overrides: Record<string, unknown> = {}): Promise<void> {
   const row = {
     departed_at: '2026-09-01T16:00:00.000Z',
     departure_delay_minutes: 4,
@@ -31,7 +31,7 @@ function leg(overrides: Record<string, unknown> = {}): void {
     ...overrides,
   };
 
-  db.prepare(`INSERT INTO sailing_leg (
+  (await db.prepare(`INSERT INTO sailing_leg (
     vessel_id, vessel_name, departing_terminal_id, arriving_terminal_id, departed_at,
     dock_arrival_at, departure_delay_minutes, crossing_minutes, load_minutes,
     complete, confidence, exclusion_reason, load_exclusion_reason, service_date, weekday, hour_local
@@ -46,7 +46,7 @@ function leg(overrides: Record<string, unknown> = {}): void {
       row.confidence,
       row.exclusion_reason,
       row.load_exclusion_reason,
-    );
+    ));
 }
 
 describe('percentile', () => {
@@ -63,13 +63,13 @@ describe('percentile', () => {
 });
 
 describe('capture report metrics', () => {
-  it('measures the skip rate and the gap between real changes', () => {
-    run('success', 0);
-    run('skipped_unchanged', 1);
-    run('skipped_unchanged', 2);
-    run('success', 3);
+  it('measures the skip rate and the gap between real changes', async () => {
+    (await run('success', 0));
+    (await run('skipped_unchanged', 1));
+    (await run('skipped_unchanged', 2));
+    (await run('success', 3));
 
-    const [task] = collectReport(db, ':memory:', { vessel_locations: 60_000 }).cadence;
+    const [task] = (await collectReport(db, ':memory:', { vessel_locations: 60_000 })).cadence;
 
     expect(task.changed).toBe(2);
     expect(task.unchanged).toBe(2);
@@ -78,20 +78,20 @@ describe('capture report metrics', () => {
     expect(task.intervalSeconds).toBe(60);
   });
 
-  it('names routes from the terminal reference table', () => {
-    leg();
-    const data = collectReport(db, ':memory:');
+  it('names routes from the terminal reference table', async () => {
+    (await leg());
+    const data = (await collectReport(db, ':memory:'));
 
     expect(data.crossings[0].route).toBe('Seattle to Bainbridge Island');
     expect(data.crossings[0].medianMinutes).toBe(35);
     expect(data.loads[0].medianMinutes).toBe(12);
   });
 
-  it('leaves low confidence legs out of the delay summary but still counts them', () => {
-    leg({ departure_delay_minutes: 4 });
-    leg({ departed_at: '2026-09-01T17:00:00.000Z', departure_delay_minutes: 90, confidence: 'low', exclusion_reason: 'missing_departure' });
+  it('leaves low confidence legs out of the delay summary but still counts them', async () => {
+    (await leg({ departure_delay_minutes: 4 }));
+    (await leg({ departed_at: '2026-09-01T17:00:00.000Z', departure_delay_minutes: 90, confidence: 'low', exclusion_reason: 'missing_departure' }));
 
-    const data = collectReport(db, ':memory:');
+    const data = (await collectReport(db, ':memory:'));
 
     expect(data.delayExcluded).toBe(1);
     expect(data.delays).toHaveLength(1);
@@ -99,11 +99,11 @@ describe('capture report metrics', () => {
     expect(data.delays[0].onTimePct).toBe(100);
   });
 
-  it('summarizes leg trust by confidence and reason', () => {
-    leg();
-    leg({ departed_at: '2026-09-01T17:00:00.000Z', confidence: 'low', load_exclusion_reason: 'service_gap' });
+  it('summarizes leg trust by confidence and reason', async () => {
+    (await leg());
+    (await leg({ departed_at: '2026-09-01T17:00:00.000Z', confidence: 'low', load_exclusion_reason: 'service_gap' }));
 
-    const data = collectReport(db, ':memory:');
+    const data = (await collectReport(db, ':memory:'));
 
     expect(data.confidence).toEqual(
       expect.arrayContaining([{ label: 'high', legs: 1 }, { label: 'low', legs: 1 }]),
@@ -115,16 +115,16 @@ describe('capture report metrics', () => {
 });
 
 describe('capture report html', () => {
-  it('renders an empty database without throwing', () => {
-    const html = renderReport(collectReport(db, 'C:\\data\\ferry.db'));
+  it('renders an empty database without throwing', async () => {
+    const html = renderReport((await collectReport(db, 'C:\\data\\ferry.db')));
 
     expect(html).toContain('Ferry capture report');
     expect(html).toContain('No rows yet.');
     expect(html).toContain('Not enough polls yet to judge the interval.');
   });
 
-  it('ships both themes and honours the system preference', () => {
-    const html = renderReport(collectReport(db, ':memory:'));
+  it('ships both themes and honours the system preference', async () => {
+    const html = renderReport((await collectReport(db, ':memory:')));
 
     expect(html).toContain('html[data-theme=dark]');
     expect(html).toContain('html[data-theme=light]');
@@ -132,25 +132,25 @@ describe('capture report html', () => {
     expect(html).toContain("localStorage.getItem('ferry-report-theme')");
   });
 
-  it('calls out a poll interval that is too frequent', () => {
-    run('success', 0);
-    for (let minute = 1; minute <= 9; minute += 1) run('skipped_unchanged', minute);
+  it('calls out a poll interval that is too frequent', async () => {
+    (await run('success', 0));
+    for (let minute = 1; minute <= 9; minute += 1) (await run('skipped_unchanged', minute));
 
-    const html = renderReport(collectReport(db, ':memory:', { vessel_locations: 30_000 }));
+    const html = renderReport((await collectReport(db, ':memory:', { vessel_locations: 30_000 })));
 
     expect(html).toContain('Vessel polling is too frequent');
     expect(html).toContain('90% of polls');
   });
 
-  it('escapes text that came from the database', () => {
-    db.prepare("INSERT INTO terminal_reference (terminal_id, terminal_name, updated_at) VALUES (9, '<script>x</script>', '2026-09-01T00:00:00.000Z')").run();
-    leg({ departed_at: '2026-09-01T18:00:00.000Z' });
-    db.prepare(`INSERT INTO sailing_leg (
+  it('escapes text that came from the database', async () => {
+    (await db.prepare("INSERT INTO terminal_reference (terminal_id, terminal_name, updated_at) VALUES (9, '<script>x</script>', '2026-09-01T00:00:00.000Z')").run());
+    (await leg({ departed_at: '2026-09-01T18:00:00.000Z' }));
+    (await db.prepare(`INSERT INTO sailing_leg (
       vessel_id, vessel_name, departing_terminal_id, arriving_terminal_id, departed_at,
       dock_arrival_at, crossing_minutes, complete, confidence, service_date, weekday, hour_local
-    ) VALUES (2, 'X', 9, 7, '2026-09-01T19:00:00.000Z', '2026-09-01T19:30:00.000Z', 30, 1, 'high', '2026-09-01', 2, 12)`).run();
+    ) VALUES (2, 'X', 9, 7, '2026-09-01T19:00:00.000Z', '2026-09-01T19:30:00.000Z', 30, 1, 'high', '2026-09-01', 2, 12)`).run());
 
-    const html = renderReport(collectReport(db, ':memory:'));
+    const html = renderReport((await collectReport(db, ':memory:')));
 
     expect(html).not.toContain('<script>x</script>');
     expect(html).toContain('&#60;script&#62;');

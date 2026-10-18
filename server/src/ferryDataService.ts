@@ -293,9 +293,9 @@ export class FerryDataService {
     const fromIso = new Date(windowStart).toISOString();
     const toIso = new Date(windowEnd).toISOString();
     const recorded = visible.some((sailing) => !sailing.spaceAvailable)
-      ? this.history?.recordedSpaces(departingId, arrivingId, fromIso, toIso)
+      ? await this.history?.recordedSpaces(departingId, arrivingId, fromIso, toIso)
       : undefined;
-    const legs = this.history?.recordedLegs(departingId, arrivingId, fromIso, toIso);
+    const legs = await this.history?.recordedLegs(departingId, arrivingId, fromIso, toIso);
     return {
       data: visible
         .map((sailing) => backfill(sailing, recorded, legs, departingId, arrivingId))
@@ -313,7 +313,7 @@ export class FerryDataService {
       this.vessels(),
     ]);
     const crossings: Crossings = new Map();
-    for (const crossing of this.history?.crossings() ?? []) {
+    for (const crossing of await this.history?.crossings() ?? []) {
       const key = crossingKey(crossing.departingTerminalId, crossing.arrivingTerminalId);
       if (key !== null) crossings.set(key, crossing);
     }

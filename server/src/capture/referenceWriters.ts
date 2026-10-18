@@ -6,11 +6,11 @@ import {
   terminalMateSchema,
   vesselBasicSchema,
 } from '@ferry-tracker/shared';
-import type { Db } from '../db/database.js';
+import { transaction, type Db } from '../db/database.js';
 import type { WsdotClient } from '../wsdotClient.js';
 import type { WriteResult } from './writers.js';
 
-export function writeReferenceData(db: Db, vessels: unknown, terminals: unknown, updatedAt: string): WriteResult {
+export async function writeReferenceData(db: Db, vessels: unknown, terminals: unknown, updatedAt: string): Promise<WriteResult> {
   const result: WriteResult = { written: 0, skipped: 0, invalid: 0 };
 
   const upsertVessel = upsert(
@@ -28,7 +28,7 @@ export function writeReferenceData(db: Db, vessels: unknown, terminals: unknown,
     'UPDATE terminal_reference SET terminal_name = ?, latitude = ?, longitude = ?, city = ?, updated_at = ? WHERE terminal_id = ?',
   );
 
-  const run = db.transaction(() => {
+  const run = transaction(db, async () => {
     for (const entry of Array.isArray(vessels) ? vessels : []) {
       const parsed = vesselBasicSchema.safeParse(entry);
       if (!parsed.success) {
@@ -36,14 +36,14 @@ export function writeReferenceData(db: Db, vessels: unknown, terminals: unknown,
         continue;
       }
       const vessel = parsed.data;
-      upsertVessel(vessel.VesselID, [
+      (await upsertVessel(vessel.VesselID, [
         vessel.VesselName,
         vessel.Class?.ClassName ?? null,
         vessel.MaxPassengers ?? null,
         vessel.MaxVehicles ?? null,
         vessel.Status ?? null,
         updatedAt,
-      ]);
+      ]));
       result.written += 1;
     }
 
@@ -54,18 +54,18 @@ export function writeReferenceData(db: Db, vessels: unknown, terminals: unknown,
         continue;
       }
       const terminal = parsed.data;
-      upsertTerminal(terminal.TerminalID, [
+      (await upsertTerminal(terminal.TerminalID, [
         terminal.TerminalName ?? String(terminal.TerminalID),
         terminal.Latitude ?? null,
         terminal.Longitude ?? null,
         terminal.City ?? null,
         updatedAt,
-      ]);
+      ]));
       result.written += 1;
     }
   });
 
-  run();
+  (await run());
   return result;
 }
 
@@ -97,8 +97,8 @@ export async function writeScheduleSnapshots(
   // its rows stale forever, so today's stored pairs are reconciled whether or not mates still lists them.
   const today = pacificParts(now())?.serviceDate ?? null;
   if (today !== null) {
-    const stored = db.prepare(`SELECT DISTINCT departing_terminal_id AS departingId, arriving_terminal_id AS arrivingId
-      FROM schedule_snapshot WHERE service_date = ?`).all(today) as Array<{ departingId: number; arrivingId: number }>;
+    const stored = (await db.prepare(`SELECT DISTINCT departing_terminal_id AS "departingId", arriving_terminal_id AS "arrivingId"
+      FROM schedule_snapshot WHERE service_date = ?`).all(today)) as Array<{ departingId: number; arrivingId: number }>;
     for (const pair of stored) pairs.set(`${pair.departingId}|${pair.arrivingId}`, pair);
   }
 
@@ -114,7 +114,7 @@ export async function writeScheduleSnapshots(
       continue;
     }
     // One transaction per terminal pair keeps each write bounded.
-    storeCombos(db, parsed.data.TerminalCombos, new Date(fetchedAt).toISOString(), result);
+    (await storeCombos(db, parsed.data.TerminalCombos, new Date(fetchedAt).toISOString(), result));
   }
 
   return result;
@@ -128,12 +128,12 @@ interface SnapshotRow {
   values: Array<string | number | null>;
 }
 
-function storeCombos(
+async function storeCombos(
   db: Db,
   combos: Array<{ DepartingTerminalID: number; ArrivingTerminalID: number; Times: Array<Record<string, unknown>> }>,
   capturedAt: string,
   result: WriteResult,
-): void {
+): Promise<void> {
   const find = db.prepare(`SELECT id FROM schedule_snapshot
     WHERE service_date = ? AND departing_terminal_id = ? AND arriving_terminal_id = ? AND departing_time = ?`);
   const insert = db.prepare(`INSERT INTO schedule_snapshot (
@@ -171,22 +171,22 @@ function storeCombos(
 
   const today = pacificParts(capturedAt)?.serviceDate ?? null;
 
-  const run = db.transaction(() => {
+  const run = transaction(db, async () => {
     for (const row of rows) {
-      const existing = find.get(row.serviceDate, row.departingId, row.arrivingId, row.departingTime) as { id: number } | undefined;
+      const existing = (await find.get(row.serviceDate, row.departingId, row.arrivingId, row.departingTime)) as { id: number } | undefined;
       // Select then write, because ON CONFLICT has no Azure SQL equivalent.
       if (existing) {
-        update.run(capturedAt, ...row.values, existing.id);
+        (await update.run(capturedAt, ...row.values, existing.id));
         result.skipped += 1;
       } else {
-        insert.run(capturedAt, row.serviceDate, row.departingId, row.arrivingId, row.departingTime, ...row.values);
+        (await insert.run(capturedAt, row.serviceDate, row.departingId, row.arrivingId, row.departingTime, ...row.values));
         result.written += 1;
       }
     }
-    if (today !== null) withdrawMissing(db, rows, today, capturedAt);
+    if (today !== null) (await withdrawMissing(db, rows, today, capturedAt));
   });
 
-  run();
+  (await run());
 }
 
 /**
@@ -197,7 +197,7 @@ function storeCombos(
  * Scoped to today alone. scheduletoday can carry a post-midnight sailing whose Pacific service date
  * is tomorrow, and treating that lone row as tomorrow's whole schedule would withdraw the next day.
  */
-function withdrawMissing(db: Db, rows: SnapshotRow[], today: string, capturedAt: string): void {
+async function withdrawMissing(db: Db, rows: SnapshotRow[], today: string, capturedAt: string): Promise<void> {
   const byPair = new Map<string, { departingId: number; arrivingId: number; times: string[] }>();
   for (const row of rows) {
     if (row.serviceDate !== today) continue;
@@ -211,11 +211,11 @@ function withdrawMissing(db: Db, rows: SnapshotRow[], today: string, capturedAt:
     // An empty group is skipped rather than withdrawing everything, and NOT IN () is a syntax error.
     if (group.times.length === 0) continue;
     const placeholders = group.times.map(() => '?').join(', ');
-    db.prepare(`UPDATE schedule_snapshot SET withdrawn_at = ?
+    (await db.prepare(`UPDATE schedule_snapshot SET withdrawn_at = ?
       WHERE service_date = ? AND departing_terminal_id = ? AND arriving_terminal_id = ?
         AND withdrawn_at IS NULL AND departing_time > ?
         AND departing_time NOT IN (${placeholders})`)
-      .run(capturedAt, today, group.departingId, group.arrivingId, capturedAt, ...group.times);
+      .run(capturedAt, today, group.departingId, group.arrivingId, capturedAt, ...group.times));
   }
 }
 
@@ -224,8 +224,8 @@ function upsert(db: Db, findSql: string, insertSql: string, updateSql: string) {
   const insert = db.prepare(insertSql);
   const update = db.prepare(updateSql);
   // Select then write, because ON CONFLICT has no Azure SQL equivalent.
-  return (id: number, values: Array<string | number | null>): void => {
-    if (find.get(id)) update.run(...values, id);
-    else insert.run(id, ...values);
+  return async (id: number, values: Array<string | number | null>): Promise<void> => {
+    if ((await find.get(id))) (await update.run(...values, id));
+    else (await insert.run(id, ...values));
   };
 }

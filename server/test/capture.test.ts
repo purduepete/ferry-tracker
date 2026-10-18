@@ -98,44 +98,44 @@ describe('vessel observation dedupe', () => {
   beforeEach(() => { db = openDatabase(':memory:'); });
   afterEach(() => db.close());
 
-  const rows = () => db.prepare('SELECT * FROM vessel_observation ORDER BY id').all() as Array<Record<string, unknown>>;
+  const rows = async () => (await db.prepare('SELECT * FROM vessel_observation ORDER BY id').all()) as Array<Record<string, unknown>>;
 
-  it('writes a second row when WSDOT reuses a timestamp but changes the content', () => {
-    writeVesselObservations(db, [vessel()], '2026-09-01T18:30:00.000Z');
-    const result = writeVesselObservations(db, [vessel({ Speed: 14 })], '2026-09-01T18:30:30.000Z');
+  it('writes a second row when WSDOT reuses a timestamp but changes the content', async () => {
+    (await writeVesselObservations(db, [vessel()], '2026-09-01T18:30:00.000Z'));
+    const result = (await writeVesselObservations(db, [vessel({ Speed: 14 })], '2026-09-01T18:30:30.000Z'));
 
     expect(result.written).toBe(1);
-    expect(rows()).toHaveLength(2);
+    expect((await rows())).toHaveLength(2);
   });
 
-  it('writes one row when the same record arrives twice', () => {
-    writeVesselObservations(db, [vessel()], '2026-09-01T18:30:00.000Z');
-    const result = writeVesselObservations(db, [vessel()], '2026-09-01T18:30:30.000Z');
+  it('writes one row when the same record arrives twice', async () => {
+    (await writeVesselObservations(db, [vessel()], '2026-09-01T18:30:00.000Z'));
+    const result = (await writeVesselObservations(db, [vessel()], '2026-09-01T18:30:30.000Z'));
 
     expect(result.written).toBe(0);
     expect(result.skipped).toBe(1);
-    expect(rows()).toHaveLength(1);
+    expect((await rows())).toHaveLength(1);
   });
 
-  it('does not write per poll when the source timestamp is missing and nothing changed', () => {
-    writeVesselObservations(db, [vessel({ TimeStamp: null })], '2026-09-01T18:30:00.000Z');
-    writeVesselObservations(db, [vessel({ TimeStamp: null })], '2026-09-01T18:30:30.000Z');
-    const result = writeVesselObservations(db, [vessel({ TimeStamp: null })], '2026-09-01T18:31:00.000Z');
+  it('does not write per poll when the source timestamp is missing and nothing changed', async () => {
+    (await writeVesselObservations(db, [vessel({ TimeStamp: null })], '2026-09-01T18:30:00.000Z'));
+    (await writeVesselObservations(db, [vessel({ TimeStamp: null })], '2026-09-01T18:30:30.000Z'));
+    const result = (await writeVesselObservations(db, [vessel({ TimeStamp: null })], '2026-09-01T18:31:00.000Z'));
 
     expect(result.skipped).toBe(1);
-    expect(rows()).toHaveLength(1);
+    expect((await rows())).toHaveLength(1);
   });
 
-  it('records a change when the source timestamp is missing and the content moves', () => {
-    writeVesselObservations(db, [vessel({ TimeStamp: null })], '2026-09-01T18:30:00.000Z');
-    writeVesselObservations(db, [vessel({ TimeStamp: null, AtDock: true })], '2026-09-01T18:30:30.000Z');
+  it('records a change when the source timestamp is missing and the content moves', async () => {
+    (await writeVesselObservations(db, [vessel({ TimeStamp: null })], '2026-09-01T18:30:00.000Z'));
+    (await writeVesselObservations(db, [vessel({ TimeStamp: null, AtDock: true })], '2026-09-01T18:30:30.000Z'));
 
-    expect(rows()).toHaveLength(2);
+    expect((await rows())).toHaveLength(2);
   });
 
-  it('stores booleans as bits and dates as ISO 8601 UTC', () => {
-    writeVesselObservations(db, [vessel()], '2026-09-01T18:30:00.000Z');
-    const [row] = rows();
+  it('stores booleans as bits and dates as ISO 8601 UTC', async () => {
+    (await writeVesselObservations(db, [vessel()], '2026-09-01T18:30:00.000Z'));
+    const [row] = (await rows());
 
     expect(row.in_service).toBe(1);
     expect(row.at_dock).toBe(0);
@@ -148,29 +148,29 @@ describe('sailing space observations', () => {
   beforeEach(() => { db = openDatabase(':memory:'); });
   afterEach(() => db.close());
 
-  const rows = () => db.prepare('SELECT * FROM sailing_space_observation ORDER BY id').all() as Array<Record<string, unknown>>;
+  const rows = async () => (await db.prepare('SELECT * FROM sailing_space_observation ORDER BY id').all()) as Array<Record<string, unknown>>;
 
-  it('writes a baseline row for a sailing whose counts never change', () => {
-    writeSailingSpaceObservations(db, [terminalSpace(50)], '2026-09-01T18:30:00.000Z');
-    writeSailingSpaceObservations(db, [terminalSpace(50)], '2026-09-01T18:31:00.000Z');
+  it('writes a baseline row for a sailing whose counts never change', async () => {
+    (await writeSailingSpaceObservations(db, [terminalSpace(50)], '2026-09-01T18:30:00.000Z'));
+    (await writeSailingSpaceObservations(db, [terminalSpace(50)], '2026-09-01T18:31:00.000Z'));
 
-    const observations = rows();
+    const observations = (await rows());
     expect(observations).toHaveLength(1);
     expect(observations[0].observation_kind).toBe('baseline');
   });
 
-  it('writes a change row and then a final row when the sailing leaves the payload', () => {
-    writeSailingSpaceObservations(db, [terminalSpace(50)], '2026-09-01T18:30:00.000Z');
-    writeSailingSpaceObservations(db, [terminalSpace(20)], '2026-09-01T18:31:00.000Z');
-    writeSailingSpaceObservations(db, [terminalSpace(20, '/Date(1788285600000-0700)/')], '2026-09-01T18:40:00.000Z');
+  it('writes a change row and then a final row when the sailing leaves the payload', async () => {
+    (await writeSailingSpaceObservations(db, [terminalSpace(50)], '2026-09-01T18:30:00.000Z'));
+    (await writeSailingSpaceObservations(db, [terminalSpace(20)], '2026-09-01T18:31:00.000Z'));
+    (await writeSailingSpaceObservations(db, [terminalSpace(20, '/Date(1788285600000-0700)/')], '2026-09-01T18:40:00.000Z'));
 
-    const kinds = rows().map((row) => row.observation_kind);
+    const kinds = (await rows()).map((row) => row.observation_kind);
     expect(kinds).toEqual(['baseline', 'change', 'baseline', 'final']);
   });
 
-  it('stores Pacific buckets alongside the departure', () => {
-    writeSailingSpaceObservations(db, [terminalSpace(50)], '2026-09-01T18:30:00.000Z');
-    const [row] = rows();
+  it('stores Pacific buckets alongside the departure', async () => {
+    (await writeSailingSpaceObservations(db, [terminalSpace(50)], '2026-09-01T18:30:00.000Z'));
+    const [row] = (await rows());
 
     expect(row.service_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(row.hour_local).toBeGreaterThanOrEqual(0);
@@ -192,7 +192,7 @@ describe('raw archive', () => {
   });
 
   it('appends nothing when the response hash is unchanged', async () => {
-    const archive = new RawArchive(db, directory, 0, ACCESS_CODE);
+    const archive = new RawArchive(db, directory, 0, [ACCESS_CODE]);
     const first = await archive.append('vessel_locations', '2026-09-01T18:30:00.000Z', [vessel()]);
     const second = await archive.append('vessel_locations', '2026-09-01T18:30:30.000Z', [vessel()]);
 
@@ -201,17 +201,17 @@ describe('raw archive', () => {
     expect(second.reason).toBe('unchanged');
     expect(first.hash).toBe(second.hash);
 
-    const files = db.prepare('SELECT * FROM archive_file').all() as Array<Record<string, unknown>>;
+    const files = (await db.prepare('SELECT * FROM archive_file').all()) as Array<Record<string, unknown>>;
     expect(files).toHaveLength(1);
     expect(files[0].member_count).toBe(1);
   });
 
   it('appends a new member when the response changes', async () => {
-    const archive = new RawArchive(db, directory, 0, ACCESS_CODE);
+    const archive = new RawArchive(db, directory, 0, [ACCESS_CODE]);
     await archive.append('vessel_locations', '2026-09-01T18:30:00.000Z', [vessel()]);
     await archive.append('vessel_locations', '2026-09-01T18:30:30.000Z', [vessel({ Speed: 14 })]);
 
-    const files = db.prepare('SELECT * FROM archive_file').all() as Array<Record<string, unknown>>;
+    const files = (await db.prepare('SELECT * FROM archive_file').all()) as Array<Record<string, unknown>>;
     expect(files[0].member_count).toBe(2);
   });
 });
@@ -249,7 +249,7 @@ describe('capture loop', () => {
     const service = new CaptureService(db, client, captureConfig({ rawArchiveDir: directory }));
     service.start();
     await settle(200);
-    service.stop();
+    await service.stop();
     await settle(60);
 
     expect(calls).toBeGreaterThan(1);
@@ -268,12 +268,12 @@ describe('capture loop', () => {
     const service = new CaptureService(db, client, captureConfig({ rawArchiveDir: directory }));
     service.start();
     await settle(120);
-    service.stop();
+    await service.stop();
     await settle(30);
 
-    const runs = db
+    const runs = (await db
       .prepare("SELECT * FROM capture_run WHERE task = 'vessel_locations' AND outcome = 'error'")
-      .all() as Array<Record<string, string>>;
+      .all()) as Array<Record<string, string>>;
 
     expect(calls).toBeGreaterThan(1);
     expect(runs.length).toBeGreaterThan(1);
@@ -289,19 +289,19 @@ describe('capture loop', () => {
     const service = new CaptureService(db, client, captureConfig({ rawArchiveDir: directory }));
     service.start();
     await settle(60);
-    service.stop();
+    await service.stop();
 
-    const status = JSON.stringify(service.status());
+    const status = JSON.stringify((await service.status()));
     expect(status).not.toContain(ACCESS_CODE);
     expect(status).toContain('vessel_locations');
   });
 
-  it('refuses to start against fixtures unless explicitly allowed', () => {
+  it('refuses to start against fixtures unless explicitly allowed', async () => {
     const config = { ...captureConfig({ rawArchiveDir: directory }), dataSource: 'fixture' as const };
     const client = { getVesselLocations: async () => [vessel()] } as unknown as WsdotClient;
     const service = new CaptureService(db, client, config);
     service.start();
-    service.stop();
+    await service.stop();
 
     expect(db.prepare('SELECT COUNT(*) AS total FROM capture_run').get()).toEqual({ total: 0 });
   });

@@ -10,6 +10,7 @@ import { getConfig } from '../server/dist/config.js';
 import { checkFreeSpace } from '../server/dist/capture/diskSpace.js';
 
 const MINUTE = 60_000;
+if (process.env.STORAGE_BACKEND === 'postgresql') throw new Error('Legacy SQLite watchdog is disabled for PostgreSQL. Use framework readiness and PostgreSQL monitoring.');
 const MIN_FREE_DISK_MB = Number(process.env.WATCHDOG_MIN_FREE_DISK_MB ?? 20_480);
 const HEARTBEAT_MAX_AGE_MS = Number(process.env.WATCHDOG_HEARTBEAT_MAX_AGE_MS ?? 45 * MINUTE);
 const SERVICE_NAME = process.env.WATCHDOG_TUNNEL_SERVICE ?? 'cloudflared';

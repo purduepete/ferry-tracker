@@ -47,19 +47,19 @@ export class RawArchive {
 
   private async record(endpointId: EndpointId, serviceDate: string, filePath: string, capturedAt: string): Promise<void> {
     const byteSize = await stat(filePath).then((info) => info.size, () => 0);
-    const existing = this.db
+    const existing = (await this.db
       .prepare('SELECT id, member_count FROM archive_file WHERE endpoint_id = ? AND service_date = ?')
-      .get(endpointId, serviceDate) as { id: number; member_count: number } | undefined;
+      .get(endpointId, serviceDate)) as { id: number; member_count: number } | undefined;
 
     if (existing) {
-      this.db
+      (await this.db
         .prepare('UPDATE archive_file SET member_count = ?, byte_size = ?, updated_at = ? WHERE id = ?')
-        .run(existing.member_count + 1, byteSize, capturedAt, existing.id);
+        .run(existing.member_count + 1, byteSize, capturedAt, existing.id));
       return;
     }
-    this.db
+    (await this.db
       .prepare(`INSERT INTO archive_file (endpoint_id, service_date, path, member_count, byte_size, created_at, updated_at)
         VALUES (?, ?, ?, 1, ?, ?, ?)`)
-      .run(endpointId, serviceDate, filePath, byteSize, capturedAt, capturedAt);
+      .run(endpointId, serviceDate, filePath, byteSize, capturedAt, capturedAt));
   }
 }

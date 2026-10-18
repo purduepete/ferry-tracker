@@ -1,5 +1,5 @@
 import { unlink } from 'node:fs/promises';
-import type { Db } from '../db/database.js';
+import { transaction, type Db } from '../db/database.js';
 
 export interface RetentionOptions {
   retentionDays: number | null;
@@ -32,7 +32,7 @@ export async function pruneOldData(db: Db, options: RetentionOptions): Promise<R
 
   const now = options.now?.() ?? Date.now();
   const requested = new Date(now - options.retentionDays * 24 * 60 * 60_000).toISOString();
-  const watermark = (db.prepare("SELECT watermark FROM rollup_state WHERE name = 'sailing_leg'").get() as
+  const watermark = ((await db.prepare("SELECT watermark FROM rollup_state WHERE name = 'sailing_leg'").get()) as
     | { watermark: string | null }
     | undefined)?.watermark ?? null;
 
@@ -42,29 +42,29 @@ export async function pruneOldData(db: Db, options: RetentionOptions): Promise<R
   const cutoff = watermark < requested ? watermark : requested;
   const result = empty(cutoff, null);
 
-  const files = db
+  const files = (await db
     .prepare('SELECT id, path FROM archive_file WHERE service_date < ?')
-    .all(cutoff.slice(0, 10)) as Array<{ id: number; path: string }>;
+    .all(cutoff.slice(0, 10))) as Array<{ id: number; path: string }>;
   for (const file of files) {
     await unlink(file.path).catch(() => undefined);
   }
 
-  const run = db.transaction(() => {
-    result.vesselObservations = db
+  const run = transaction(db, async () => {
+    result.vesselObservations = (await db
       .prepare('DELETE FROM vessel_observation WHERE COALESCE(source_timestamp, captured_at) < ?')
-      .run(cutoff).changes;
-    result.sailingSpaceObservations = db
+      .run(cutoff)).changes;
+    result.sailingSpaceObservations = (await db
       .prepare('DELETE FROM sailing_space_observation WHERE captured_at < ?')
-      .run(cutoff).changes;
-    result.sailingSpaceDepartures = db
+      .run(cutoff)).changes;
+    result.sailingSpaceDepartures = (await db
       .prepare('DELETE FROM sailing_space_departure WHERE finalized = 1 AND last_seen_at < ?')
-      .run(cutoff).changes;
-    result.captureRuns = db.prepare('DELETE FROM capture_run WHERE started_at < ?').run(cutoff).changes;
+      .run(cutoff)).changes;
+    result.captureRuns = (await db.prepare('DELETE FROM capture_run WHERE started_at < ?').run(cutoff)).changes;
     for (const file of files) {
-      result.archiveFiles += db.prepare('DELETE FROM archive_file WHERE id = ?').run(file.id).changes;
+      result.archiveFiles += (await db.prepare('DELETE FROM archive_file WHERE id = ?').run(file.id)).changes;
     }
   });
 
-  run();
+  (await run());
   return result;
 }

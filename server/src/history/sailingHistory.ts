@@ -25,11 +25,11 @@ export interface RecordedLeg {
 }
 
 export interface SailingHistory {
-  recordedSpaces(departingId: number, arrivingId: number, fromIso: string, toIso: string): Map<string, RecordedSpace>;
-  recordedLegs(departingId: number, arrivingId: number, fromIso: string, toIso: string): Map<string, RecordedLeg>;
-  serviceDates(departingId: number, arrivingId: number): string[];
-  daySailings(departingId: number, arrivingId: number, serviceDate: string): SailingView[];
-  crossings(): CrossingView[];
+  recordedSpaces(departingId: number, arrivingId: number, fromIso: string, toIso: string): Map<string, RecordedSpace> | Promise<Map<string, RecordedSpace>>;
+  recordedLegs(departingId: number, arrivingId: number, fromIso: string, toIso: string): Map<string, RecordedLeg> | Promise<Map<string, RecordedLeg>>;
+  serviceDates(departingId: number, arrivingId: number): string[] | Promise<string[]>;
+  daySailings(departingId: number, arrivingId: number, serviceDate: string): SailingView[] | Promise<SailingView[]>;
+  crossings(): CrossingView[] | Promise<CrossingView[]>;
 }
 
 interface ObservationRow {
@@ -127,26 +127,26 @@ export class DatabaseSailingHistory implements SailingHistory {
     this.crossingCache = new CrossingCache(db, now);
   }
 
-  crossings(): CrossingView[] {
-    return this.crossingCache.read();
+  async crossings(): Promise<CrossingView[]> {
+    return (await this.crossingCache.read());
   }
 
-  serviceDates(departingId: number, arrivingId: number): string[] {
+  async serviceDates(departingId: number, arrivingId: number): Promise<string[]> {
     const today = pacificParts(new Date())?.serviceDate;
-    const rows = this.db.prepare(SERVICE_DATE_SQL).all(departingId, arrivingId, today, MAX_HISTORY_DAYS) as Array<{ service_date: string }>;
+    const rows = (await this.db.prepare(SERVICE_DATE_SQL).all(departingId, arrivingId, today, MAX_HISTORY_DAYS)) as Array<{ service_date: string }>;
     return rows.map((row) => row.service_date);
   }
 
-  daySailings(departingId: number, arrivingId: number, serviceDate: string): SailingView[] {
-    const rows = this.db.prepare(DAY_SCHEDULE_SQL).all(serviceDate, departingId, arrivingId) as SnapshotRow[];
+  async daySailings(departingId: number, arrivingId: number, serviceDate: string): Promise<SailingView[]> {
+    const rows = (await this.db.prepare(DAY_SCHEDULE_SQL).all(serviceDate, departingId, arrivingId)) as SnapshotRow[];
     if (rows.length === 0) return [];
 
     const first = Date.parse(rows[0].departing_time);
     const last = Date.parse(rows[rows.length - 1].departing_time);
     const fromIso = new Date(first - DAY_MARGIN_MS).toISOString();
     const toIso = new Date(last + DAY_MARGIN_MS).toISOString();
-    const spaces = this.recordedSpaces(departingId, arrivingId, fromIso, toIso);
-    const legs = this.recordedLegs(departingId, arrivingId, fromIso, toIso);
+    const spaces = (await this.recordedSpaces(departingId, arrivingId, fromIso, toIso));
+    const legs = (await this.recordedLegs(departingId, arrivingId, fromIso, toIso));
 
     return rows.map((row) => {
       const space = spaces.get(row.departing_time);
@@ -174,8 +174,8 @@ export class DatabaseSailingHistory implements SailingHistory {
     });
   }
 
-  recordedLegs(departingId: number, arrivingId: number, fromIso: string, toIso: string): Map<string, RecordedLeg> {
-    const rows = this.db.prepare(LEG_SQL).all(departingId, arrivingId, fromIso, toIso) as LegRow[];
+  async recordedLegs(departingId: number, arrivingId: number, fromIso: string, toIso: string): Promise<Map<string, RecordedLeg>> {
+    const rows = (await this.db.prepare(LEG_SQL).all(departingId, arrivingId, fromIso, toIso)) as LegRow[];
     const legs = new Map<string, RecordedLeg>();
     for (const row of rows) {
       if (row.scheduled_departure === null || legs.has(row.scheduled_departure)) continue;
@@ -189,10 +189,10 @@ export class DatabaseSailingHistory implements SailingHistory {
     return legs;
   }
 
-  recordedSpaces(departingId: number, arrivingId: number, fromIso: string, toIso: string): Map<string, RecordedSpace> {
-    const rows = this.db
+  async recordedSpaces(departingId: number, arrivingId: number, fromIso: string, toIso: string): Promise<Map<string, RecordedSpace>> {
+    const rows = (await this.db
       .prepare(LAST_OBSERVATION_SQL)
-      .all(departingId, arrivingId, departingId, fromIso, toIso, departingId, arrivingId, departingId, fromIso, toIso) as ObservationRow[];
+      .all(departingId, arrivingId, departingId, fromIso, toIso, departingId, arrivingId, departingId, fromIso, toIso)) as ObservationRow[];
 
     // A multi-destination sailing is stored against the departing terminal because WSDOT puts
     // the real destinations in ArrivalTerminalIDs, so it stands in only when nothing exact exists.
