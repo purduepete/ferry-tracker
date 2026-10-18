@@ -16,7 +16,10 @@ const statements = migrations.flatMap(migration => migration.statements).map(sql
   .replace(/\bCREATE TABLE (\w+)/g, 'CREATE TABLE public.$1')
   .replace(/\bALTER TABLE (\w+)/g, 'ALTER TABLE public.$1')
   .replace(/\bON (\w+) \(/g, 'ON public.$1 ('));
-const viewStatements = views.map(view => view.sql.replace('CREATE VIEW ', 'CREATE VIEW public.'));
+const viewStatements = views.map(view => {
+  const sql = view.sql.replace('CREATE VIEW ', 'CREATE VIEW public.');
+  return view.name === 'v_sailing_fill' ? sql.replace(/\b100\.0 \*/g, '100.0::double precision *') : sql;
+});
 const sql = [
   '-- Reviewed deployment step only. Runtime startup never executes this file.',
   '-- Keep ISO-8601 timestamps as TEXT and 0/1 flags as INTEGER to preserve source semantics.',

@@ -238,10 +238,10 @@ CREATE VIEW public.v_sailing_fill AS
           ELSE COALESCE(o.drive_up_space_count, 0) + COALESCE(o.reservable_space_count, 0)
         END) AS min_total_open_space,
         CASE WHEN MAX(o.max_space_count) > 0
-          THEN 100.0 * (MAX(o.max_space_count) - MIN(o.drive_up_space_count)) / MAX(o.max_space_count)
+          THEN 100.0::double precision * (MAX(o.max_space_count) - MIN(o.drive_up_space_count)) / MAX(o.max_space_count)
         END AS drive_up_pct_full,
         CASE WHEN MAX(o.max_space_count) > 0
-          THEN 100.0 * (MAX(o.max_space_count) - MIN(CASE
+          THEN 100.0::double precision * (MAX(o.max_space_count) - MIN(CASE
             WHEN o.drive_up_space_count IS NULL AND o.reservable_space_count IS NULL THEN NULL
             ELSE COALESCE(o.drive_up_space_count, 0) + COALESCE(o.reservable_space_count, 0)
           END)) / MAX(o.max_space_count)

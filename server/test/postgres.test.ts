@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import type { Pool } from 'pg';
 import { openPostgres, parameters, PostgresDatabase } from '../src/db/postgres.js';
 import { openConfiguredDatabase } from '../src/db/database.js';
@@ -13,6 +14,27 @@ function fakePool() {
 }
 
 describe('PostgreSQL runtime without database access', () => {
+  it('keeps sailing-fill arithmetic in double precision before division, matching SQLite REAL', () => {
+    const schema = readFileSync(new URL('../../deploy/postgresql/001_initial.sql', import.meta.url), 'utf8');
+    expect(schema.match(/100\.0::double precision \*/g)).toHaveLength(2);
+    expect(schema).not.toMatch(/\b100\.0 \*/);
+    expect(100 * (197 - 191) / 197).toBe(3.045685279187817);
+    expect(Number('3.0456852791878173')).not.toBe(100 * (197 - 191) / 197);
+    expect(100 * (139 - 137) / 139).toBe(1.4388489208633093);
+    expect(Number('1.4388489208633094')).not.toBe(100 * (139 - 137) / 139);
+  });
+
+  it('preserves double-precision percentage results without another numeric conversion', async () => {
+    const query = vi.fn(async () => ({
+      rows: [{ drive_up_pct_full: 3.045685279187817, total_pct_full: null }],
+      fields: [{ name: 'drive_up_pct_full', dataTypeID: 701 }, { name: 'total_pct_full', dataTypeID: 701 }],
+    }));
+    const db = new PostgresDatabase({ query } as unknown as Pool);
+    await expect(db.prepare('SELECT * FROM v_sailing_fill').get()).resolves.toEqual({
+      drive_up_pct_full: 3.045685279187817, total_pct_full: null,
+    });
+  });
+
   it('translates positional parameters without changing question marks in SQL strings', () => {
     expect(parameters("SELECT '?' AS label, ? AS a, 'it''s ?' AS quoted, ? AS b")).toBe("SELECT '?' AS label, $1 AS a, 'it''s ?' AS quoted, $2 AS b");
   });

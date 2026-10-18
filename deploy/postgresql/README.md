@@ -41,6 +41,15 @@ IDs use bigint identities; source reference IDs remain explicitly supplied.
 `archive_file.byte_size` is bigint. The adapter rejects unsafe numeric IDs rather
 than silently losing precision.
 
+The two `v_sailing_fill` percentage expressions cast `100.0` to double precision
+before multiplication and division, preserving SQLite REAL arithmetic. Casting
+the final NUMERIC result is insufficient: PostgreSQL decimal division can round
+before conversion to a JavaScript number. For example, `600 / 197` must produce
+`3.045685279187817`, rather than `3.0456852791878175`. The generator retains these
+casts. Existing installations with NUMERIC percentage columns require an explicit
+reviewed view replacement and restoration of all existing grants; startup never
+repairs views. Durable tables and the runtime schema-version contract stay at 1.
+
 `generate-schema.mjs` generates the review SQL from the existing schema/views;
 it never connects to a database. Regeneration changes the artifact hash and
 requires another review. Startup reads only
