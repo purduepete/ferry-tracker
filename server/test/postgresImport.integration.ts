@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -17,10 +17,23 @@ it('imports an actual frozen synthetic SQLite snapshot with proof, preserves IDs
   const root = path.resolve('.run', `pg-import-${process.pid}-${Date.now()}`);
   const data = path.join(root, 'backups', 'source');
   const pool = new Pool({ connectionString, max: 1 });
+  const migrationUrl = new URL(connectionString);
+  const owner = 'sd_sd_test_ferry_owner';
+  const migrator = 'sd_sd_test_ferry_migrator';
+  const migrationSecret = randomBytes(32).toString('hex');
+  migrationUrl.username = migrator;
+  migrationUrl.password = migrationSecret;
   try {
     expect((await pool.query('SELECT current_database() AS name')).rows[0].name).toBe('sd_test_ferry');
     expect((await pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public'")).rows).toEqual([]);
-    await pool.query(await readFile(path.resolve('deploy', 'postgresql', '001_initial.sql'), 'utf8'));
+    await pool.query(`CREATE ROLE ${owner} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`);
+    await pool.query(`CREATE ROLE ${migrator} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${migrationSecret}'`);
+    await pool.query(`GRANT ${owner} TO ${migrator}`);
+    await pool.query(`GRANT CREATE ON DATABASE sd_test_ferry TO ${owner}`);
+    await pool.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${owner}`);
+    await pool.query(`SET ROLE ${owner}`);
+    try { await pool.query(await readFile(path.resolve('deploy', 'postgresql', '001_initial.sql'), 'utf8')); }
+    finally { await pool.query('RESET ROLE'); }
     await mkdir(data, { recursive: true });
     const sourceFile = path.join(data, 'ferry-capture.db');
     const source = openDatabase(sourceFile);
@@ -51,11 +64,11 @@ it('imports an actual frozen synthetic SQLite snapshot with proof, preserves IDs
       return inventory.sort((left, right) => left.path.localeCompare(right.path));
     };
     const originalInventory = await frozenInventory();
-    const run = (indexHash: string, sourceHash = sha(bytes)) => new Promise<{ code: number | null; output: string }>((resolve, reject) => {
+    const run = (indexHash: string, sourceHash = sha(bytes), databaseUrl = migrationUrl.toString()) => new Promise<{ code: number | null; output: string }>((resolve, reject) => {
       const child = spawn(process.execPath, [
         'deploy\\postgresql\\import.mjs', '--source-dir', root, '--source-index', index,
         '--expected-index-sha256', indexHash, '--expected-source-sha256', sourceHash, '--execute',
-      ], { env: { ...process.env, DATABASE_URL: connectionString, CAPTURE_ARCHIVE_DIR: path.join(root, 'raw') }, stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000 });
+      ], { env: { ...process.env, DATABASE_URL: databaseUrl, CAPTURE_ARCHIVE_DIR: path.join(root, 'raw') }, stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000 });
       let output = '';
       child.stdout.on('data', bytes => { output += bytes.toString(); });
       child.stderr.on('data', bytes => { output += bytes.toString(); });
@@ -64,6 +77,9 @@ it('imports an actual frozen synthetic SQLite snapshot with proof, preserves IDs
     });
     expect((await run('0'.repeat(64))).code).not.toBe(0);
     expect((await run(sha(proof), '0'.repeat(64))).code).not.toBe(0);
+    const administrator = await run(sha(proof), sha(bytes), connectionString);
+    expect(administrator.code).not.toBe(0);
+    expect(administrator.output).toContain('dedicated migration login');
     expect((await pool.query('SELECT count(*)::int AS n FROM public.capture_run')).rows[0].n).toBe(0);
     const imported = await run(sha(proof));
     expect(imported.output).toContain('Ferry import committed');

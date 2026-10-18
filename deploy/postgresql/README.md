@@ -86,6 +86,11 @@ or have CREATE privileges.
    metadata, and the matching `files` entry's target, kind, byte count and SHA.
    The approved proof hash binds this export to the reviewed plan and application.
    The script does not load dotenv or start the app.
+   `DATABASE_URL` must use the dedicated `sd_ferry_tracker_migrator` login.
+   Inside its transaction the importer verifies the database/login naming
+   convention, executes `SET LOCAL ROLE "sd_ferry_tracker_owner"`, and checks
+   the active role before reading or changing application tables. Administrator
+   and runtime logins are rejected. Runtime permissions remain unchanged.
 6. Import rejects nonempty tables and mismatched hashes. After verifying the
    frozen source, it copies the SQLite bytes into a unique repository
    `.run\ferry-import-*` directory and checks the copy hash before opening it

@@ -6,6 +6,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { Pool } from 'pg';
 import { sourceEntry, validateTransferProof } from './source-proof.mjs';
+import { beginImportTransaction } from './import-role.mjs';
 import { postgresConnection } from '../../server/dist/db/connection.js';
 
 const tables = [
@@ -63,7 +64,7 @@ let client;
 const digestRow = (hash, columns, row) => hash.update(JSON.stringify(columns.map(column => row[column])) + '\n');
 try {
   client = await pool.connect();
-  await client.query('BEGIN');
+  await beginImportTransaction(client);
   const ledger = await client.query('SELECT version FROM public.solutiondeploy_schema WHERE app_id=$1', ['ferry-tracker']);
   if (ledger.rows.length !== 1 || ledger.rows[0].version !== 1) throw new Error('Apply reviewed PostgreSQL schema version 1 before import.');
   const results = [];
