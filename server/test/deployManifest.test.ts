@@ -5,14 +5,14 @@ import { expect, it } from 'vitest';
 it('keeps the release stateless and preserves both catch aliases and source tasks', () => {
   const manifest = JSON.parse(readFileSync(path.resolve('deploy', 'application.json'), 'utf8'));
   expect(manifest.id).toBe('ferry-tracker');
-  expect(manifest.repository).toBe('https://github.com/purduepete/ferrytracker.git');
+  expect(manifest.repository).toBe('https://github.com/purduepete/ferry-tracker.git');
   expect(manifest.build.commands).toEqual([
     { tool: 'npm', arguments: ['ci', '--ignore-scripts'], workingDirectory: '.' },
     { tool: 'npm', arguments: ['rebuild', 'esbuild'], workingDirectory: '.' },
     { tool: 'npm', arguments: ['run', 'verify:dependencies'], workingDirectory: '.' },
     { tool: 'npm', arguments: ['run', 'build'], workingDirectory: '.' },
   ]);
-  expect(manifest.source.root).toBe('C:\\Files\\Dev\\main\\ferry_tracker');
+  expect(manifest.source.root).toBe('C:\\Files\\Dev\\main\\ferry-tracker');
   expect(manifest.launch).toMatchObject({
     entrypoint: 'server\\dist\\index.js', port: 8787, secretFile: 'app.env',
     stopFileEnvironment: 'SOLUTIONDEPLOY_STOP_FILE',

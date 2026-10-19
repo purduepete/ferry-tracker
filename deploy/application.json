@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ferry-tracker",
-  "repository": "https://github.com/purduepete/ferrytracker.git",
+  "repository": "https://github.com/purduepete/ferry-tracker.git",
   "database": {
     "engine": "postgresql", "name": "ferry_tracker",
     "connectionEnvironment": "DATABASE_URL", "backendEnvironment": "STORAGE_BACKEND",
@@ -51,7 +51,7 @@
   ],
   "source": {
     "host": "jimbrownhome",
-    "root": "C:\\Files\\Dev\\main\\ferry_tracker",
+    "root": "C:\\Files\\Dev\\main\\ferry-tracker",
     "tasks": ["FerryTracker", "FerryTracker-Watchdog", "FerryTracker-Backup"]
   }
 }

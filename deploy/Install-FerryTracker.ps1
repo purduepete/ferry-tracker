@@ -23,11 +23,11 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $InstallRoot = 'C:\Files\Dev\main\ferry_tracker',
+    [string] $InstallRoot = 'C:\Files\Dev\main\ferry-tracker',
     [string] $DataDir = 'C:\ProgramData\ferry-tracker',
     [string] $StagedEnvFile = (Join-Path $PSScriptRoot '.env.local'),
     [int]    $Port = 8787,
-    [string] $RepoUrl = 'https://github.com/purduepete/ferrytracker.git',
+    [string] $RepoUrl = 'https://github.com/purduepete/ferry-tracker.git',
     [string] $Branch = 'main',
     [string] $NodeExe = 'C:\Files\ScoopApps\apps\nodejs\current\node.exe',
     [int]    $RetentionDays = 180,

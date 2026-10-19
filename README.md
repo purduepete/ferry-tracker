@@ -1,8 +1,8 @@
 # Ferry Tracker
 
-Repository: [purduepete/ferrytracker](https://github.com/purduepete/ferrytracker).
-The laptop checkout is `C:\Files\Dev\main\ferrytracker`. The running source
-checkout on `jimbrownhome` remains `C:\Files\Dev\main\ferry_tracker` until cutover.
+Repository: [purduepete/ferrytracker](https://github.com/purduepete/ferry-tracker).
+The laptop checkout is `C:\Files\Dev\main\ferry-tracker`. The running source
+checkout on `jimbrownhome` remains `C:\Files\Dev\main\ferry-tracker` until cutover.
 The `ferry_tracker` PostgreSQL database, application ID, and public hostnames stay unchanged.
 
 ## SolutionDeploy handoff
@@ -16,7 +16,7 @@ version 1. Connection/schema errors stop startup without SQLite fallback.
 `deploy\application.json` describes the `jimbrownhome` checkout and its
 `FerryTracker`, `FerryTracker-Watchdog`, and `FerryTracker-Backup` tasks. The
 2026-10-17 hosting audit (3:16 PM local) confirms those exact task names and
-`C:\Files\Dev\main\ferry_tracker` working directory; the entrypoint audit confirms
+`C:\Files\Dev\main\ferry-tracker` working directory; the entrypoint audit confirms
 `server\dist\index.js`, `deploy\watchdog.mjs`, and `deploy\backup-db.mjs`,
 respectively. The listener audit confirms source port 8787, and the redacted
 configuration confirms `C:\ProgramData\ferry-tracker` as its capture directory.
@@ -222,7 +222,7 @@ Setting or rotating the token means writing `.env.local`, restarting the schedul
 
 ```powershell
 $t = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
-$p = 'C:\Files\Dev\main\ferry_tracker\.env.local'
+$p = 'C:\Files\Dev\main\ferry-tracker\.env.local'
 $lines = @([IO.File]::ReadAllLines($p) | Where-Object { $_ -notmatch '^\s*CATCH_TOKEN\s*=' }) + @('', "CATCH_TOKEN=$t")
 [IO.File]::WriteAllLines($p, [string[]]$lines, (New-Object Text.UTF8Encoding($false)))
 Stop-ScheduledTask -TaskName 'FerryTracker'; Start-ScheduledTask -TaskName 'FerryTracker'
