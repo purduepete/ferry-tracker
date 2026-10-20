@@ -1,0 +1,10 @@
+node_modules/
+**/dist/
+coverage/
+data/
+playwright-report/
+test-results/
+package-lock.json
+*.min.*
+# The CSP hash in csp.test.tsx and Setup-Cloudflare.ps1 covers the exact bytes of the inline script.
+frontend/index.html

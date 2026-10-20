@@ -14,15 +14,20 @@
   "scripts": {
     "dev": "concurrently -k -n server,web -c cyan,green \"npm run dev --workspace @ferry-tracker/server\" \"npm run dev --workspace @ferry-tracker/frontend\"",
     "build": "npm run build --workspace @ferry-tracker/shared && npm run build --workspace @ferry-tracker/server && npm run build --workspace @ferry-tracker/frontend",
+    "preview": "npm run preview --workspace @ferry-tracker/frontend",
     "verify:dependencies": "node deploy/verify-dependencies.mjs",
     "start": "npm run start --workspace @ferry-tracker/server",
     "capture:report": "npm run capture:report --workspace @ferry-tracker/server",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "typecheck": "npm run typecheck --workspace @ferry-tracker/shared && npm run typecheck --workspace @ferry-tracker/server && npm run typecheck --workspace @ferry-tracker/frontend",
     "test": "vitest run",
     "test:postgres": "vitest run --config vitest.postgres.config.ts",
     "test:postgres:import": "vitest run --config vitest.postgres-import.config.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
@@ -37,10 +42,22 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
+    "husky": "^9.1.7",
     "jsdom": "^26.1.0",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
     "supertest": "^7.2.2",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.41.0",
     "vitest": "^3.2.4"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs}": [
+      "prettier --write",
+      "eslint --max-warnings 0 --no-warn-ignored"
+    ],
+    "*.{json,css,md,html}": [
+      "prettier --write"
+    ]
   }
 }
