@@ -8,9 +8,9 @@ const { Client } = require('pg');
 
 const database = new Database(':memory:');
 try {
-  assert.deepEqual(database.prepare('SELECT 42 AS answer').get(), { answer: 42 });
+    assert.deepEqual(database.prepare('SELECT 42 AS answer').get(), { answer: 42 });
 } finally {
-  database.close();
+    database.close();
 }
 assert.match(transformSync('const answer: number = 42;', { loader: 'ts' }).code, /42/);
 assert.equal(typeof Client, 'function');

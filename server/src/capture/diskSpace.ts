@@ -1,8 +1,8 @@
 import { statfs } from 'node:fs/promises';
 
 export interface DiskSpace {
-  freeMb: number;
-  ok: boolean;
+    freeMb: number;
+    ok: boolean;
 }
 
 /**
@@ -10,11 +10,11 @@ export interface DiskSpace {
  * free space never silently halts capture.
  */
 export async function checkFreeSpace(targetPath: string, minFreeMb: number): Promise<DiskSpace> {
-  try {
-    const stats = await statfs(targetPath);
-    const freeMb = (Number(stats.bavail) * Number(stats.bsize)) / (1024 * 1024);
-    return { freeMb, ok: freeMb >= minFreeMb };
-  } catch {
-    return { freeMb: Number.POSITIVE_INFINITY, ok: true };
-  }
+    try {
+        const stats = await statfs(targetPath);
+        const freeMb = (Number(stats.bavail) * Number(stats.bsize)) / (1024 * 1024);
+        return { freeMb, ok: freeMb >= minFreeMb };
+    } catch {
+        return { freeMb: Number.POSITIVE_INFINITY, ok: true };
+    }
 }

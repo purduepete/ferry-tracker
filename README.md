@@ -117,13 +117,13 @@ Invoke-RestMethod http://127.0.0.1:8787/api/capture/status
 
 Five loops run on independent timers, and a run that is still in flight is skipped rather than queued.
 
-| Task | Variable | Default |
-| --- | --- | --- |
-| `vessel_locations` | `CAPTURE_VESSEL_INTERVAL_MS` | 30000 |
-| `terminal_sailing_space` | `CAPTURE_SPACE_INTERVAL_MS` | 60000 |
-| `reference` | `CAPTURE_REFERENCE_INTERVAL_MS` | 21600000 |
-| `schedule` | `CAPTURE_SCHEDULE_INTERVAL_MS` | 21600000 |
-| `rollup` | `CAPTURE_ROLLUP_INTERVAL_MS` | 900000 |
+| Task                     | Variable                        | Default  |
+| ------------------------ | ------------------------------- | -------- |
+| `vessel_locations`       | `CAPTURE_VESSEL_INTERVAL_MS`    | 30000    |
+| `terminal_sailing_space` | `CAPTURE_SPACE_INTERVAL_MS`     | 60000    |
+| `reference`              | `CAPTURE_REFERENCE_INTERVAL_MS` | 21600000 |
+| `schedule`               | `CAPTURE_SCHEDULE_INTERVAL_MS`  | 21600000 |
+| `rollup`                 | `CAPTURE_ROLLUP_INTERVAL_MS`    | 900000   |
 
 A poll whose payload hash matches the previous one is recorded as `skipped_unchanged` and nothing is stored, so a high poll rate costs little. `CAPTURE_MIN_FREE_DISK_MB` (default 512) halts archiving before the disk fills. `CAPTURE_RETENTION_DAYS` is unset by default, which keeps everything; when it is set, the prune still refuses to delete anything the rollup has not yet processed. `CAPTURE_ALLOW_FIXTURE=true` lets capture run against fixtures for a smoke test.
 
@@ -139,9 +139,9 @@ Each sailing also carries `actualDeparture` and `departureDelayMinutes` from `sa
 
 The **Day** picker lists up to 14 recorded service dates from `schedule_snapshot`, newest first. Picking one switches the schedule panel and the Sailings tab to two capture-only endpoints and stops calling WSDOT:
 
-| Endpoint | Returns |
-| --- | --- |
-| `GET /api/history/dates?departingTerminalId=&arrivingTerminalId=` | The recorded service dates for that route |
+| Endpoint                                                                                    | Returns                                                        |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `GET /api/history/dates?departingTerminalId=&arrivingTerminalId=`                           | The recorded service dates for that route                      |
 | `GET /api/history/sailings?departingTerminalId=&arrivingTerminalId=&serviceDate=YYYY-MM-DD` | A full day of sailings, timetable plus recorded space and legs |
 
 Both return 404 when capture is off. The day is read by its stored `service_date` and the space and leg window is derived from the first and last sailing plus 2 hours, which keeps the query off timezone math. A sailing capture never saw still appears from the timetable with an empty vehicle space, so a partial day reads as a partial day. Vessel positions have no history, so the panel dims and says so.
@@ -152,13 +152,13 @@ The `rollup` task rebuilds `sailing_leg` from the raw vessel observations. Each 
 
 Six views answer the original questions:
 
-| View | Question |
-| --- | --- |
-| `v_sailing_fill` | When are the busiest times, by vehicle space |
-| `v_departure_delay` | When do ferries run late |
-| `v_crossing_duration` | How long does a crossing take |
-| `v_load_duration` | How long does loading take |
-| `v_update_cadence` | Is a poll every minute too frequent |
+| View                    | Question                                              |
+| ----------------------- | ----------------------------------------------------- |
+| `v_sailing_fill`        | When are the busiest times, by vehicle space          |
+| `v_departure_delay`     | When do ferries run late                              |
+| `v_crossing_duration`   | How long does a crossing take                         |
+| `v_load_duration`       | How long does loading take                            |
+| `v_update_cadence`      | Is a poll every minute too frequent                   |
 | `v_vessel_update_ratio` | How often does a vessel's own timestamp actually move |
 
 Every view buckets by `service_date`, `weekday` and `hour_local` in Pacific time, computed in TypeScript rather than SQL, so the schema ports to Azure SQL without rewriting date logic.
@@ -182,11 +182,11 @@ A boat that overruns its median has outrun what the median can say about it, so 
 
 Backtested over 30 days and 2833 departures from a production snapshot:
 
-| Estimator | Mean error | p90 |
-| --- | --- | --- |
-| Pair median | 2.10 min | 3.80 min |
-| WSDOT ETA | 2.70 min | 4.37 min |
-| WSDOT ETA plus departure delay | 6.91 min | 15.40 min |
+| Estimator                      | Mean error | p90       |
+| ------------------------------ | ---------- | --------- |
+| Pair median                    | 2.10 min   | 3.80 min  |
+| WSDOT ETA                      | 2.70 min   | 4.37 min  |
+| WSDOT ETA plus departure delay | 6.91 min   | 15.40 min |
 
 Partitioning by vessel as well as pair moved the mean error by 0.01 min, and no major pair spread more than 4.5 min between its median and p90, so there is no vessel, hour or weekday bucketing. Re-run the comparison against a snapshot with:
 
@@ -238,6 +238,7 @@ npm test
 npm run build
 npm run test:e2e
 ```
+
 # Theme bootstrap
 
 `frontend/public/theme-init.js` is a same-origin, synchronous pre-paint script.

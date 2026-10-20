@@ -3,9 +3,9 @@ import type Database from 'better-sqlite3';
 // Views are derived, so they are dropped and recreated on every open rather than
 // versioned. Every one is a plain GROUP BY over columns bucketed in TypeScript.
 export const views: Array<{ name: string; sql: string }> = [
-  {
-    name: 'v_departure_delay',
-    sql: `CREATE VIEW v_departure_delay AS
+    {
+        name: 'v_departure_delay',
+        sql: `CREATE VIEW v_departure_delay AS
       SELECT
         vessel_id, vessel_name, departing_terminal_id, arriving_terminal_id,
         service_date, weekday, hour_local,
@@ -13,20 +13,20 @@ export const views: Array<{ name: string; sql: string }> = [
         departure_delay_minutes, confidence, exclusion_reason
       FROM sailing_leg
       WHERE departure_delay_minutes IS NOT NULL`,
-  },
-  {
-    name: 'v_crossing_duration',
-    sql: `CREATE VIEW v_crossing_duration AS
+    },
+    {
+        name: 'v_crossing_duration',
+        sql: `CREATE VIEW v_crossing_duration AS
       SELECT
         vessel_id, vessel_name, departing_terminal_id, arriving_terminal_id,
         service_date, weekday, hour_local,
         departed_at, dock_arrival_at, crossing_minutes, confidence, exclusion_reason
       FROM sailing_leg
       WHERE complete = 1 AND crossing_minutes IS NOT NULL`,
-  },
-  {
-    name: 'v_load_duration',
-    sql: `CREATE VIEW v_load_duration AS
+    },
+    {
+        name: 'v_load_duration',
+        sql: `CREATE VIEW v_load_duration AS
       SELECT
         vessel_id, vessel_name, departing_terminal_id, arriving_terminal_id,
         service_date, weekday, hour_local,
@@ -34,10 +34,10 @@ export const views: Array<{ name: string; sql: string }> = [
         load_minutes, confidence, load_exclusion_reason
       FROM sailing_leg
       WHERE load_minutes IS NOT NULL`,
-  },
-  {
-    name: 'v_sailing_fill',
-    sql: `CREATE VIEW v_sailing_fill AS
+    },
+    {
+        name: 'v_sailing_fill',
+        sql: `CREATE VIEW v_sailing_fill AS
       SELECT
         d.departing_terminal_id,
         d.arriving_terminal_id,
@@ -77,19 +77,19 @@ export const views: Array<{ name: string; sql: string }> = [
         d.departing_terminal_id, d.arriving_terminal_id, d.departure, d.vessel_id,
         d.service_date, d.weekday, d.hour_local,
         d.first_seen_at, d.last_seen_at, d.last_seen_before_departure, d.finalized`,
-  },
-  {
-    name: 'v_update_cadence',
-    sql: `CREATE VIEW v_update_cadence AS
+    },
+    {
+        name: 'v_update_cadence',
+        sql: `CREATE VIEW v_update_cadence AS
       SELECT service_date, task, outcome, COUNT(*) AS runs,
              MIN(started_at) AS first_run, MAX(started_at) AS last_run
       FROM capture_run
       WHERE service_date IS NOT NULL
       GROUP BY service_date, task, outcome`,
-  },
-  {
-    name: 'v_vessel_update_ratio',
-    sql: `CREATE VIEW v_vessel_update_ratio AS
+    },
+    {
+        name: 'v_vessel_update_ratio',
+        sql: `CREATE VIEW v_vessel_update_ratio AS
       SELECT vessel_id, vessel_name,
              COUNT(*) AS observations,
              COUNT(DISTINCT source_timestamp) AS distinct_source_timestamps,
@@ -97,14 +97,14 @@ export const views: Array<{ name: string; sql: string }> = [
              MAX(captured_at) AS last_captured_at
       FROM vessel_observation
       GROUP BY vessel_id, vessel_name`,
-  },
+    },
 ];
 
 export function applyViews(db: Database.Database): void {
-  for (const view of views) {
-    db.exec(`DROP VIEW IF EXISTS ${view.name}`);
-    db.exec(view.sql);
-  }
+    for (const view of views) {
+        db.exec(`DROP VIEW IF EXISTS ${view.name}`);
+        db.exec(view.sql);
+    }
 }
 
 export const viewNames = views.map((view) => view.name);

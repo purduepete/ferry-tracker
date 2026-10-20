@@ -1,7 +1,14 @@
 [
   {
     "CameraID": 9040,
-    "CameraLocation": { "Description": null, "Direction": "W", "Latitude": 47.62314, "Longitude": -122.5112, "MilePost": 0, "RoadName": "Ferries" },
+    "CameraLocation": {
+      "Description": null,
+      "Direction": "W",
+      "Latitude": 47.62314,
+      "Longitude": -122.5112,
+      "MilePost": 0,
+      "RoadName": "Ferries"
+    },
     "CameraOwner": null,
     "Description": "For ferry traffic to Seattle.",
     "DisplayLatitude": 47.62314,
@@ -17,7 +24,14 @@
   },
   {
     "CameraID": 9041,
-    "CameraLocation": { "Description": null, "Direction": "E", "Latitude": 47.6029, "Longitude": -122.3387, "MilePost": 0, "RoadName": "Ferries" },
+    "CameraLocation": {
+      "Description": null,
+      "Direction": "E",
+      "Latitude": 47.6029,
+      "Longitude": -122.3387,
+      "MilePost": 0,
+      "RoadName": "Ferries"
+    },
     "CameraOwner": null,
     "Description": "Colman Dock vehicle holding.",
     "DisplayLatitude": 47.6029,
@@ -33,7 +47,14 @@
   },
   {
     "CameraID": 9042,
-    "CameraLocation": { "Description": null, "Direction": "W", "Latitude": 47.5641, "Longitude": -122.6255, "MilePost": 0, "RoadName": "Ferries" },
+    "CameraLocation": {
+      "Description": null,
+      "Direction": "W",
+      "Latitude": 47.5641,
+      "Longitude": -122.6255,
+      "MilePost": 0,
+      "RoadName": "Ferries"
+    },
     "CameraOwner": null,
     "Description": "Bremerton terminal approach.",
     "DisplayLatitude": 47.5641,
@@ -49,7 +70,14 @@
   },
   {
     "CameraID": 9043,
-    "CameraLocation": { "Description": null, "Direction": "N", "Latitude": 47.6222, "Longitude": -122.5099, "MilePost": 0, "RoadName": "Ferries" },
+    "CameraLocation": {
+      "Description": null,
+      "Direction": "N",
+      "Latitude": 47.6222,
+      "Longitude": -122.5099,
+      "MilePost": 0,
+      "RoadName": "Ferries"
+    },
     "CameraOwner": null,
     "Description": "Retired camera that must not be displayed.",
     "DisplayLatitude": 47.6222,
@@ -65,7 +93,14 @@
   },
   {
     "CameraID": 9044,
-    "CameraLocation": { "Description": null, "Direction": "B", "Latitude": 47.6028, "Longitude": -122.3383, "MilePost": 0, "RoadName": "Ferries" },
+    "CameraLocation": {
+      "Description": null,
+      "Direction": "B",
+      "Latitude": 47.6028,
+      "Longitude": -122.3383,
+      "MilePost": 0,
+      "RoadName": "Ferries"
+    },
     "CameraOwner": "Third party",
     "Description": "Off-host image that must be rejected.",
     "DisplayLatitude": 47.6028,
@@ -81,7 +116,14 @@
   },
   {
     "CameraID": 9045,
-    "CameraLocation": { "Description": null, "Direction": "N", "Latitude": 48.7519, "Longitude": -122.4787, "MilePost": 12, "RoadName": "SR 11" },
+    "CameraLocation": {
+      "Description": null,
+      "Direction": "N",
+      "Latitude": 48.7519,
+      "Longitude": -122.4787,
+      "MilePost": 12,
+      "RoadName": "SR 11"
+    },
     "CameraOwner": null,
     "Description": "Highway camera that is not a ferry camera.",
     "DisplayLatitude": 48.7519,

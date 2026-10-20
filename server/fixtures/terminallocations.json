@@ -1,5 +1,29 @@
 [
-  { "TerminalID": 7, "TerminalName": "Seattle", "Latitude": 47.6027, "Longitude": -122.3381, "City": "Seattle", "State": "WA", "ZipCode": "98104" },
-  { "TerminalID": 3, "TerminalName": "Bainbridge Island", "Latitude": 47.6221, "Longitude": -122.5096, "City": "Bainbridge Island", "State": "WA", "ZipCode": "98110" },
-  { "TerminalID": 9, "TerminalName": "Bremerton", "Latitude": 47.5618, "Longitude": -122.6247, "City": "Bremerton", "State": "WA", "ZipCode": "98337" }
+  {
+    "TerminalID": 7,
+    "TerminalName": "Seattle",
+    "Latitude": 47.6027,
+    "Longitude": -122.3381,
+    "City": "Seattle",
+    "State": "WA",
+    "ZipCode": "98104"
+  },
+  {
+    "TerminalID": 3,
+    "TerminalName": "Bainbridge Island",
+    "Latitude": 47.6221,
+    "Longitude": -122.5096,
+    "City": "Bainbridge Island",
+    "State": "WA",
+    "ZipCode": "98110"
+  },
+  {
+    "TerminalID": 9,
+    "TerminalName": "Bremerton",
+    "Latitude": 47.5618,
+    "Longitude": -122.6247,
+    "City": "Bremerton",
+    "State": "WA",
+    "ZipCode": "98337"
+  }
 ]

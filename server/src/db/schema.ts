@@ -3,15 +3,15 @@
 // Date arithmetic stays in TypeScript so no view ever calls a dialect-specific function.
 
 export interface Migration {
-  version: number;
-  statements: string[];
+    version: number;
+    statements: string[];
 }
 
 export const migrations: Migration[] = [
-  {
-    version: 1,
-    statements: [
-      `CREATE TABLE capture_run (
+    {
+        version: 1,
+        statements: [
+            `CREATE TABLE capture_run (
         id INTEGER PRIMARY KEY,
         task TEXT NOT NULL,
         endpoint_id TEXT,
@@ -26,9 +26,9 @@ export const migrations: Migration[] = [
         error_category TEXT,
         error_detail TEXT
       )`,
-      `CREATE INDEX ix_capture_run_task ON capture_run (task, started_at)`,
+            `CREATE INDEX ix_capture_run_task ON capture_run (task, started_at)`,
 
-      `CREATE TABLE vessel_observation (
+            `CREATE TABLE vessel_observation (
         id INTEGER PRIMARY KEY,
         vessel_id INTEGER NOT NULL,
         vessel_name TEXT NOT NULL,
@@ -51,15 +51,15 @@ export const migrations: Migration[] = [
         scheduled_departure TEXT,
         op_route_abbrev TEXT
       )`,
-      // Filtered so a null source timestamp falls through to the writer's last-row
-      // content check, which still allows a genuine A -> B -> A sequence.
-      `CREATE UNIQUE INDEX ux_vessel_observation_source
+            // Filtered so a null source timestamp falls through to the writer's last-row
+            // content check, which still allows a genuine A -> B -> A sequence.
+            `CREATE UNIQUE INDEX ux_vessel_observation_source
         ON vessel_observation (vessel_id, source_timestamp, content_hash)
         WHERE source_timestamp IS NOT NULL`,
-      `CREATE INDEX ix_vessel_observation_vessel ON vessel_observation (vessel_id, source_timestamp)`,
-      `CREATE INDEX ix_vessel_observation_captured ON vessel_observation (captured_at)`,
+            `CREATE INDEX ix_vessel_observation_vessel ON vessel_observation (vessel_id, source_timestamp)`,
+            `CREATE INDEX ix_vessel_observation_captured ON vessel_observation (captured_at)`,
 
-      `CREATE TABLE sailing_space_observation (
+            `CREATE TABLE sailing_space_observation (
         id INTEGER PRIMARY KEY,
         captured_at TEXT NOT NULL,
         departing_terminal_id INTEGER NOT NULL,
@@ -78,10 +78,10 @@ export const migrations: Migration[] = [
         weekday INTEGER NOT NULL,
         hour_local INTEGER NOT NULL
       )`,
-      `CREATE INDEX ix_sailing_space_observation_departure
+            `CREATE INDEX ix_sailing_space_observation_departure
         ON sailing_space_observation (departing_terminal_id, arriving_terminal_id, departure)`,
 
-      `CREATE TABLE sailing_space_departure (
+            `CREATE TABLE sailing_space_departure (
         id INTEGER PRIMARY KEY,
         departing_terminal_id INTEGER NOT NULL,
         arriving_terminal_id INTEGER NOT NULL,
@@ -95,10 +95,10 @@ export const migrations: Migration[] = [
         weekday INTEGER NOT NULL,
         hour_local INTEGER NOT NULL
       )`,
-      `CREATE UNIQUE INDEX ux_sailing_space_departure
+            `CREATE UNIQUE INDEX ux_sailing_space_departure
         ON sailing_space_departure (departing_terminal_id, arriving_terminal_id, departure)`,
 
-      `CREATE TABLE sailing_leg (
+            `CREATE TABLE sailing_leg (
         id INTEGER PRIMARY KEY,
         vessel_id INTEGER NOT NULL,
         vessel_name TEXT NOT NULL,
@@ -121,9 +121,9 @@ export const migrations: Migration[] = [
         weekday INTEGER NOT NULL,
         hour_local INTEGER NOT NULL
       )`,
-      `CREATE UNIQUE INDEX ux_sailing_leg ON sailing_leg (vessel_id, departed_at)`,
+            `CREATE UNIQUE INDEX ux_sailing_leg ON sailing_leg (vessel_id, departed_at)`,
 
-      `CREATE TABLE schedule_snapshot (
+            `CREATE TABLE schedule_snapshot (
         id INTEGER PRIMARY KEY,
         captured_at TEXT NOT NULL,
         service_date TEXT NOT NULL,
@@ -135,10 +135,10 @@ export const migrations: Migration[] = [
         vessel_name TEXT,
         loading_rule INTEGER
       )`,
-      `CREATE UNIQUE INDEX ux_schedule_snapshot
+            `CREATE UNIQUE INDEX ux_schedule_snapshot
         ON schedule_snapshot (service_date, departing_terminal_id, arriving_terminal_id, departing_time)`,
 
-      `CREATE TABLE vessel_reference (
+            `CREATE TABLE vessel_reference (
         vessel_id INTEGER PRIMARY KEY,
         vessel_name TEXT NOT NULL,
         class_name TEXT,
@@ -148,7 +148,7 @@ export const migrations: Migration[] = [
         updated_at TEXT NOT NULL
       )`,
 
-      `CREATE TABLE terminal_reference (
+            `CREATE TABLE terminal_reference (
         terminal_id INTEGER PRIMARY KEY,
         terminal_name TEXT NOT NULL,
         latitude REAL,
@@ -157,7 +157,7 @@ export const migrations: Migration[] = [
         updated_at TEXT NOT NULL
       )`,
 
-      `CREATE TABLE archive_file (
+            `CREATE TABLE archive_file (
         id INTEGER PRIMARY KEY,
         endpoint_id TEXT NOT NULL,
         service_date TEXT NOT NULL,
@@ -167,33 +167,33 @@ export const migrations: Migration[] = [
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )`,
-      `CREATE UNIQUE INDEX ux_archive_file ON archive_file (endpoint_id, service_date)`,
+            `CREATE UNIQUE INDEX ux_archive_file ON archive_file (endpoint_id, service_date)`,
 
-      `CREATE TABLE rollup_state (
+            `CREATE TABLE rollup_state (
         name TEXT PRIMARY KEY,
         watermark TEXT,
         updated_at TEXT NOT NULL
       )`,
-    ],
-  },
-  {
-    version: 2,
-    statements: [
-      // Separate from exclusion_reason so a leg with a trustworthy crossing but an
-      // untrustworthy dwell is still usable for crossing analysis.
-      `ALTER TABLE sailing_leg ADD COLUMN load_exclusion_reason TEXT`,
-      `ALTER TABLE capture_run ADD COLUMN service_date TEXT`,
-      `CREATE INDEX ix_capture_run_service_date ON capture_run (service_date, task)`,
-    ],
-  },
-  {
-    version: 3,
-    statements: [
-      // Set when WSDOT stops publishing a future slot. The row stays so the rollup can still pair a
-      // completed leg to it, and clears again if the slot comes back.
-      `ALTER TABLE schedule_snapshot ADD COLUMN withdrawn_at TEXT`,
-    ],
-  },
+        ],
+    },
+    {
+        version: 2,
+        statements: [
+            // Separate from exclusion_reason so a leg with a trustworthy crossing but an
+            // untrustworthy dwell is still usable for crossing analysis.
+            `ALTER TABLE sailing_leg ADD COLUMN load_exclusion_reason TEXT`,
+            `ALTER TABLE capture_run ADD COLUMN service_date TEXT`,
+            `CREATE INDEX ix_capture_run_service_date ON capture_run (service_date, task)`,
+        ],
+    },
+    {
+        version: 3,
+        statements: [
+            // Set when WSDOT stops publishing a future slot. The row stays so the rollup can still pair a
+            // completed leg to it, and clears again if the slot comes back.
+            `ALTER TABLE schedule_snapshot ADD COLUMN withdrawn_at TEXT`,
+        ],
+    },
 ];
 
 export const latestVersion = migrations.reduce((highest, migration) => Math.max(highest, migration.version), 0);

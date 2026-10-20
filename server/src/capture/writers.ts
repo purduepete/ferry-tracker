@@ -3,9 +3,9 @@ import { transaction, type Db, type Stmt } from '../db/database.js';
 import { canonical, sha256 } from './hash.js';
 
 export interface WriteResult {
-  written: number;
-  skipped: number;
-  invalid: number;
+    written: number;
+    skipped: number;
+    invalid: number;
 }
 
 const insertVessel = `INSERT INTO vessel_observation (
@@ -21,95 +21,97 @@ WHERE NOT EXISTS (
 )`;
 
 export async function writeVesselObservations(db: Db, payload: unknown, capturedAt: string): Promise<WriteResult> {
-  const records = Array.isArray(payload) ? payload : [];
-  const result: WriteResult = { written: 0, skipped: 0, invalid: 0 };
-  const insert = db.prepare(insertVessel);
-  const latest = db.prepare('SELECT content_hash FROM vessel_observation WHERE vessel_id = ? ORDER BY id DESC LIMIT 1');
+    const records = Array.isArray(payload) ? payload : [];
+    const result: WriteResult = { written: 0, skipped: 0, invalid: 0 };
+    const insert = db.prepare(insertVessel);
+    const latest = db.prepare(
+        'SELECT content_hash FROM vessel_observation WHERE vessel_id = ? ORDER BY id DESC LIMIT 1'
+    );
 
-  const run = transaction(db, async () => {
-    for (const record of records) {
-      const parsed = vesselLocationSchema.safeParse(record);
-      if (!parsed.success) {
-        result.invalid += 1;
-        continue;
-      }
-      const vessel = parsed.data;
-      const content = {
-        departingTerminalId: vessel.DepartingTerminalID ?? null,
-        departingTerminalName: vessel.DepartingTerminalName ?? null,
-        arrivingTerminalId: vessel.ArrivingTerminalID ?? null,
-        arrivingTerminalName: vessel.ArrivingTerminalName ?? null,
-        latitude: vessel.Latitude ?? null,
-        longitude: vessel.Longitude ?? null,
-        speed: vessel.Speed ?? null,
-        heading: vessel.Heading ?? null,
-        inService: bit(vessel.InService),
-        atDock: bit(vessel.AtDock),
-        leftDock: parseWsdotDate(vessel.LeftDock),
-        eta: parseWsdotDate(vessel.Eta),
-        etaBasis: vessel.EtaBasis ?? null,
-        scheduledDeparture: parseWsdotDate(vessel.ScheduledDeparture),
-        opRouteAbbrev: vessel.OpRouteAbbrev ?? null,
-      };
-      const contentHash = sha256(canonical(content));
-      const sourceTimestamp = parseWsdotDate(vessel.TimeStamp);
+    const run = transaction(db, async () => {
+        for (const record of records) {
+            const parsed = vesselLocationSchema.safeParse(record);
+            if (!parsed.success) {
+                result.invalid += 1;
+                continue;
+            }
+            const vessel = parsed.data;
+            const content = {
+                departingTerminalId: vessel.DepartingTerminalID ?? null,
+                departingTerminalName: vessel.DepartingTerminalName ?? null,
+                arrivingTerminalId: vessel.ArrivingTerminalID ?? null,
+                arrivingTerminalName: vessel.ArrivingTerminalName ?? null,
+                latitude: vessel.Latitude ?? null,
+                longitude: vessel.Longitude ?? null,
+                speed: vessel.Speed ?? null,
+                heading: vessel.Heading ?? null,
+                inService: bit(vessel.InService),
+                atDock: bit(vessel.AtDock),
+                leftDock: parseWsdotDate(vessel.LeftDock),
+                eta: parseWsdotDate(vessel.Eta),
+                etaBasis: vessel.EtaBasis ?? null,
+                scheduledDeparture: parseWsdotDate(vessel.ScheduledDeparture),
+                opRouteAbbrev: vessel.OpRouteAbbrev ?? null,
+            };
+            const contentHash = sha256(canonical(content));
+            const sourceTimestamp = parseWsdotDate(vessel.TimeStamp);
 
-      // Without a source timestamp the unique index cannot help, so compare against the
-      // vessel's previous row. That still records a genuine A -> B -> A sequence.
-      if (sourceTimestamp === null) {
-        const previous = (await latest.get(vessel.VesselID)) as { content_hash: string } | undefined;
-        if (previous?.content_hash === contentHash) {
-          result.skipped += 1;
-          continue;
+            // Without a source timestamp the unique index cannot help, so compare against the
+            // vessel's previous row. That still records a genuine A -> B -> A sequence.
+            if (sourceTimestamp === null) {
+                const previous = (await latest.get(vessel.VesselID)) as { content_hash: string } | undefined;
+                if (previous?.content_hash === contentHash) {
+                    result.skipped += 1;
+                    continue;
+                }
+            }
+
+            const info = await insert.run(
+                vessel.VesselID,
+                vessel.VesselName,
+                sourceTimestamp,
+                capturedAt,
+                contentHash,
+                content.departingTerminalId,
+                content.departingTerminalName,
+                content.arrivingTerminalId,
+                content.arrivingTerminalName,
+                content.latitude,
+                content.longitude,
+                content.speed,
+                content.heading,
+                content.inService,
+                content.atDock,
+                content.leftDock,
+                content.eta,
+                content.etaBasis,
+                content.scheduledDeparture,
+                content.opRouteAbbrev === null ? null : JSON.stringify(content.opRouteAbbrev),
+                vessel.VesselID,
+                sourceTimestamp,
+                contentHash
+            );
+            if (info.changes > 0) result.written += 1;
+            else result.skipped += 1;
         }
-      }
+    });
 
-      const info = (await insert.run(
-        vessel.VesselID,
-        vessel.VesselName,
-        sourceTimestamp,
-        capturedAt,
-        contentHash,
-        content.departingTerminalId,
-        content.departingTerminalName,
-        content.arrivingTerminalId,
-        content.arrivingTerminalName,
-        content.latitude,
-        content.longitude,
-        content.speed,
-        content.heading,
-        content.inService,
-        content.atDock,
-        content.leftDock,
-        content.eta,
-        content.etaBasis,
-        content.scheduledDeparture,
-        content.opRouteAbbrev === null ? null : JSON.stringify(content.opRouteAbbrev),
-        vessel.VesselID,
-        sourceTimestamp,
-        contentHash,
-      ));
-      if (info.changes > 0) result.written += 1;
-      else result.skipped += 1;
-    }
-  });
-
-  (await run());
-  return result;
+    await run();
+    return result;
 }
 
 interface SpaceRow {
-  departingTerminalId: number;
-  departingTerminalName: string;
-  arrivingTerminalId: number;
-  arrivingTerminalName: string;
-  departure: string;
-  vesselId: number | null;
-  vesselName: string | null;
-  isCancelled: number;
-  driveUpSpaceCount: number | null;
-  reservableSpaceCount: number | null;
-  maxSpaceCount: number | null;
+    departingTerminalId: number;
+    departingTerminalName: string;
+    arrivingTerminalId: number;
+    arrivingTerminalName: string;
+    departure: string;
+    vesselId: number | null;
+    vesselName: string | null;
+    isCancelled: number;
+    driveUpSpaceCount: number | null;
+    reservableSpaceCount: number | null;
+    maxSpaceCount: number | null;
 }
 
 const insertSpace = `INSERT INTO sailing_space_observation (
@@ -118,203 +120,214 @@ const insertSpace = `INSERT INTO sailing_space_observation (
   max_space_count, observation_kind, service_date, weekday, hour_local
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-export async function writeSailingSpaceObservations(db: Db, payload: unknown, capturedAt: string): Promise<WriteResult> {
-  const result: WriteResult = { written: 0, skipped: 0, invalid: 0 };
-  const rows = flattenSpaces(payload, result);
-  if (rows.length === 0) return result;
+export async function writeSailingSpaceObservations(
+    db: Db,
+    payload: unknown,
+    capturedAt: string
+): Promise<WriteResult> {
+    const result: WriteResult = { written: 0, skipped: 0, invalid: 0 };
+    const rows = flattenSpaces(payload, result);
+    if (rows.length === 0) return result;
 
-  const insertObservation = db.prepare(insertSpace);
-  const findDeparture = db.prepare(
-    'SELECT id, vessel_id FROM sailing_space_departure WHERE departing_terminal_id = ? AND arriving_terminal_id = ? AND departure = ?',
-  );
-  const insertDeparture = db.prepare(`INSERT INTO sailing_space_departure (
+    const insertObservation = db.prepare(insertSpace);
+    const findDeparture = db.prepare(
+        'SELECT id, vessel_id FROM sailing_space_departure WHERE departing_terminal_id = ? AND arriving_terminal_id = ? AND departure = ?'
+    );
+    const insertDeparture = db.prepare(`INSERT INTO sailing_space_departure (
     departing_terminal_id, arriving_terminal_id, departure, vessel_id,
     first_seen_at, last_seen_at, last_seen_before_departure, finalized, service_date, weekday, hour_local
   ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`);
-  const touchDeparture = db.prepare(
-    'UPDATE sailing_space_departure SET last_seen_at = ?, last_seen_before_departure = ?, vessel_id = ? WHERE id = ?',
-  );
-  const latestObservation = db.prepare(`SELECT vessel_id, is_cancelled, drive_up_space_count, reservable_space_count, max_space_count
+    const touchDeparture = db.prepare(
+        'UPDATE sailing_space_departure SET last_seen_at = ?, last_seen_before_departure = ?, vessel_id = ? WHERE id = ?'
+    );
+    const latestObservation =
+        db.prepare(`SELECT vessel_id, is_cancelled, drive_up_space_count, reservable_space_count, max_space_count
     FROM sailing_space_observation
     WHERE departing_terminal_id = ? AND arriving_terminal_id = ? AND departure = ?
     ORDER BY id DESC LIMIT 1`);
 
-  const seen = new Set<string>();
+    const seen = new Set<string>();
 
-  const run = transaction(db, async () => {
-    for (const row of rows) {
-      const parts = pacificParts(row.departure);
-      if (!parts) {
-        result.invalid += 1;
-        continue;
-      }
-      seen.add(`${row.departingTerminalId}|${row.arrivingTerminalId}|${row.departure}`);
-      const beforeDeparture = capturedAt < row.departure ? 1 : 0;
-      const existing = (await findDeparture.get(row.departingTerminalId, row.arrivingTerminalId, row.departure)) as
-        | { id: number; vessel_id: number | null }
-        | undefined;
+    const run = transaction(db, async () => {
+        for (const row of rows) {
+            const parts = pacificParts(row.departure);
+            if (!parts) {
+                result.invalid += 1;
+                continue;
+            }
+            seen.add(`${row.departingTerminalId}|${row.arrivingTerminalId}|${row.departure}`);
+            const beforeDeparture = capturedAt < row.departure ? 1 : 0;
+            const existing = (await findDeparture.get(
+                row.departingTerminalId,
+                row.arrivingTerminalId,
+                row.departure
+            )) as { id: number; vessel_id: number | null } | undefined;
 
-      if (!existing) {
-        (await insertDeparture.run(
-          row.departingTerminalId,
-          row.arrivingTerminalId,
-          row.departure,
-          row.vesselId,
-          capturedAt,
-          capturedAt,
-          beforeDeparture,
-          parts.serviceDate,
-          parts.weekday,
-          parts.hourLocal,
-        ));
-        (await writeObservation(insertObservation, row, capturedAt, 'baseline', parts));
-        result.written += 1;
-        continue;
-      }
+            if (!existing) {
+                await insertDeparture.run(
+                    row.departingTerminalId,
+                    row.arrivingTerminalId,
+                    row.departure,
+                    row.vesselId,
+                    capturedAt,
+                    capturedAt,
+                    beforeDeparture,
+                    parts.serviceDate,
+                    parts.weekday,
+                    parts.hourLocal
+                );
+                await writeObservation(insertObservation, row, capturedAt, 'baseline', parts);
+                result.written += 1;
+                continue;
+            }
 
-      (await touchDeparture.run(capturedAt, beforeDeparture, row.vesselId, existing.id));
-      const previous = (await latestObservation.get(row.departingTerminalId, row.arrivingTerminalId, row.departure)) as
-        | Record<string, unknown>
-        | undefined;
-      if (previous && !spaceChanged(previous, row)) {
-        result.skipped += 1;
-        continue;
-      }
-      (await writeObservation(insertObservation, row, capturedAt, 'change', parts));
-      result.written += 1;
-    }
+            await touchDeparture.run(capturedAt, beforeDeparture, row.vesselId, existing.id);
+            const previous = (await latestObservation.get(
+                row.departingTerminalId,
+                row.arrivingTerminalId,
+                row.departure
+            )) as Record<string, unknown> | undefined;
+            if (previous && !spaceChanged(previous, row)) {
+                result.skipped += 1;
+                continue;
+            }
+            await writeObservation(insertObservation, row, capturedAt, 'change', parts);
+            result.written += 1;
+        }
 
-    result.written += (await finalizeDepartures(db, insertObservation, seen, capturedAt));
-  });
+        result.written += await finalizeDepartures(db, insertObservation, seen, capturedAt);
+    });
 
-  (await run());
-  return result;
+    await run();
+    return result;
 }
 
 async function finalizeDepartures(
-  db: Db,
-  insertObservation: Stmt,
-  seen: Set<string>,
-  capturedAt: string,
+    db: Db,
+    insertObservation: Stmt,
+    seen: Set<string>,
+    capturedAt: string
 ): Promise<number> {
-  const open = (await db
-    .prepare('SELECT * FROM sailing_space_departure WHERE finalized = 0')
-    .all()) as Array<Record<string, unknown>>;
-  const finalize = db.prepare('UPDATE sailing_space_departure SET finalized = 1 WHERE id = ?');
-  const latestObservation = db.prepare(`SELECT * FROM sailing_space_observation
+    const open = (await db.prepare('SELECT * FROM sailing_space_departure WHERE finalized = 0').all()) as Array<
+        Record<string, unknown>
+    >;
+    const finalize = db.prepare('UPDATE sailing_space_departure SET finalized = 1 WHERE id = ?');
+    const latestObservation = db.prepare(`SELECT * FROM sailing_space_observation
     WHERE departing_terminal_id = ? AND arriving_terminal_id = ? AND departure = ?
     ORDER BY id DESC LIMIT 1`);
 
-  let written = 0;
-  for (const departure of open) {
-    const key = `${departure.departing_terminal_id}|${departure.arriving_terminal_id}|${departure.departure}`;
-    if (seen.has(key)) continue;
+    let written = 0;
+    for (const departure of open) {
+        const key = `${departure.departing_terminal_id}|${departure.arriving_terminal_id}|${departure.departure}`;
+        if (seen.has(key)) continue;
 
-    const last = (await latestObservation.get(
-      departure.departing_terminal_id,
-      departure.arriving_terminal_id,
-      departure.departure,
-    )) as Record<string, unknown> | undefined;
-    if (last) {
-      (await insertObservation.run(
-        departure.last_seen_at ?? capturedAt,
-        last.departing_terminal_id,
-        last.departing_terminal_name,
-        last.arriving_terminal_id,
-        last.arriving_terminal_name,
-        last.departure,
-        last.vessel_id,
-        last.vessel_name,
-        last.is_cancelled,
-        last.drive_up_space_count,
-        last.reservable_space_count,
-        last.max_space_count,
-        'final',
-        last.service_date,
-        last.weekday,
-        last.hour_local,
-      ));
-      written += 1;
+        const last = (await latestObservation.get(
+            departure.departing_terminal_id,
+            departure.arriving_terminal_id,
+            departure.departure
+        )) as Record<string, unknown> | undefined;
+        if (last) {
+            await insertObservation.run(
+                departure.last_seen_at ?? capturedAt,
+                last.departing_terminal_id,
+                last.departing_terminal_name,
+                last.arriving_terminal_id,
+                last.arriving_terminal_name,
+                last.departure,
+                last.vessel_id,
+                last.vessel_name,
+                last.is_cancelled,
+                last.drive_up_space_count,
+                last.reservable_space_count,
+                last.max_space_count,
+                'final',
+                last.service_date,
+                last.weekday,
+                last.hour_local
+            );
+            written += 1;
+        }
+        await finalize.run(departure.id);
     }
-    (await finalize.run(departure.id));
-  }
-  return written;
+    return written;
 }
 
 async function writeObservation(
-  statement: Stmt,
-  row: SpaceRow,
-  capturedAt: string,
-  kind: 'baseline' | 'change' | 'final',
-  parts: { serviceDate: string; weekday: number; hourLocal: number },
+    statement: Stmt,
+    row: SpaceRow,
+    capturedAt: string,
+    kind: 'baseline' | 'change' | 'final',
+    parts: { serviceDate: string; weekday: number; hourLocal: number }
 ): Promise<void> {
-  (await statement.run(
-    capturedAt,
-    row.departingTerminalId,
-    row.departingTerminalName,
-    row.arrivingTerminalId,
-    row.arrivingTerminalName,
-    row.departure,
-    row.vesselId,
-    row.vesselName,
-    row.isCancelled,
-    row.driveUpSpaceCount,
-    row.reservableSpaceCount,
-    row.maxSpaceCount,
-    kind,
-    parts.serviceDate,
-    parts.weekday,
-    parts.hourLocal,
-  ));
+    await statement.run(
+        capturedAt,
+        row.departingTerminalId,
+        row.departingTerminalName,
+        row.arrivingTerminalId,
+        row.arrivingTerminalName,
+        row.departure,
+        row.vesselId,
+        row.vesselName,
+        row.isCancelled,
+        row.driveUpSpaceCount,
+        row.reservableSpaceCount,
+        row.maxSpaceCount,
+        kind,
+        parts.serviceDate,
+        parts.weekday,
+        parts.hourLocal
+    );
 }
 
 function spaceChanged(previous: Record<string, unknown>, row: SpaceRow): boolean {
-  return (
-    previous.vessel_id !== row.vesselId ||
-    previous.is_cancelled !== row.isCancelled ||
-    previous.drive_up_space_count !== row.driveUpSpaceCount ||
-    previous.reservable_space_count !== row.reservableSpaceCount ||
-    previous.max_space_count !== row.maxSpaceCount
-  );
+    return (
+        previous.vessel_id !== row.vesselId ||
+        previous.is_cancelled !== row.isCancelled ||
+        previous.drive_up_space_count !== row.driveUpSpaceCount ||
+        previous.reservable_space_count !== row.reservableSpaceCount ||
+        previous.max_space_count !== row.maxSpaceCount
+    );
 }
 
 function flattenSpaces(payload: unknown, result: WriteResult): SpaceRow[] {
-  const terminals = Array.isArray(payload) ? payload : [];
-  const rows: SpaceRow[] = [];
+    const terminals = Array.isArray(payload) ? payload : [];
+    const rows: SpaceRow[] = [];
 
-  for (const entry of terminals) {
-    const parsed = terminalSailingSpaceSchema.safeParse(entry);
-    if (!parsed.success) {
-      result.invalid += 1;
-      continue;
+    for (const entry of terminals) {
+        const parsed = terminalSailingSpaceSchema.safeParse(entry);
+        if (!parsed.success) {
+            result.invalid += 1;
+            continue;
+        }
+        const terminal = parsed.data;
+        for (const sailing of terminal.DepartingSpaces) {
+            const departure = parseWsdotDate(sailing.Departure);
+            if (!departure) {
+                result.invalid += 1;
+                continue;
+            }
+            for (const arrival of sailing.SpaceForArrivalTerminals) {
+                rows.push({
+                    departingTerminalId: terminal.TerminalID,
+                    departingTerminalName: terminal.TerminalName,
+                    arrivingTerminalId: arrival.TerminalID,
+                    arrivingTerminalName: arrival.TerminalName,
+                    departure,
+                    vesselId: sailing.VesselID ?? null,
+                    vesselName: sailing.VesselName ?? null,
+                    isCancelled: sailing.IsCancelled ? 1 : 0,
+                    driveUpSpaceCount: arrival.DisplayDriveUpSpace ? (arrival.DriveUpSpaceCount ?? null) : null,
+                    reservableSpaceCount: arrival.DisplayReservableSpace
+                        ? (arrival.ReservableSpaceCount ?? null)
+                        : null,
+                    maxSpaceCount: arrival.MaxSpaceCount ?? sailing.MaxSpaceCount ?? null,
+                });
+            }
+        }
     }
-    const terminal = parsed.data;
-    for (const sailing of terminal.DepartingSpaces) {
-      const departure = parseWsdotDate(sailing.Departure);
-      if (!departure) {
-        result.invalid += 1;
-        continue;
-      }
-      for (const arrival of sailing.SpaceForArrivalTerminals) {
-        rows.push({
-          departingTerminalId: terminal.TerminalID,
-          departingTerminalName: terminal.TerminalName,
-          arrivingTerminalId: arrival.TerminalID,
-          arrivingTerminalName: arrival.TerminalName,
-          departure,
-          vesselId: sailing.VesselID ?? null,
-          vesselName: sailing.VesselName ?? null,
-          isCancelled: sailing.IsCancelled ? 1 : 0,
-          driveUpSpaceCount: arrival.DisplayDriveUpSpace ? arrival.DriveUpSpaceCount ?? null : null,
-          reservableSpaceCount: arrival.DisplayReservableSpace ? arrival.ReservableSpaceCount ?? null : null,
-          maxSpaceCount: arrival.MaxSpaceCount ?? sailing.MaxSpaceCount ?? null,
-        });
-      }
-    }
-  }
-  return rows;
+    return rows;
 }
 
 function bit(value: boolean | null | undefined): number | null {
-  return value === null || value === undefined ? null : value ? 1 : 0;
+    return value === null || value === undefined ? null : value ? 1 : 0;
 }

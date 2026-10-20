@@ -1,5 +1,11 @@
 [
   { "TerminalID": 7, "TerminalName": "Seattle", "TerminalSubjectName": "seattle", "RegionID": 1, "SortOrder": 10 },
-  { "TerminalID": 3, "TerminalName": "Bainbridge Island", "TerminalSubjectName": "bainbridge", "RegionID": 1, "SortOrder": 20 },
+  {
+    "TerminalID": 3,
+    "TerminalName": "Bainbridge Island",
+    "TerminalSubjectName": "bainbridge",
+    "RegionID": 1,
+    "SortOrder": 20
+  },
   { "TerminalID": 9, "TerminalName": "Bremerton", "TerminalSubjectName": "bremerton", "RegionID": 1, "SortOrder": 30 }
 ]

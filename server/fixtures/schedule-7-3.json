@@ -6,8 +6,20 @@
       "ArrivingTerminalID": 3,
       "ArrivingTerminalName": "Bainbridge Island",
       "Times": [
-        { "DepartingTime": "/Date(1788282000000-0700)/", "ArrivingTime": "/Date(1788284100000-0700)/", "VesselID": 1, "VesselName": "Tacoma", "LoadingRule": 1 },
-        { "DepartingTime": "/Date(1788285600000-0700)/", "ArrivingTime": "/Date(1788287700000-0700)/", "VesselID": 1, "VesselName": "Tacoma", "LoadingRule": 1 }
+        {
+          "DepartingTime": "/Date(1788282000000-0700)/",
+          "ArrivingTime": "/Date(1788284100000-0700)/",
+          "VesselID": 1,
+          "VesselName": "Tacoma",
+          "LoadingRule": 1
+        },
+        {
+          "DepartingTime": "/Date(1788285600000-0700)/",
+          "ArrivingTime": "/Date(1788287700000-0700)/",
+          "VesselID": 1,
+          "VesselName": "Tacoma",
+          "LoadingRule": 1
+        }
       ]
     }
   ]

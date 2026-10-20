@@ -36,9 +36,9 @@ const CROSSING_SQL = `
   SELECT dep, arr, minutes FROM eligible WHERE rn <= ?`;
 
 interface CrossingRow {
-  dep: number;
-  arr: number;
-  minutes: number;
+    dep: number;
+    arr: number;
+    minutes: number;
 }
 
 const key = (departingId: number, arrivingId: number) => `${departingId}-${arrivingId}`;
@@ -46,76 +46,84 @@ const key = (departingId: number, arrivingId: number) => `${departingId}-${arriv
 const round = (value: number) => Math.round(value * 10) / 10;
 
 export async function computeCrossings(db: Db, nowMs: number): Promise<CrossingView[]> {
-  const since = new Date(nowMs - MAX_CROSSING_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const rows = (await db.prepare(CROSSING_SQL).all(since, CROSSING_WINDOW)) as CrossingRow[];
+    const since = new Date(nowMs - MAX_CROSSING_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const rows = (await db.prepare(CROSSING_SQL).all(since, CROSSING_WINDOW)) as CrossingRow[];
 
-  const buckets = new Map<string, { dep: number; arr: number; minutes: number[] }>();
-  for (const row of rows) {
-    const bucketKey = key(row.dep, row.arr);
-    const bucket = buckets.get(bucketKey) ?? { dep: row.dep, arr: row.arr, minutes: [] };
-    bucket.minutes.push(row.minutes);
-    buckets.set(bucketKey, bucket);
-  }
-
-  const direct = new Map<string, CrossingView>();
-  for (const [bucketKey, bucket] of buckets) {
-    if (bucket.minutes.length < MIN_CROSSING_SAMPLES) continue;
-    // Twice, because a pair carrying several artefacts has a median low enough that the
-    // first floor cannot clear them all.
-    let minutes = bucket.minutes;
-    for (let pass = 0; pass < 2; pass++) {
-      const floor = (percentile(minutes, 0.5) ?? 0) * OUTLIER_FLOOR_FRACTION;
-      minutes = minutes.filter((value) => value >= floor);
+    const buckets = new Map<string, { dep: number; arr: number; minutes: number[] }>();
+    for (const row of rows) {
+        const bucketKey = key(row.dep, row.arr);
+        const bucket = buckets.get(bucketKey) ?? { dep: row.dep, arr: row.arr, minutes: [] };
+        bucket.minutes.push(row.minutes);
+        buckets.set(bucketKey, bucket);
     }
-    if (minutes.length < MIN_CROSSING_SAMPLES) continue;
-    direct.set(bucketKey, {
-      departingTerminalId: bucket.dep,
-      arrivingTerminalId: bucket.arr,
-      medianMinutes: round(percentile(minutes, 0.5) ?? 0),
-      fastMinutes: round(percentile(minutes, 0.1) ?? 0),
-      samples: minutes.length,
-      borrowed: false,
-    });
-  }
 
-  // A crossing runs close to the same length either way, so a thin pair takes the reverse
-  // direction rather than falling all the way back to WSDOT's estimate. Flagged, because the
-  // two are not identical: currents and slip alignment move it by a couple of minutes.
-  const results = [...direct.values()];
-  for (const view of direct.values()) {
-    const reverseKey = key(view.arrivingTerminalId, view.departingTerminalId);
-    if (direct.has(reverseKey)) continue;
-    results.push({
-      departingTerminalId: view.arrivingTerminalId,
-      arrivingTerminalId: view.departingTerminalId,
-      medianMinutes: view.medianMinutes,
-      fastMinutes: view.fastMinutes,
-      samples: view.samples,
-      borrowed: true,
-    });
-  }
+    const direct = new Map<string, CrossingView>();
+    for (const [bucketKey, bucket] of buckets) {
+        if (bucket.minutes.length < MIN_CROSSING_SAMPLES) continue;
+        // Twice, because a pair carrying several artefacts has a median low enough that the
+        // first floor cannot clear them all.
+        let minutes = bucket.minutes;
+        for (let pass = 0; pass < 2; pass++) {
+            const floor = (percentile(minutes, 0.5) ?? 0) * OUTLIER_FLOOR_FRACTION;
+            minutes = minutes.filter((value) => value >= floor);
+        }
+        if (minutes.length < MIN_CROSSING_SAMPLES) continue;
+        direct.set(bucketKey, {
+            departingTerminalId: bucket.dep,
+            arrivingTerminalId: bucket.arr,
+            medianMinutes: round(percentile(minutes, 0.5) ?? 0),
+            fastMinutes: round(percentile(minutes, 0.1) ?? 0),
+            samples: minutes.length,
+            borrowed: false,
+        });
+    }
 
-  return results.sort((a, b) => a.departingTerminalId - b.departingTerminalId
-    || a.arrivingTerminalId - b.arrivingTerminalId);
+    // A crossing runs close to the same length either way, so a thin pair takes the reverse
+    // direction rather than falling all the way back to WSDOT's estimate. Flagged, because the
+    // two are not identical: currents and slip alignment move it by a couple of minutes.
+    const results = [...direct.values()];
+    for (const view of direct.values()) {
+        const reverseKey = key(view.arrivingTerminalId, view.departingTerminalId);
+        if (direct.has(reverseKey)) continue;
+        results.push({
+            departingTerminalId: view.arrivingTerminalId,
+            arrivingTerminalId: view.departingTerminalId,
+            medianMinutes: view.medianMinutes,
+            fastMinutes: view.fastMinutes,
+            samples: view.samples,
+            borrowed: true,
+        });
+    }
+
+    return results.sort(
+        (a, b) => a.departingTerminalId - b.departingTerminalId || a.arrivingTerminalId - b.arrivingTerminalId
+    );
 }
 
 export class CrossingCache {
-  private cached: CrossingView[] | null = null;
-  private expiresAt = 0;
-  private pending: Promise<CrossingView[]> | null = null;
+    private cached: CrossingView[] | null = null;
+    private expiresAt = 0;
+    private pending: Promise<CrossingView[]> | null = null;
 
-  constructor(private readonly db: Db, private readonly now: () => number = Date.now) {}
+    constructor(
+        private readonly db: Db,
+        private readonly now: () => number = Date.now
+    ) {}
 
-  async read(): Promise<CrossingView[]> {
-    const nowMs = this.now();
-    if (this.cached && nowMs < this.expiresAt) return this.cached;
-    if (!this.pending) {
-      this.pending = computeCrossings(this.db, nowMs).then(rows => {
-        this.cached = rows;
-        this.expiresAt = this.now() + CROSSING_CACHE_MS;
-        return rows;
-      }).finally(() => { this.pending = null; });
+    async read(): Promise<CrossingView[]> {
+        const nowMs = this.now();
+        if (this.cached && nowMs < this.expiresAt) return this.cached;
+        if (!this.pending) {
+            this.pending = computeCrossings(this.db, nowMs)
+                .then((rows) => {
+                    this.cached = rows;
+                    this.expiresAt = this.now() + CROSSING_CACHE_MS;
+                    return rows;
+                })
+                .finally(() => {
+                    this.pending = null;
+                });
+        }
+        return this.pending;
     }
-    return this.pending;
-  }
 }

@@ -3,9 +3,13 @@
   "id": "ferry-tracker",
   "repository": "https://github.com/purduepete/ferry-tracker.git",
   "database": {
-    "engine": "postgresql", "name": "ferry_tracker",
-    "connectionEnvironment": "DATABASE_URL", "backendEnvironment": "STORAGE_BACKEND",
-    "schemaVersion": 1, "migrationsDirectory": "deploy\\postgresql", "backupFormat": "custom"
+    "engine": "postgresql",
+    "name": "ferry_tracker",
+    "connectionEnvironment": "DATABASE_URL",
+    "backendEnvironment": "STORAGE_BACKEND",
+    "schemaVersion": 1,
+    "migrationsDirectory": "deploy\\postgresql",
+    "backupFormat": "custom"
   },
   "runtime": { "kind": "node", "minimumVersion": "22.0.0" },
   "build": {
@@ -35,20 +39,31 @@
     "stopFileEnvironment": "SOLUTIONDEPLOY_STOP_FILE"
   },
   "readiness": { "path": "/api/health", "expected": { "status": "ok", "source": "live" }, "timeoutSeconds": 60 },
-  "managedState": [
-    { "source": "data\\raw", "target": "data\\raw", "kind": "directory", "required": true }
-  ],
+  "managedState": [{ "source": "data\\raw", "target": "data\\raw", "kind": "directory", "required": true }],
   "state": [
-    { "source": "C:\\ProgramData\\ferry-tracker\\ferry-capture.db", "target": "backups\\source\\ferry-capture.db", "kind": "sqlite", "required": true },
+    {
+      "source": "C:\\ProgramData\\ferry-tracker\\ferry-capture.db",
+      "target": "backups\\source\\ferry-capture.db",
+      "kind": "sqlite",
+      "required": true
+    },
     { "source": "C:\\ProgramData\\ferry-tracker\\raw", "target": "data\\raw", "kind": "directory", "required": true },
-    { "source": "C:\\ProgramData\\ferry-tracker\\backups", "target": "backups\\capture", "kind": "directory", "required": false },
-    { "source": "C:\\ProgramData\\ferry-tracker\\watchdog-state.json", "target": "backups\\source\\watchdog-state.json", "kind": "file", "required": false },
+    {
+      "source": "C:\\ProgramData\\ferry-tracker\\backups",
+      "target": "backups\\capture",
+      "kind": "directory",
+      "required": false
+    },
+    {
+      "source": "C:\\ProgramData\\ferry-tracker\\watchdog-state.json",
+      "target": "backups\\source\\watchdog-state.json",
+      "kind": "file",
+      "required": false
+    },
     { "source": ".env.local", "target": "secrets\\source\\app.env", "kind": "secret", "required": true },
     { "source": ".env", "target": "secrets\\source\\fallback.env", "kind": "secret", "required": false }
   ],
-  "routes": [
-    { "hostname": "ferry-tracker.jimlertech.com", "catchPath": "/api/catch" }
-  ],
+  "routes": [{ "hostname": "ferry-tracker.jimlertech.com", "catchPath": "/api/catch" }],
   "source": {
     "host": "jimbrownhome",
     "root": "C:\\Files\\Dev\\main\\ferry-tracker",

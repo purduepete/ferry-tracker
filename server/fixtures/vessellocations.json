@@ -1,4 +1,39 @@
 [
-  { "VesselID": 1, "VesselName": "Tacoma", "DepartingTerminalID": 7, "DepartingTerminalName": "Seattle", "ArrivingTerminalID": 3, "ArrivingTerminalName": "Bainbridge Island", "Latitude": 47.608, "Longitude": -122.404, "Speed": 15.2, "Heading": 278, "InService": true, "AtDock": false, "LeftDock": "/Date(1788280500000-0700)/", "Eta": "/Date(1788282900000-0700)/", "EtaBasis": "Automated", "OpRouteAbbrev": ["sea-bi"], "ScheduledDeparture": "/Date(1788280200000-0700)/", "TimeStamp": "/Date(1788280860000-0700)/" },
-  { "VesselID": 2, "VesselName": "Chimacum", "DepartingTerminalID": 9, "DepartingTerminalName": "Bremerton", "ArrivingTerminalID": 7, "ArrivingTerminalName": "Seattle", "Latitude": 47.582, "Longitude": -122.48, "Speed": 13.8, "Heading": 91, "InService": true, "AtDock": false, "OpRouteAbbrev": ["sea-br"], "ScheduledDeparture": "/Date(1788281100000-0700)/", "TimeStamp": "/Date(1788280920000-0700)/" }
+  {
+    "VesselID": 1,
+    "VesselName": "Tacoma",
+    "DepartingTerminalID": 7,
+    "DepartingTerminalName": "Seattle",
+    "ArrivingTerminalID": 3,
+    "ArrivingTerminalName": "Bainbridge Island",
+    "Latitude": 47.608,
+    "Longitude": -122.404,
+    "Speed": 15.2,
+    "Heading": 278,
+    "InService": true,
+    "AtDock": false,
+    "LeftDock": "/Date(1788280500000-0700)/",
+    "Eta": "/Date(1788282900000-0700)/",
+    "EtaBasis": "Automated",
+    "OpRouteAbbrev": ["sea-bi"],
+    "ScheduledDeparture": "/Date(1788280200000-0700)/",
+    "TimeStamp": "/Date(1788280860000-0700)/"
+  },
+  {
+    "VesselID": 2,
+    "VesselName": "Chimacum",
+    "DepartingTerminalID": 9,
+    "DepartingTerminalName": "Bremerton",
+    "ArrivingTerminalID": 7,
+    "ArrivingTerminalName": "Seattle",
+    "Latitude": 47.582,
+    "Longitude": -122.48,
+    "Speed": 13.8,
+    "Heading": 91,
+    "InService": true,
+    "AtDock": false,
+    "OpRouteAbbrev": ["sea-br"],
+    "ScheduledDeparture": "/Date(1788281100000-0700)/",
+    "TimeStamp": "/Date(1788280920000-0700)/"
+  }
 ]

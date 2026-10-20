@@ -16,17 +16,17 @@ const history = db ? new DatabaseSailingHistory(db) : undefined;
 let stopping = false;
 
 const server = createApp(config, now, capture, history).listen(config.port, config.host, () => {
-  console.log(`Ferry Tracker is listening on ${config.host}:${config.port}`);
-  if (!stopping) capture?.start();
+    console.log(`Ferry Tracker is listening on ${config.host}:${config.port}`);
+    if (!stopping) capture?.start();
 });
 
 installShutdown(async () => {
-  stopping = true;
-  const captureStopped = capture?.stop();
-  const serverStopped = new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
-    server.closeIdleConnections();
-  });
-  await Promise.all([captureStopped, serverStopped]);
-  await db?.close();
+    stopping = true;
+    const captureStopped = capture?.stop();
+    const serverStopped = new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+        server.closeIdleConnections();
+    });
+    await Promise.all([captureStopped, serverStopped]);
+    await db?.close();
 });

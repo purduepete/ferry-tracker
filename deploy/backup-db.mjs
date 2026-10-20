@@ -7,7 +7,8 @@ import Database from 'better-sqlite3';
 import { getConfig } from '../server/dist/config.js';
 
 const KEEP = Number(process.env.BACKUP_KEEP ?? 8);
-if (process.env.STORAGE_BACKEND === 'postgresql') throw new Error('SQLite backup is disabled for PostgreSQL. Use the framework pg_dump backup.');
+if (process.env.STORAGE_BACKEND === 'postgresql')
+    throw new Error('SQLite backup is disabled for PostgreSQL. Use the framework pg_dump backup.');
 
 const { capture } = getConfig();
 const dataDir = process.env.CAPTURE_DATA_DIR ?? path.dirname(capture.dbPath);
@@ -19,19 +20,21 @@ const target = path.join(backupDir, `ferry-capture-${stamp}.db`);
 
 const db = new Database(capture.dbPath);
 try {
-  db.pragma('busy_timeout = 30000');
-  db.prepare('VACUUM INTO ?').run(target);
+    db.pragma('busy_timeout = 30000');
+    db.prepare('VACUUM INTO ?').run(target);
 } finally {
-  db.close();
+    db.close();
 }
 
-console.log(`${new Date().toISOString()} backed up ${capture.dbPath} to ${target} (${Math.round(statSync(target).size / 1024)} KB)`);
+console.log(
+    `${new Date().toISOString()} backed up ${capture.dbPath} to ${target} (${Math.round(statSync(target).size / 1024)} KB)`
+);
 
 const stale = readdirSync(backupDir)
-  .filter((name) => name.startsWith('ferry-capture-') && name.endsWith('.db'))
-  .sort()
-  .slice(0, -KEEP);
+    .filter((name) => name.startsWith('ferry-capture-') && name.endsWith('.db'))
+    .sort()
+    .slice(0, -KEEP);
 for (const name of stale) {
-  unlinkSync(path.join(backupDir, name));
-  console.log(`pruned ${name}`);
+    unlinkSync(path.join(backupDir, name));
+    console.log(`pruned ${name}`);
 }

@@ -1,6 +1,6 @@
 ---
-description: "Use when changing Ferry Tracker frontend styling, layout, themes, controls, responsive behavior, accessibility, or visual browser tests. Preserves the WebPortfolio-derived design language."
-applyTo: ["frontend/**/*.{tsx,css,html}", "e2e/**/*.ts"]
+description: 'Use when changing Ferry Tracker frontend styling, layout, themes, controls, responsive behavior, accessibility, or visual browser tests. Preserves the WebPortfolio-derived design language.'
+applyTo: ['frontend/**/*.{tsx,css,html}', 'e2e/**/*.ts']
 ---
 
 # Ferry Tracker frontend style

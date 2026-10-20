@@ -6,56 +6,66 @@ import { CrossingCache } from './crossingMedians.js';
 export const MAX_HISTORY_DAYS = 14;
 
 export interface RecordedSpace {
-  departure: string;
-  vesselId: number | null;
-  vesselName: string | null;
-  isCancelled: boolean;
-  driveUpSpaceCount: number | null;
-  reservableSpaceCount: number | null;
-  maxSpaceCount: number | null;
-  observedAt: string;
-  leadSeconds: number;
+    departure: string;
+    vesselId: number | null;
+    vesselName: string | null;
+    isCancelled: boolean;
+    driveUpSpaceCount: number | null;
+    reservableSpaceCount: number | null;
+    maxSpaceCount: number | null;
+    observedAt: string;
+    leadSeconds: number;
 }
 
 export interface RecordedLeg {
-  scheduledDeparture: string;
-  actualDeparture: string;
-  actualArrival: string | null;
-  departureDelayMinutes: number | null;
+    scheduledDeparture: string;
+    actualDeparture: string;
+    actualArrival: string | null;
+    departureDelayMinutes: number | null;
 }
 
 export interface SailingHistory {
-  recordedSpaces(departingId: number, arrivingId: number, fromIso: string, toIso: string): Map<string, RecordedSpace> | Promise<Map<string, RecordedSpace>>;
-  recordedLegs(departingId: number, arrivingId: number, fromIso: string, toIso: string): Map<string, RecordedLeg> | Promise<Map<string, RecordedLeg>>;
-  serviceDates(departingId: number, arrivingId: number): string[] | Promise<string[]>;
-  daySailings(departingId: number, arrivingId: number, serviceDate: string): SailingView[] | Promise<SailingView[]>;
-  crossings(): CrossingView[] | Promise<CrossingView[]>;
+    recordedSpaces(
+        departingId: number,
+        arrivingId: number,
+        fromIso: string,
+        toIso: string
+    ): Map<string, RecordedSpace> | Promise<Map<string, RecordedSpace>>;
+    recordedLegs(
+        departingId: number,
+        arrivingId: number,
+        fromIso: string,
+        toIso: string
+    ): Map<string, RecordedLeg> | Promise<Map<string, RecordedLeg>>;
+    serviceDates(departingId: number, arrivingId: number): string[] | Promise<string[]>;
+    daySailings(departingId: number, arrivingId: number, serviceDate: string): SailingView[] | Promise<SailingView[]>;
+    crossings(): CrossingView[] | Promise<CrossingView[]>;
 }
 
 interface ObservationRow {
-  departure: string;
-  arriving_terminal_id: number;
-  vessel_id: number | null;
-  vessel_name: string | null;
-  is_cancelled: number;
-  drive_up_space_count: number | null;
-  reservable_space_count: number | null;
-  max_space_count: number | null;
-  captured_at: string;
+    departure: string;
+    arriving_terminal_id: number;
+    vessel_id: number | null;
+    vessel_name: string | null;
+    is_cancelled: number;
+    drive_up_space_count: number | null;
+    reservable_space_count: number | null;
+    max_space_count: number | null;
+    captured_at: string;
 }
 
 interface LegRow {
-  scheduled_departure: string | null;
-  departed_at: string;
-  dock_arrival_at: string | null;
-  departure_delay_minutes: number | null;
+    scheduled_departure: string | null;
+    departed_at: string;
+    dock_arrival_at: string | null;
+    departure_delay_minutes: number | null;
 }
 
 interface SnapshotRow {
-  departing_time: string;
-  arriving_time: string | null;
-  vessel_id: number | null;
-  vessel_name: string | null;
+    departing_time: string;
+    arriving_time: string | null;
+    vessel_id: number | null;
+    vessel_name: string | null;
 }
 
 // The timetable is published a day ahead, so a future date would offer a day with no
@@ -121,105 +131,134 @@ const LEG_SQL = `
   ORDER BY scheduled_departure, departed_at`;
 
 export class DatabaseSailingHistory implements SailingHistory {
-  private readonly crossingCache: CrossingCache;
+    private readonly crossingCache: CrossingCache;
 
-  constructor(private readonly db: Db, now: () => number = Date.now) {
-    this.crossingCache = new CrossingCache(db, now);
-  }
-
-  async crossings(): Promise<CrossingView[]> {
-    return (await this.crossingCache.read());
-  }
-
-  async serviceDates(departingId: number, arrivingId: number): Promise<string[]> {
-    const today = pacificParts(new Date())?.serviceDate;
-    const rows = (await this.db.prepare(SERVICE_DATE_SQL).all(departingId, arrivingId, today, MAX_HISTORY_DAYS)) as Array<{ service_date: string }>;
-    return rows.map((row) => row.service_date);
-  }
-
-  async daySailings(departingId: number, arrivingId: number, serviceDate: string): Promise<SailingView[]> {
-    const rows = (await this.db.prepare(DAY_SCHEDULE_SQL).all(serviceDate, departingId, arrivingId)) as SnapshotRow[];
-    if (rows.length === 0) return [];
-
-    const first = Date.parse(rows[0].departing_time);
-    const last = Date.parse(rows[rows.length - 1].departing_time);
-    const fromIso = new Date(first - DAY_MARGIN_MS).toISOString();
-    const toIso = new Date(last + DAY_MARGIN_MS).toISOString();
-    const spaces = (await this.recordedSpaces(departingId, arrivingId, fromIso, toIso));
-    const legs = (await this.recordedLegs(departingId, arrivingId, fromIso, toIso));
-
-    return rows.map((row) => {
-      const space = spaces.get(row.departing_time);
-      const leg = legs.get(row.departing_time);
-      return {
-        vesselId: row.vessel_id,
-        vesselName: row.vessel_name,
-        departingTime: row.departing_time,
-        arrivingTime: row.arriving_time,
-        departingTerminalId: departingId,
-        arrivingTerminalId: arrivingId,
-        isCancelled: space?.isCancelled ?? null,
-        driveUpSpaceCount: space?.driveUpSpaceCount ?? null,
-        reservableSpaceCount: space?.reservableSpaceCount ?? null,
-        maxSpaceCount: space?.maxSpaceCount ?? null,
-        spaceAvailable: space !== undefined,
-        spaceSource: space === undefined ? null : 'recorded',
-        spaceObservedAt: space?.observedAt ?? null,
-        spaceLeadSeconds: space?.leadSeconds ?? null,
-        actualDeparture: leg?.actualDeparture ?? null,
-        actualArrival: leg?.actualArrival ?? null,
-        departureDelayMinutes: leg?.departureDelayMinutes ?? null,
-        raw: { ...row },
-      };
-    });
-  }
-
-  async recordedLegs(departingId: number, arrivingId: number, fromIso: string, toIso: string): Promise<Map<string, RecordedLeg>> {
-    const rows = (await this.db.prepare(LEG_SQL).all(departingId, arrivingId, fromIso, toIso)) as LegRow[];
-    const legs = new Map<string, RecordedLeg>();
-    for (const row of rows) {
-      if (row.scheduled_departure === null || legs.has(row.scheduled_departure)) continue;
-      legs.set(row.scheduled_departure, {
-        scheduledDeparture: row.scheduled_departure,
-        actualDeparture: row.departed_at,
-        actualArrival: row.dock_arrival_at,
-        departureDelayMinutes: row.departure_delay_minutes,
-      });
+    constructor(
+        private readonly db: Db,
+        now: () => number = Date.now
+    ) {
+        this.crossingCache = new CrossingCache(db, now);
     }
-    return legs;
-  }
 
-  async recordedSpaces(departingId: number, arrivingId: number, fromIso: string, toIso: string): Promise<Map<string, RecordedSpace>> {
-    const rows = (await this.db
-      .prepare(LAST_OBSERVATION_SQL)
-      .all(departingId, arrivingId, departingId, fromIso, toIso, departingId, arrivingId, departingId, fromIso, toIso)) as ObservationRow[];
-
-    // A multi-destination sailing is stored against the departing terminal because WSDOT puts
-    // the real destinations in ArrivalTerminalIDs, so it stands in only when nothing exact exists.
-    const exact = new Map<string, RecordedSpace>();
-    const placeholder = new Map<string, RecordedSpace>();
-    for (const row of rows) {
-      const target = row.arriving_terminal_id === arrivingId ? exact : placeholder;
-      const existing = target.get(row.departure);
-      if (!existing || existing.observedAt < row.captured_at) target.set(row.departure, toRecordedSpace(row));
+    async crossings(): Promise<CrossingView[]> {
+        return await this.crossingCache.read();
     }
-    for (const [departure, space] of exact) placeholder.set(departure, space);
-    return placeholder;
-  }
+
+    async serviceDates(departingId: number, arrivingId: number): Promise<string[]> {
+        const today = pacificParts(new Date())?.serviceDate;
+        const rows = (await this.db
+            .prepare(SERVICE_DATE_SQL)
+            .all(departingId, arrivingId, today, MAX_HISTORY_DAYS)) as Array<{ service_date: string }>;
+        return rows.map((row) => row.service_date);
+    }
+
+    async daySailings(departingId: number, arrivingId: number, serviceDate: string): Promise<SailingView[]> {
+        const rows = (await this.db
+            .prepare(DAY_SCHEDULE_SQL)
+            .all(serviceDate, departingId, arrivingId)) as SnapshotRow[];
+        if (rows.length === 0) return [];
+
+        const first = Date.parse(rows[0].departing_time);
+        const last = Date.parse(rows[rows.length - 1].departing_time);
+        const fromIso = new Date(first - DAY_MARGIN_MS).toISOString();
+        const toIso = new Date(last + DAY_MARGIN_MS).toISOString();
+        const spaces = await this.recordedSpaces(departingId, arrivingId, fromIso, toIso);
+        const legs = await this.recordedLegs(departingId, arrivingId, fromIso, toIso);
+
+        return rows.map((row) => {
+            const space = spaces.get(row.departing_time);
+            const leg = legs.get(row.departing_time);
+            return {
+                vesselId: row.vessel_id,
+                vesselName: row.vessel_name,
+                departingTime: row.departing_time,
+                arrivingTime: row.arriving_time,
+                departingTerminalId: departingId,
+                arrivingTerminalId: arrivingId,
+                isCancelled: space?.isCancelled ?? null,
+                driveUpSpaceCount: space?.driveUpSpaceCount ?? null,
+                reservableSpaceCount: space?.reservableSpaceCount ?? null,
+                maxSpaceCount: space?.maxSpaceCount ?? null,
+                spaceAvailable: space !== undefined,
+                spaceSource: space === undefined ? null : 'recorded',
+                spaceObservedAt: space?.observedAt ?? null,
+                spaceLeadSeconds: space?.leadSeconds ?? null,
+                actualDeparture: leg?.actualDeparture ?? null,
+                actualArrival: leg?.actualArrival ?? null,
+                departureDelayMinutes: leg?.departureDelayMinutes ?? null,
+                raw: { ...row },
+            };
+        });
+    }
+
+    async recordedLegs(
+        departingId: number,
+        arrivingId: number,
+        fromIso: string,
+        toIso: string
+    ): Promise<Map<string, RecordedLeg>> {
+        const rows = (await this.db.prepare(LEG_SQL).all(departingId, arrivingId, fromIso, toIso)) as LegRow[];
+        const legs = new Map<string, RecordedLeg>();
+        for (const row of rows) {
+            if (row.scheduled_departure === null || legs.has(row.scheduled_departure)) continue;
+            legs.set(row.scheduled_departure, {
+                scheduledDeparture: row.scheduled_departure,
+                actualDeparture: row.departed_at,
+                actualArrival: row.dock_arrival_at,
+                departureDelayMinutes: row.departure_delay_minutes,
+            });
+        }
+        return legs;
+    }
+
+    async recordedSpaces(
+        departingId: number,
+        arrivingId: number,
+        fromIso: string,
+        toIso: string
+    ): Promise<Map<string, RecordedSpace>> {
+        const rows = (await this.db
+            .prepare(LAST_OBSERVATION_SQL)
+            .all(
+                departingId,
+                arrivingId,
+                departingId,
+                fromIso,
+                toIso,
+                departingId,
+                arrivingId,
+                departingId,
+                fromIso,
+                toIso
+            )) as ObservationRow[];
+
+        // A multi-destination sailing is stored against the departing terminal because WSDOT puts
+        // the real destinations in ArrivalTerminalIDs, so it stands in only when nothing exact exists.
+        const exact = new Map<string, RecordedSpace>();
+        const placeholder = new Map<string, RecordedSpace>();
+        for (const row of rows) {
+            const target = row.arriving_terminal_id === arrivingId ? exact : placeholder;
+            const existing = target.get(row.departure);
+            if (!existing || existing.observedAt < row.captured_at) target.set(row.departure, toRecordedSpace(row));
+        }
+        for (const [departure, space] of exact) placeholder.set(departure, space);
+        return placeholder;
+    }
 }
 
 function toRecordedSpace(row: ObservationRow): RecordedSpace {
-  const departedAt = Date.parse(row.departure);
-  const observedAt = Date.parse(row.captured_at);
-  return {
-    departure: row.departure,
-    vesselId: row.vessel_id,
-    vesselName: row.vessel_name,
-    isCancelled: row.is_cancelled === 1,
-    driveUpSpaceCount: spaceCount(row.drive_up_space_count),
-    reservableSpaceCount: spaceCount(row.reservable_space_count),
-    maxSpaceCount: spaceCount(row.max_space_count),
-    observedAt: row.captured_at,
-    leadSeconds: Number.isNaN(departedAt) || Number.isNaN(observedAt) ? 0 : Math.round((departedAt - observedAt) / 1000),
-  };
+    const departedAt = Date.parse(row.departure);
+    const observedAt = Date.parse(row.captured_at);
+    return {
+        departure: row.departure,
+        vesselId: row.vessel_id,
+        vesselName: row.vessel_name,
+        isCancelled: row.is_cancelled === 1,
+        driveUpSpaceCount: spaceCount(row.drive_up_space_count),
+        reservableSpaceCount: spaceCount(row.reservable_space_count),
+        maxSpaceCount: spaceCount(row.max_space_count),
+        observedAt: row.captured_at,
+        leadSeconds:
+            Number.isNaN(departedAt) || Number.isNaN(observedAt) ? 0 : Math.round((departedAt - observedAt) / 1000),
+    };
 }

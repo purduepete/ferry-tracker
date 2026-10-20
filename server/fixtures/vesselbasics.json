@@ -1,4 +1,16 @@
 [
-  { "VesselID": 1, "VesselName": "Tacoma", "Class": { "ClassID": 12, "ClassName": "Jumbo Mark II", "PublicDisplayName": "Jumbo Mark II" }, "Status": 1, "OwnedByWSF": true },
-  { "VesselID": 2, "VesselName": "Chimacum", "Class": { "ClassID": 18, "ClassName": "Olympic", "PublicDisplayName": "Olympic Class" }, "Status": 1, "OwnedByWSF": true }
+  {
+    "VesselID": 1,
+    "VesselName": "Tacoma",
+    "Class": { "ClassID": 12, "ClassName": "Jumbo Mark II", "PublicDisplayName": "Jumbo Mark II" },
+    "Status": 1,
+    "OwnedByWSF": true
+  },
+  {
+    "VesselID": 2,
+    "VesselName": "Chimacum",
+    "Class": { "ClassID": 18, "ClassName": "Olympic", "PublicDisplayName": "Olympic Class" },
+    "Status": 1,
+    "OwnedByWSF": true
+  }
 ]

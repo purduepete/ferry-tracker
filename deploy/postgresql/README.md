@@ -81,25 +81,26 @@ or have CREATE privileges.
    environment. The latter must be the final raw-archive directory, not a release
    or staging directory. From the release root, the reviewed invocation is:
 
-   ```powershell
-   node deploy\postgresql\import.mjs `
-     --source-dir C:\Protected\snapshot `
-     --expected-source-sha256 <reviewed-sqlite-file-sha256> `
-     --source-index C:\Protected\snapshot\transfer.json `
-     --expected-index-sha256 <reviewed-index-sha256> `
-     --execute
-   ```
+    ```powershell
+    node deploy\postgresql\import.mjs `
+      --source-dir C:\Protected\snapshot `
+      --expected-source-sha256 <reviewed-sqlite-file-sha256> `
+      --source-index C:\Protected\snapshot\transfer.json `
+      --expected-index-sha256 <reviewed-index-sha256> `
+      --execute
+    ```
 
-   Both index arguments and the SQLite file SHA are mandatory. The script verifies
-   the exact proof bytes, source host, plan/declaration hashes, operation/fence
-   metadata, and the matching `files` entry's target, kind, byte count and SHA.
-   The approved proof hash binds this export to the reviewed plan and application.
-   The script does not load dotenv or start the app.
-   `DATABASE_URL` must use the dedicated `sd_ferry_tracker_migrator` login.
-   Inside its transaction the importer verifies the database/login naming
-   convention, executes `SET LOCAL ROLE "sd_ferry_tracker_owner"`, and checks
-   the active role before reading or changing application tables. Administrator
-   and runtime logins are rejected. Runtime permissions remain unchanged.
+    Both index arguments and the SQLite file SHA are mandatory. The script verifies
+    the exact proof bytes, source host, plan/declaration hashes, operation/fence
+    metadata, and the matching `files` entry's target, kind, byte count and SHA.
+    The approved proof hash binds this export to the reviewed plan and application.
+    The script does not load dotenv or start the app.
+    `DATABASE_URL` must use the dedicated `sd_ferry_tracker_migrator` login.
+    Inside its transaction the importer verifies the database/login naming
+    convention, executes `SET LOCAL ROLE "sd_ferry_tracker_owner"`, and checks
+    the active role before reading or changing application tables. Administrator
+    and runtime logins are rejected. Runtime permissions remain unchanged.
+
 6. Import rejects nonempty tables and mismatched hashes. After verifying the
    frozen source, it copies the SQLite bytes into a unique repository
    `.run\ferry-import-*` directory and checks the copy hash before opening it
