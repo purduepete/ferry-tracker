@@ -9,6 +9,6 @@ describe('theme preferences', () => {
   it('rejects unsupported stored preferences, including the retired ones', () => {
     expect(isThemePreference('sepia')).toBe(false);
     expect(isThemePreference('dark')).toBe(false);
-    expect(isThemePreference('system')).toBe(false);
+    expect(isThemePreference('system')).toBe(true);
   });
 });

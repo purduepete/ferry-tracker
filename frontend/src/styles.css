@@ -1,8 +1,8 @@
 :root {
-  font-family: 'Roboto Flex', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Roboto Flex', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
   color: #111827;
-  background: #f9fafb;
-  --bg: #f9fafb;
+  background: #ffffff;
+  --bg: #ffffff;
   --surface: #ffffff;
   --surface-2: #f3f4f6;
   --surface-3: #e5e7eb;
@@ -50,7 +50,7 @@
   color-scheme: dark;
 }
 
-* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
+* { box-sizing: border-box; border-radius: 0; scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: var(--scrollbar-track); }
 *::-webkit-scrollbar-thumb { min-height: 32px; border: 2px solid var(--scrollbar-track); border-radius: 0; background: var(--scrollbar-thumb); }
@@ -58,9 +58,9 @@
 *::-webkit-scrollbar-corner { background: var(--scrollbar-track); }
 /* Percentage height tracks the VISIBLE viewport on iOS; 100vh and 100dvh both overshoot it. */
 html { height: 100%; background: var(--bg); scroll-behavior: smooth; }
-body { margin: 0; min-width: 320px; min-height: 100%; background: var(--bg); color: var(--text); font-weight: 400; -webkit-user-select: none; user-select: none; }
+body { margin: 0; min-width: 320px; min-height: 100%; background: var(--bg); color: var(--text); font-weight: 400; -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none; }
 input, textarea, [contenteditable='true'] { -webkit-user-select: text; user-select: text; }
-button, input { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { color: inherit; }
 button { cursor: pointer; }
 code, pre { font-family: 'Cascadia Code', 'Consolas', monospace; }
@@ -68,7 +68,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 
 .app-shell { min-height: 100%; padding-top: var(--navbar-height); background: var(--bg); }
 /* Sticky rides the iOS toolbar animation; fixed holds the bar still, and it holds on desktop too. */
-.app-header { min-height: var(--navbar-height); padding: var(--safe-area-top) var(--safe-area-right) 0 var(--safe-area-left); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); position: fixed; top: 0; left: 0; right: 0; z-index: 30; }
+.app-header { min-height: var(--navbar-height); padding: var(--safe-area-top) var(--safe-area-right) 0 var(--safe-area-left); border-bottom: 1px solid var(--line); background: var(--surface); position: fixed; top: 0; left: 0; right: 0; z-index: 30; }
 .header-inner { width: min(100%, 1440px); height: 64px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; }
 /* The only recorded-day cue that survives every width: the source badge and the Day picker both hide on a phone. */
 .app-header.is-recorded::after { content: ''; position: absolute; inset: auto 0 -1px; height: 2px; background: color-mix(in srgb, var(--warning) 65%, transparent); }
@@ -88,9 +88,9 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .icon-button.is-busy svg { animation: icon-spin 1s linear infinite; }
 @keyframes icon-spin { to { transform: rotate(360deg); } }
 .theme-menu { height: 100%; position: relative; display: flex; align-items: center; }
-.theme-popover { position: absolute; right: 0; top: 100%; width: 320px; padding: 16px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); z-index: 40; }
+.theme-popover { position: absolute; right: 0; top: 100%; width: min(320px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); z-index: 40; }
 .control-label { display: block; font-size: 11px; font-weight: 650; color: var(--muted); margin-bottom: 9px; text-transform: uppercase; }
-.segmented { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+.segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 .segmented button { min-height: 38px; border: 1px solid var(--line); border-radius: 0; background: var(--surface-2); display: flex; align-items: center; justify-content: center; gap: 7px; }
 .segmented button:hover { background: var(--surface-3); }
 .segmented button[aria-checked='true'] { border-color: var(--accent); background: var(--accent-soft); }

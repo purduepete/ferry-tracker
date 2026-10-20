@@ -238,3 +238,19 @@ npm test
 npm run build
 npm run test:e2e
 ```
+# Theme bootstrap
+
+`frontend/public/theme-init.js` is a same-origin, synchronous pre-paint script.
+Deploy the complete `frontend/dist`, `shared/dist` and `server/dist` together.
+The bootstrap works with
+`script-src 'self'` without an inline hash. The legacy Cloudflare rule for
+`ferry.jimlertech.com` pins the retired inline script and does not describe the
+current hostname's policy. No edge policy change is required for this bootstrap.
+
+Appearance lists Light, Midnight and System. Midnight is the default; System
+tracks OS changes live. `ferry-tracker-theme` stores the plain preference string.
+The reserved browser strip matches the opaque header: white in Light, slate-900
+in Midnight. Installed iOS rendering still needs device verification.
+
+For local browser checks with installed Edge, set `PLAYWRIGHT_CHANNEL=msedge`
+and run `npx playwright test theme.spec.ts --workers=1`.

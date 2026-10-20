@@ -170,7 +170,7 @@ export function createApp(
     setHeaders: (response, filePath) => {
       // Vite fingerprints /assets, so only those are safe to pin; index.html has to revalidate or a
       // stale shell keeps requesting asset hashes that no longer exist.
-      if (filePath.endsWith('index.html')) response.setHeader('Cache-Control', 'no-cache');
+      if (filePath.endsWith('index.html') || filePath.endsWith('theme-init.js')) response.setHeader('Cache-Control', 'no-cache');
       else if (filePath.includes(assetsPrefix)) response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       else response.setHeader('Cache-Control', 'public, max-age=3600');
     },

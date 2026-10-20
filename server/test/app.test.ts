@@ -196,6 +196,13 @@ describe('static asset caching', () => {
     expect(response.headers['cache-control']).toBe('no-cache');
   });
 
+  it.skipIf(!existsSync(distIndex))('revalidates the synchronous theme bootstrap with the shell', async () => {
+    const response = await request(app).get('/theme-init.js').expect(200);
+    expect(response.headers['cache-control']).toBe('no-cache');
+    expect(response.headers['content-type']).toMatch(/javascript/);
+    expect(response.text).toContain('ferry-tracker-theme');
+  });
+
   it.skipIf(!existsSync(distIndex))('pins fingerprinted assets', async () => {
     const asset = /\/assets\/[A-Za-z0-9._-]+/.exec(readFileSync(distIndex, 'utf8'))?.[0];
     expect(asset, 'no fingerprinted asset found in the built index.html').toBeDefined();

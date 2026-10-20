@@ -17,7 +17,7 @@ const legacyAccentKey = 'ferry-tracker-accent';
 function storedPreference(): ThemePreference {
   try {
     const value = localStorage.getItem(themeKey);
-    return isThemePreference(value) ? value : DEFAULT_THEME_PREFERENCE;
+    return value === 'dark' ? 'midnight' : isThemePreference(value) ? value : DEFAULT_THEME_PREFERENCE;
   } catch {
     return DEFAULT_THEME_PREFERENCE;
   }
@@ -25,17 +25,30 @@ function storedPreference(): ThemePreference {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>(storedPreference);
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const update = (event: MediaQueryListEvent) => setSystemDark(event.matches);
+    setSystemDark(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
 
   useEffect(() => {
     try { localStorage.removeItem(legacyAccentKey); } catch { /* Legacy cleanup can fail without blocking themes. */ }
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = preference;
-    document.documentElement.style.colorScheme = preference === 'light' ? 'light' : 'dark';
-    const themeColors: Record<ThemePreference, string> = { light: '#f9fafb', midnight: '#020617' };
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColors[preference]);
-  }, [preference]);
+    const theme = preference === 'system' ? (systemDark ? 'midnight' : 'light') : preference;
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    root.classList.remove('light', 'dark', 'theme-midnight');
+    root.classList.add(...(theme === 'light' ? ['light'] : ['dark', 'theme-midnight']));
+    root.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+    root.style.backgroundColor = theme === 'light' ? '#ffffff' : '#0f172a';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#ffffff' : '#0f172a');
+  }, [preference, systemDark]);
 
   const setPreference = (value: ThemePreference) => {
     setPreferenceState(value);

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#020617" />
+    <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="Explore Washington State Ferries terminal, vessel, and schedule data." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <!-- iOS ignores an SVG favicon when adding to the home screen and needs this PNG. -->
@@ -13,18 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,100..1000&display=swap" rel="stylesheet" />
-    <script>
-      (() => {
-        const allowed = ['light', 'midnight'];
-        let preference = 'midnight';
-        try {
-          const stored = localStorage.getItem('ferry-tracker-theme');
-          if (allowed.includes(stored)) preference = stored;
-        } catch {}
-        document.documentElement.dataset.theme = preference;
-        document.documentElement.style.colorScheme = preference === 'light' ? 'light' : 'dark';
-      })();
-    </script>
+    <script src="/theme-init.js"></script>
     <title>Ferry Tracker</title>
   </head>
   <body>
