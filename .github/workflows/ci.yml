@@ -26,6 +26,8 @@ jobs:
 
             - run: npm ci
 
+            - run: npm run format:check
+
             - run: npm run lint
 
             # tsc runs per workspace here, so the build is what catches type errors.
