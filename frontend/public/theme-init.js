@@ -4,7 +4,7 @@
     const stored = localStorage.getItem('ferry-tracker-theme');
     if (['system', 'light', 'midnight'].includes(stored)) preference = stored;
     else if (stored === 'dark') preference = 'midnight';
-  } catch {}
+  } catch { /* Storage can be unavailable; keep the default Midnight theme. */ }
   const theme = preference === 'system'
     ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'midnight' : 'light')
     : preference;
