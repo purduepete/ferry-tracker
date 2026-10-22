@@ -466,7 +466,7 @@ Write-Step 'Response header transform rule'
 $csp = @(
     "default-src 'self'"
     "script-src 'self' '$CspScriptHash'"
-    "style-src 'self' https://fonts.googleapis.com"
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com"
     "font-src 'self' https://fonts.gstatic.com"
     "img-src 'self' data: https://images.wsdot.wa.gov"
     "connect-src 'self'"
