@@ -8,6 +8,12 @@ test('uses custom icon help throughout the tabs in Light and Midnight without cl
         await page.keyboard.press('Escape');
         for (const width of [390, 1440]) {
             await page.setViewportSize({ width, height: 900 });
+            const headerInfo = page.locator('.refresh-time .info-box-trigger');
+            await expect(headerInfo).toBeVisible();
+            const infoBounds = await headerInfo.boundingBox();
+            const themeBounds = await page.getByRole('button', { name: 'Appearance', exact: true }).boundingBox();
+            expect(infoBounds?.y).toBe(themeBounds?.y);
+            expect(infoBounds?.height).toBe(themeBounds?.height);
             for (const tab of ['Sailings', 'Catch', 'Disruption', 'Historical', 'Terminals', 'Vessels', 'Settings']) {
                 await page.getByRole('tab', { name: tab, exact: true }).click();
                 await expect(page.locator('[title]')).toHaveCount(0);

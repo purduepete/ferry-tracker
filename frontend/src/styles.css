@@ -314,11 +314,15 @@ select:focus-visible {
 }
 .refresh-time {
     display: flex;
+    height: 100%;
     align-items: center;
     gap: 5px;
     color: var(--muted);
     font-size: 10px;
     white-space: nowrap;
+}
+.refresh-time .info-box-trigger {
+    height: 100%;
 }
 .refresh-time time {
     color: var(--text);
