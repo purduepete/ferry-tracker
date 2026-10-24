@@ -200,7 +200,7 @@ export class NotificationMonitor {
                 at: armed.target,
                 revised: armed.revisedDue,
                 title: 'Ferry Tracker: leave now',
-                message: `Leave now for ${armed.sailing.vesselName ?? 'the ferry'}. Drive ${settings.trafficMinutes} min, queue ${settings.queueMinutes} min.`,
+                message: `Leave now for ${armed.sailing.vesselName ?? 'the ferry'} on ${data.route.departingTerminalName} -> ${data.route.arrivingTerminalName}. Drive ${settings.trafficMinutes} min, queue ${settings.queueMinutes} min.`,
             });
         }
         const next = state.catches.filter((c) => !c.handled).sort((a, b) => a.target - b.target)[0];

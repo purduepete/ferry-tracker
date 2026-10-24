@@ -68,7 +68,7 @@ describe('shared contextual help', () => {
         expect(screen.queryByRole('tooltip')).toBeNull();
     });
 
-    it('portals a viewport-constrained, square themed box outside clipped ancestors', async () => {
+    it('keeps non-details hover help closed and opens it by click', async () => {
         const user = userEvent.setup();
         render(
             <div style={{ overflow: 'hidden' }}>
@@ -76,13 +76,15 @@ describe('shared contextual help', () => {
             </div>
         );
         await user.hover(screen.getByRole('button', { name: 'Crossing time information' }));
+        expect(screen.queryByRole('tooltip')).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Crossing time information' }));
         const tooltip = screen.getByRole('tooltip');
         expect(tooltip.parentElement).toBe(document.body);
         await waitFor(() => expect(tooltip.style.left).toBe('8px'));
         expect(tooltip.className).toContain('is-open');
     });
 
-    it('keeps disabled-control explanations available without replacing the action button', async () => {
+    it('keeps disabled-control explanations off hover and available by keyboard', async () => {
         const user = userEvent.setup();
         const { rerender } = render(
             <HintButton disabled hint="Choose a route first">
@@ -91,8 +93,13 @@ describe('shared contextual help', () => {
         );
         const button = screen.getByRole('button', { name: 'Save route' });
         await user.hover(button);
-        expect(screen.getByRole('tooltip')).toHaveTextContent('Choose a route first');
+        expect(screen.queryByRole('tooltip')).toBeNull();
+        const description = document.getElementById(button.getAttribute('aria-describedby')!);
+        expect(description).toHaveTextContent('Choose a route first');
         rerender(<HintButton hint="Save the route">Save route</HintButton>);
         expect(button).toBeEnabled();
+        await user.tab();
+        expect(button).toHaveFocus();
+        expect(screen.getByRole('tooltip')).toHaveTextContent('Save the route');
     });
 });

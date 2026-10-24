@@ -116,14 +116,20 @@ test('marks a terminal that WSF has posted a service alert against', async ({ pa
     await page.getByRole('option', { name: 'Seattle' }).click();
 
     const backLink = page.getByRole('button', { name: 'Show the Seattle terminal card' });
+    await expect(backLink).toHaveCSS('display', 'flex');
+    await expect(backLink).toHaveCSS('align-items', 'center');
+    await expect(backLink).toHaveCSS('gap', '5px');
     const warning = page.getByRole('button', { name: /^\d+ service alerts?$/ });
-    await warning.click();
+    await warning.hover();
     await expect(page.getByRole('tooltip')).toContainText('4:40');
+    await warning.click();
     await expect(page.getByRole('tab', { name: 'Sailings', exact: true })).toHaveAttribute('aria-selected', 'true');
     await backLink.click();
     const card = page.locator('.data-card').filter({ has: page.getByRole('heading', { name: 'Seattle' }) });
     await expect(card.locator('.terminal-alert-icon').first()).toBeVisible();
-    await card.getByRole('button', { name: /Alerts/ }).click();
+    const alertsDisclosure = card.getByRole('button', { name: /Alerts/ });
+    await expect(alertsDisclosure.locator('.terminal-alert-icon')).toHaveCSS('transform', 'none');
+    await alertsDisclosure.click();
     await expect(card.locator('.terminal-alert-list li').first()).toContainText('4:40');
     // The stripper has to leave the bulletin as words, never as markup the page could render.
     await expect(card.locator('.terminal-alert-list')).not.toContainText('<');

@@ -47,7 +47,12 @@ describe('durable notifications (database access requires SQL review before runn
         db = openDatabase(':memory:');
         store = new NotificationStore(db);
         now = base;
-        data = { sailings: [sailing()], vessels: [], crossings: new Map() };
+        data = {
+            sailings: [sailing()],
+            vessels: [],
+            crossings: new Map(),
+            route: { departingTerminalName: 'Bainbridge Island', arrivingTerminalName: 'Seattle' },
+        };
         service = { notificationSnapshot: vi.fn(async () => data) };
         sender.send.mockClear();
     });
@@ -77,6 +82,10 @@ describe('durable notifications (database access requires SQL review before runn
         now += 60_000;
         await first.tick();
         expect(sender.send).toHaveBeenCalledTimes(1);
+        expect(sender.send).toHaveBeenCalledWith(
+            'Ferry Tracker: leave now',
+            expect.stringContaining('Bainbridge Island -> Seattle')
+        );
         expect(service.notificationSnapshot).toHaveBeenCalledTimes(2);
         await monitor().tick();
         expect(sender.send).toHaveBeenCalledTimes(1);

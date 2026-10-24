@@ -117,6 +117,7 @@ export class FerryDataService {
     private readonly cameras: CameraDirectory;
     private readonly alerts: AlertDirectory;
     private readonly routes: RouteDirectory;
+    private terminalNames?: Promise<Map<number, string>>;
 
     constructor(
         private readonly client: WsdotClient,
@@ -342,17 +343,41 @@ export class FerryDataService {
     }
 
     async notificationSnapshot(departingId: number, arrivingId: number) {
-        const [schedule, vessels, measured] = await Promise.all([
+        const [schedule, vessels, measured, terminalNames] = await Promise.all([
             this.schedule(departingId, arrivingId, false, true),
             this.vessels(true),
             this.history?.crossings(),
+            this.getTerminalNames(),
         ]);
+        const departingTerminalName = terminalNames.get(departingId);
+        const arrivingTerminalName = terminalNames.get(arrivingId);
+        if (!departingTerminalName || !arrivingTerminalName)
+            throw new Error(`Terminal names are unavailable for route ${departingId}:${arrivingId}.`);
         const crossings: Crossings = new Map();
         for (const crossing of measured ?? []) {
             const key = crossingKey(crossing.departingTerminalId, crossing.arrivingTerminalId);
             if (key !== null) crossings.set(key, crossing);
         }
-        return { sailings: schedule.data, vessels: vessels.data, crossings };
+        return {
+            sailings: schedule.data,
+            vessels: vessels.data,
+            crossings,
+            route: { departingTerminalName, arrivingTerminalName },
+        };
+    }
+
+    private getTerminalNames(): Promise<Map<number, string>> {
+        if (!this.terminalNames) {
+            this.terminalNames = this.client
+                .getTerminalBasics()
+                .then((raw) => z.array(terminalBasicSchema).parse(raw))
+                .then((terminals) => new Map(terminals.map((terminal) => [terminal.TerminalID, terminal.TerminalName])))
+                .catch((error: unknown) => {
+                    this.terminalNames = undefined;
+                    throw error;
+                });
+        }
+        return this.terminalNames;
     }
 
     // The same rules the Catch tab runs, answered server-side so a watch complication can read one

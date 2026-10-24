@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
@@ -197,6 +197,7 @@ describe('Stale refresh cue', () => {
         // The cue rides a 30s ticker, so it lands on the first tick past the five-minute mark.
         await advance(360_000);
         await waitFor(() => expect(document.querySelector('.refresh-time')).toHaveClass('is-stale'));
-        expect(screen.getByText(/Data may be out of date/)).toBeInTheDocument();
+        expect(document.querySelector('.refresh-time')).toHaveTextContent('Data may be out of date');
+        expect(document.querySelector('.refresh-time .info-box-trigger')).toBeNull();
     });
 });

@@ -4,7 +4,8 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import type { AppConfig } from '../src/config';
-import { isScheduleVisible } from '../src/ferryDataService';
+import { FerryDataService, isScheduleVisible } from '../src/ferryDataService';
+import { WsdotClient } from '../src/wsdotClient';
 
 const fixtureNow = Date.parse('2026-09-01T18:30:00.000Z');
 
@@ -44,6 +45,15 @@ describe('Ferry Tracker API', () => {
         expect(isScheduleVisible('2026-09-02T06:30:00.000Z', fixtureNow)).toBe(true);
         expect(isScheduleVisible('2026-09-02T06:30:00.001Z', fixtureNow)).toBe(false);
         expect(isScheduleVisible(null, fixtureNow)).toBe(true);
+    });
+
+    it('includes full terminal names in notification route metadata', async () => {
+        const service = new FerryDataService(new WsdotClient(testConfig(true)), () => fixtureNow);
+        const snapshot = await service.notificationSnapshot(3, 7);
+        expect(snapshot.route).toEqual({
+            departingTerminalName: 'Bainbridge Island',
+            arrivingTerminalName: 'Seattle',
+        });
     });
 
     it('returns joined terminals and source structure', async () => {

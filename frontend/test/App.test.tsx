@@ -3080,10 +3080,8 @@ describe('Catching a ferry', () => {
             return found as HTMLElement;
         });
         expect(pill).toHaveTextContent('6 min');
-        await userEvent.hover(within(pill).getByRole('button', { name: 'Details information' }));
-        expect(screen.getByRole('tooltip')).toHaveTextContent(
-            'Still at the dock 6 minutes after the scheduled departure'
-        );
+        expect(pill).toHaveAttribute('aria-label', 'Still at the dock 6 minutes after the scheduled departure');
+        expect(within(pill).queryByRole('button')).toBeNull();
         expect(document.querySelectorAll('.countdown-detail .delay-pill')).toHaveLength(1);
         const scheduled = screen.getByRole('group', { name: 'Scheduled leave by' });
         const estimated = screen.getByRole('group', { name: 'Estimated leave by' });

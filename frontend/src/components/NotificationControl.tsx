@@ -42,6 +42,7 @@ export function NotificationControl({ notifications, kind }: NotificationControl
                 heading="Pushover notifications"
                 label="Pushover notification information"
                 descriptionId={descriptionId}
+                hover
             >
                 <span>{explanation} Shared across browsers.</span>
                 <span className={notifications.error ? 'notification-error' : undefined} role="status">

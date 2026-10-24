@@ -19,11 +19,12 @@ interface InfoBoxProps {
     children: ReactNode;
     label?: string;
     warning?: boolean;
+    hover?: boolean;
     control?: ReactElement<HTMLAttributes<HTMLElement>>;
     descriptionId?: string;
 }
 
-export function InfoBox({ heading, children, label, warning, control, descriptionId }: InfoBoxProps) {
+export function InfoBox({ heading, children, label, warning, hover = false, control, descriptionId }: InfoBoxProps) {
     const generatedId = useId();
     const id = descriptionId ?? generatedId;
     const [open, setOpen] = useState(false);
@@ -90,6 +91,7 @@ export function InfoBox({ heading, children, label, warning, control, descriptio
         ...(!control ? { 'aria-controls': id } : {}),
         onPointerEnter: (event) => {
             control?.props.onPointerEnter?.(event);
+            if (!hover) return;
             trigger.current = event.currentTarget;
             cancelClose();
             setOpen(true);
@@ -100,6 +102,7 @@ export function InfoBox({ heading, children, label, warning, control, descriptio
         },
         onMouseEnter: (event) => {
             control?.props.onMouseEnter?.(event);
+            if (!hover) return;
             trigger.current = event.currentTarget;
             cancelClose();
             setOpen(true);
@@ -182,7 +185,11 @@ export function Help({
     return (
         <Tag {...props}>
             {children}
-            {help && <InfoBox heading="Details">{help}</InfoBox>}
+            {help && (
+                <InfoBox heading="Details" hover>
+                    {help}
+                </InfoBox>
+            )}
         </Tag>
     );
 }

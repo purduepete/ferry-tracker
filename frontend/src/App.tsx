@@ -7,6 +7,7 @@ import {
     type CSSProperties,
     type KeyboardEvent,
     type PointerEvent as ReactPointerEvent,
+    type ReactNode,
 } from 'react';
 import {
     Anchor,
@@ -252,9 +253,15 @@ function DepartureDelay({
     return (
         <span className="departure-delay">
             {departureDelayLabel({ actualDeparture: departure.at })}
-            <Help className="delay-pill" help={reason} aria-label={reason}>
-                {delay} min
-            </Help>
+            <DelayPill label={reason}>{delay} min</DelayPill>
+        </span>
+    );
+}
+
+function DelayPill({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <span className="delay-pill" aria-label={label}>
+            {children}
         </span>
     );
 }
@@ -266,9 +273,7 @@ function VesselDeparture({ vessel }: { vessel: VesselView }) {
     return (
         <>
             {fieldTime(vessel.leftDock)}
-            <Help className="delay-pill" help={`Left ${delay} minutes after the scheduled departure`}>
-                {delay} min
-            </Help>
+            <DelayPill label={`Left ${delay} minutes after the scheduled departure`}>{delay} min</DelayPill>
         </>
     );
 }
@@ -292,9 +297,7 @@ function VesselEta({ vessel, crossings, now }: { vessel: VesselView; crossings: 
     return (
         <>
             {fieldTime(vessel.eta)}
-            <Help className="delay-pill" help={reason}>
-                {clockTime(arrival.at)}
-            </Help>
+            <DelayPill label={reason}>{clockTime(arrival.at)}</DelayPill>
         </>
     );
 }
@@ -390,11 +393,7 @@ function CatchDelay({ window }: { window: CatchWindow }) {
         window.delaySource === 'observed'
             ? `Still at the dock ${window.delayMinutes} minutes after the scheduled departure`
             : `Not expected to leave before ${clockTime(window.expectedDepartureAt ?? window.departureAt)}, ${window.delayMinutes} minutes late`;
-    return (
-        <Help className="delay-pill" help={title}>
-            {window.delayMinutes} min
-        </Help>
-    );
+    return <DelayPill label={title}>{window.delayMinutes} min</DelayPill>;
 }
 
 function CatchTimes({
@@ -678,7 +677,7 @@ function AlertDetails({ alerts }: { alerts: TerminalAlertView[] }) {
 function AlertInfo({ alerts }: { alerts: TerminalAlertView[] }) {
     if (!alerts.length) return null;
     return (
-        <InfoBox warning heading="Service alerts" label={alertCountLabel(alerts.length)}>
+        <InfoBox warning heading="Service alerts" label={alertCountLabel(alerts.length)} hover>
             <AlertDetails alerts={alerts} />
         </InfoBox>
     );
@@ -1803,18 +1802,15 @@ export function App() {
                     </HintButton>
                     <div className="header-actions">
                         {lastRefreshAt && (
-                            <Help
+                            <div
                                 className={`refresh-time${refreshStale ? ' is-stale' : ''}`}
-                                help={
-                                    refreshStale
-                                        ? `Data may be out of date. Last refresh ${localTime(lastRefreshAt)}`
-                                        : `Last refresh ${localTime(lastRefreshAt)}`
-                                }
+                                role={refreshStale ? 'status' : undefined}
                             >
                                 <Clock3 size={13} />
                                 <span className="refresh-time-label">Last refresh</span>
                                 <time dateTime={lastRefreshAt}>{clockTime(lastRefreshAt)}</time>
-                            </Help>
+                                {refreshStale && <span className="sr-only">Data may be out of date.</span>}
+                            </div>
                         )}
                         {/* A deployed server is always live, so the badge only earns its space when the data is canned. */}
                         {terminalResponse?.source === 'fixture' && (
