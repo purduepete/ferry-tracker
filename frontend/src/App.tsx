@@ -121,6 +121,7 @@ import {
 } from './format';
 import { FilterSelect } from './components/FilterSelect';
 import { NotificationControl } from './components/NotificationControl';
+import { Help, HintButton, InfoBox } from './components/InfoBox';
 import { useNotifications } from './useNotifications';
 import { ThemeMenu } from './theme/ThemeMenu';
 
@@ -251,9 +252,9 @@ function DepartureDelay({
     return (
         <span className="departure-delay">
             {departureDelayLabel({ actualDeparture: departure.at })}
-            <span className="delay-pill" title={reason} aria-label={reason}>
+            <Help className="delay-pill" help={reason} aria-label={reason}>
                 {delay} min
-            </span>
+            </Help>
         </span>
     );
 }
@@ -265,9 +266,9 @@ function VesselDeparture({ vessel }: { vessel: VesselView }) {
     return (
         <>
             {fieldTime(vessel.leftDock)}
-            <span className="delay-pill" title={`Left ${delay} minutes after the scheduled departure`}>
+            <Help className="delay-pill" help={`Left ${delay} minutes after the scheduled departure`}>
                 {delay} min
-            </span>
+            </Help>
         </>
     );
 }
@@ -291,9 +292,9 @@ function VesselEta({ vessel, crossings, now }: { vessel: VesselView; crossings: 
     return (
         <>
             {fieldTime(vessel.eta)}
-            <span className="delay-pill" title={reason}>
+            <Help className="delay-pill" help={reason}>
                 {clockTime(arrival.at)}
-            </span>
+            </Help>
         </>
     );
 }
@@ -320,9 +321,9 @@ function SailingArrival({
     if (arrival === null) return <>—</>;
     if (!arrival.estimated) return <>{localTime(arrival.at)}</>;
     return (
-        <span className="estimated-time" title={estimateReason(arrival.samples, arrival.source)}>
+        <Help className="estimated-time" help={estimateReason(arrival.samples, arrival.source)}>
             {localTime(arrival.at)}
-        </span>
+        </Help>
     );
 }
 
@@ -341,9 +342,9 @@ function SailingTime({
     if (crossing === null) return <>—</>;
     if (!crossing.estimated) return <>{crossing.minutes} min</>;
     return (
-        <span className="estimated-time" title={estimateReason(crossing.samples, crossing.source)}>
+        <Help className="estimated-time" help={estimateReason(crossing.samples, crossing.source)}>
             {crossing.minutes} min
-        </span>
+        </Help>
     );
 }
 
@@ -362,9 +363,9 @@ function CapacityPill({ openPercent, total }: { openPercent: number | null; tota
     const full = 100 - openPercent;
     const label = `${full}% of ${total} vehicle spaces taken`;
     return (
-        <span className={`capacity-pill ${capacityLevel(openPercent)}`} aria-label={label} title={label}>
+        <Help className={`capacity-pill ${capacityLevel(openPercent)}`} aria-label={label} help={label}>
             {full}%
-        </span>
+        </Help>
     );
 }
 
@@ -390,9 +391,9 @@ function CatchDelay({ window }: { window: CatchWindow }) {
             ? `Still at the dock ${window.delayMinutes} minutes after the scheduled departure`
             : `Not expected to leave before ${clockTime(window.expectedDepartureAt ?? window.departureAt)}, ${window.delayMinutes} minutes late`;
     return (
-        <span className="delay-pill" title={title}>
+        <Help className="delay-pill" help={title}>
             {window.delayMinutes} min
-        </span>
+        </Help>
     );
 }
 
@@ -437,11 +438,10 @@ function CatchTimes({
                     className={`catch-time is-${catchWindowLevel(window, settings)}`}
                     role="group"
                     aria-label="Estimated leave by"
-                    title={estimateTitle}
                 >
-                    <span className="catch-time-label">
+                    <Help className="catch-time-label" help={estimateTitle}>
                         Estimated{window.delaySource === 'observed' ? ' (delay so far)' : ''}
-                    </span>
+                    </Help>
                     <strong className="countdown-value">
                         {window.estimatedQueueMinutesRemaining ?? window.estimatedMinutesAway} min
                     </strong>
@@ -520,10 +520,10 @@ function VesselLink({
     if (!live || live.departingTerminalId === null) return <>{vesselName}</>;
     // Stops both click and keydown from bubbling to an ancestor row's own navigation handler.
     return (
-        <button
+        <HintButton
             className="card-link"
             type="button"
-            title={`Show ${vesselName}'s current route in the sailings view`}
+            hint={`Show ${vesselName}'s current route in the sailings view`}
             onClick={(event) => {
                 event.stopPropagation();
                 onOpen(live.departingTerminalId, live.arrivingTerminalId);
@@ -531,7 +531,7 @@ function VesselLink({
             onKeyDown={(event) => event.stopPropagation()}
         >
             {vesselName}
-        </button>
+        </HintButton>
     );
 }
 
@@ -605,12 +605,12 @@ function CameraThumb({
         .join(' ');
     return (
         <div className={classes} data-camera-id={camera.id}>
-            <button
+            <HintButton
                 ref={ref}
                 className="camera-thumb"
                 type="button"
                 aria-label={`Enlarge ${alt}`}
-                title={`Enlarge ${alt}`}
+                hint={`Enlarge ${alt}`}
                 onClick={() => {
                     if (ref.current) onOpen(camera, ref.current);
                 }}
@@ -632,14 +632,14 @@ function CameraThumb({
                 <span className="camera-caption" aria-hidden="true">
                     {alt}
                 </span>
-            </button>
+            </HintButton>
             {sortable && (
-                <button
+                <HintButton
                     className="camera-grip"
                     type="button"
                     aria-label={`Reorder ${alt}`}
                     aria-roledescription="sortable"
-                    title="Drag to reorder, or use the arrow keys"
+                    hint={'Drag to reorder, or use the arrow keys'}
                     onPointerDown={(event) => sortable.start(event, camera.id)}
                     onPointerMove={sortable.move}
                     onPointerUp={sortable.drop}
@@ -655,32 +655,49 @@ function CameraThumb({
                     }}
                 >
                     <GripVertical size={13} />
-                </button>
+                </HintButton>
             )}
         </div>
     );
 }
 
+function AlertDetails({ alerts }: { alerts: TerminalAlertView[] }) {
+    return (
+        <ul className="terminal-alert-list">
+            {alerts.map((alert) => (
+                <li key={alert.id}>
+                    <strong>{alert.title}</strong>
+                    {alert.text && alert.text !== alert.title && <p>{alert.text}</p>}
+                    <span className="field-note">{alertMeta(alert.type, alert.publishedAt)}</span>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+function AlertInfo({ alerts }: { alerts: TerminalAlertView[] }) {
+    if (!alerts.length) return null;
+    return (
+        <InfoBox warning heading="Service alerts" label={alertCountLabel(alerts.length)}>
+            <AlertDetails alerts={alerts} />
+        </InfoBox>
+    );
+}
+
 function TerminalAlerts({ alerts }: { alerts: TerminalAlertView[] }) {
     const [open, setOpen] = useState(false);
-    if (alerts.length === 0) return null;
+    if (!alerts.length) return null;
     return (
         <div className="terminal-alerts">
             <button className="settings-disclosure" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
-                <ChevronDown className={open ? 'open' : ''} size={14} />
+                <AlertTriangle className="terminal-alert-icon" size={14} aria-hidden="true" />
                 <span className="node-type">Alerts</span>
                 <span className="settings-disclosure-count">{alertCountLabel(alerts.length)}</span>
             </button>
             {open && (
-                <ul className="terminal-alert-list">
-                    {alerts.map((alert) => (
-                        <li key={alert.id}>
-                            <strong>{alert.title}</strong>
-                            {alert.text && alert.text !== alert.title && <p>{alert.text}</p>}
-                            <span className="field-note">{alertMeta(alert.type, alert.publishedAt)}</span>
-                        </li>
-                    ))}
-                </ul>
+                <div className="info-box-panel">
+                    <AlertDetails alerts={alerts} />
+                </div>
             )}
         </div>
     );
@@ -1770,7 +1787,12 @@ export function App() {
         <div className="app-shell">
             <header className={`app-header${recordedDay && !routelessTab ? ' is-recorded' : ''}`}>
                 <div className="header-inner">
-                    <button className="brand" type="button" title="Go to Sailings" onClick={() => setTab('sailings')}>
+                    <HintButton
+                        className="brand"
+                        type="button"
+                        hint={'Go to Sailings'}
+                        onClick={() => setTab('sailings')}
+                    >
                         <span className="brand-mark">
                             <Anchor size={22} />
                         </span>
@@ -1778,12 +1800,12 @@ export function App() {
                             <strong>Ferry Tracker</strong>
                             <span>WSDOT data explorer</span>
                         </div>
-                    </button>
+                    </HintButton>
                     <div className="header-actions">
                         {lastRefreshAt && (
-                            <span
+                            <Help
                                 className={`refresh-time${refreshStale ? ' is-stale' : ''}`}
-                                title={
+                                help={
                                     refreshStale
                                         ? `Data may be out of date. Last refresh ${localTime(lastRefreshAt)}`
                                         : `Last refresh ${localTime(lastRefreshAt)}`
@@ -1792,22 +1814,22 @@ export function App() {
                                 <Clock3 size={13} />
                                 <span className="refresh-time-label">Last refresh</span>
                                 <time dateTime={lastRefreshAt}>{clockTime(lastRefreshAt)}</time>
-                            </span>
+                            </Help>
                         )}
                         {/* A deployed server is always live, so the badge only earns its space when the data is canned. */}
                         {terminalResponse?.source === 'fixture' && (
                             <span className="source-badge fixture">fixture</span>
                         )}
-                        <button
+                        <HintButton
                             className={`icon-button${refreshing ? ' is-busy' : ''}`}
                             type="button"
-                            title="Refresh data"
+                            hint={'Refresh data'}
                             aria-label="Refresh data"
                             disabled={refreshing}
                             onClick={refreshAll}
                         >
                             <RefreshCw size={18} />
-                        </button>
+                        </HintButton>
                         <ThemeMenu />
                     </div>
                 </div>
@@ -1835,16 +1857,16 @@ export function App() {
                                     options={terminalOptions}
                                 />
                             </label>
-                            <button
+                            <HintButton
                                 className="swap-button"
                                 type="button"
                                 aria-label="Reverse route"
-                                title={canSwapRoute ? 'Swap origin and destination' : 'Reverse route unavailable'}
+                                hint={canSwapRoute ? 'Swap origin and destination' : 'Reverse route unavailable'}
                                 disabled={!canSwapRoute}
                                 onClick={swapRoute}
                             >
                                 <ArrowLeftRight size={18} />
-                            </button>
+                            </HintButton>
                             <label>
                                 <span>Destination</span>
                                 <FilterSelect
@@ -1873,17 +1895,17 @@ export function App() {
                         </div>
                         {!routelessTab && (
                             <div className={`route-chips-row${quickPickRoutes.length ? '' : ' is-empty'}`}>
-                                <button
+                                <HintButton
                                     className="route-toggle"
                                     type="button"
                                     aria-expanded={routeControlsOpen}
                                     aria-controls="route-selectors"
                                     aria-label={routeControlsOpen ? 'Hide route selector' : 'Show route selector'}
-                                    title={routeControlsOpen ? 'Hide route selector' : 'Show route selector'}
+                                    hint={routeControlsOpen ? 'Hide route selector' : 'Show route selector'}
                                     onClick={toggleRouteControls}
                                 >
                                     <ChevronDown className={routeControlsOpen ? 'open' : ''} size={16} />
-                                </button>
+                                </HintButton>
                                 {quickPickRoutes.length > 0 && (
                                     <div className="route-chips" role="group" aria-label="Favorite routes">
                                         {quickPickRoutes.map((route) => {
@@ -1892,16 +1914,16 @@ export function App() {
                                                 selectedTerminalId === route.originId &&
                                                 effectiveDestinationId === route.destinationId;
                                             return (
-                                                <button
+                                                <HintButton
                                                     key={key}
                                                     type="button"
                                                     className={`route-chip${active ? ' active' : ''}`}
                                                     aria-pressed={active}
-                                                    title={routePairName(route, terminals)}
+                                                    hint={routePairName(route, terminals)}
                                                     onClick={() => pickRoute(route.originId, route.destinationId)}
                                                 >
                                                     {routeName(route, terminals)}
-                                                </button>
+                                                </HintButton>
                                             );
                                         })}
                                     </div>
@@ -2129,38 +2151,32 @@ export function App() {
                                             <ArrowRight />
                                         </div>
                                         <article className="relationship-node schedule-node">
-                                            <button
+                                            <HintButton
                                                 type="button"
                                                 className="schedule-node-header"
-                                                title="Show the Historical tab"
+                                                hint={'Show the Historical tab'}
                                                 onClick={() => setTab('historical')}
                                             >
                                                 <span className="node-type">Sailings schedule</span>
                                                 <h2>
                                                     {selectedTerminal?.name ?? '—'} to {destination?.name ?? '—'}
                                                 </h2>
-                                            </button>
+                                            </HintButton>
                                             {/* The terminal card is collapsed out of this view, so this is the only way back to it. */}
-                                            {/* The button's own label stays fixed; the count rides on the icon so the alert never renames the link. */}
                                             {selectedTerminal && (
-                                                <button
-                                                    type="button"
-                                                    className="card-link schedule-node-terminal"
-                                                    aria-label={`Show the ${selectedTerminal.name} terminal card`}
-                                                    title={`Show the ${selectedTerminal.name} terminal card`}
-                                                    onClick={() => showTerminalOnTerminalsTab(selectedTerminal.id)}
-                                                >
-                                                    <MapPin size={13} />
-                                                    {selectedTerminal.name}
-                                                    {selectedTerminal.alerts.length > 0 && (
-                                                        <AlertTriangle
-                                                            className="terminal-alert-icon"
-                                                            size={13}
-                                                            role="img"
-                                                            aria-label={alertCountLabel(selectedTerminal.alerts.length)}
-                                                        />
-                                                    )}
-                                                </button>
+                                                <div className="schedule-node-terminal">
+                                                    <HintButton
+                                                        type="button"
+                                                        className="card-link"
+                                                        aria-label={`Show the ${selectedTerminal.name} terminal card`}
+                                                        hint={`Show the ${selectedTerminal.name} terminal card`}
+                                                        onClick={() => showTerminalOnTerminalsTab(selectedTerminal.id)}
+                                                    >
+                                                        <MapPin size={13} />
+                                                        {selectedTerminal.name}
+                                                    </HintButton>
+                                                    <AlertInfo alerts={selectedTerminal.alerts} />
+                                                </div>
                                             )}
                                             {scheduleResponse?.data.length ? (
                                                 <ol className="sailing-list" ref={sailingColumns.ref}>
@@ -2215,9 +2231,9 @@ export function App() {
                                                                         {sailing.vesselName ?? 'Vessel unassigned'}
                                                                     </span>
                                                                     {sailing.spaceAvailable && (
-                                                                        <span
+                                                                        <Help
                                                                             className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`}
-                                                                            title={
+                                                                            help={
                                                                                 recordedSpaceLabel(sailing) ?? undefined
                                                                             }
                                                                         >
@@ -2230,7 +2246,7 @@ export function App() {
                                                                             {phoneVehicleSpace(sailing)}{' '}
                                                                             <RecordedSpaceMark sailing={sailing} />{' '}
                                                                             <CapacityMeter sailing={sailing} />
-                                                                        </span>
+                                                                        </Help>
                                                                     )}
                                                                 </div>
                                                             </li>
@@ -2262,22 +2278,14 @@ export function App() {
                                                 }}
                                             >
                                                 <h2>
-                                                    <button
+                                                    <HintButton
                                                         className="card-link"
                                                         type="button"
-                                                        title={`Show ${terminal.name} in the sailings view`}
+                                                        hint={`Show ${terminal.name} in the sailings view`}
                                                         onClick={() => openRoute(terminal.id, null)}
                                                     >
                                                         {terminal.name}
-                                                    </button>
-                                                    {terminal.alerts.length > 0 && (
-                                                        <AlertTriangle
-                                                            className="terminal-alert-icon"
-                                                            size={18}
-                                                            role="img"
-                                                            aria-label={alertCountLabel(terminal.alerts.length)}
-                                                        />
-                                                    )}
+                                                    </HintButton>
                                                 </h2>
                                                 <dl>
                                                     <div className="field">
@@ -2339,10 +2347,10 @@ export function App() {
                                                     {vessel.departingTerminalId === null ? (
                                                         vessel.name
                                                     ) : (
-                                                        <button
+                                                        <HintButton
                                                             className="card-link"
                                                             type="button"
-                                                            title={`Show ${vessel.name}'s route in the sailings view`}
+                                                            hint={`Show ${vessel.name}'s route in the sailings view`}
                                                             onClick={() =>
                                                                 openRoute(
                                                                     vessel.departingTerminalId,
@@ -2351,7 +2359,7 @@ export function App() {
                                                             }
                                                         >
                                                             {vessel.name}
-                                                        </button>
+                                                        </HintButton>
                                                     )}
                                                 </h2>
                                                 <dl>
@@ -2474,13 +2482,14 @@ export function App() {
                                                                         onOpen={openRoute}
                                                                     />
                                                                 </td>
-                                                                <td
+                                                                <Help
                                                                     className={
                                                                         sailing.spaceSource === 'recorded'
                                                                             ? 'is-recorded'
                                                                             : undefined
                                                                     }
-                                                                    title={recordedSpaceLabel(sailing) ?? undefined}
+                                                                    help={recordedSpaceLabel(sailing) ?? undefined}
+                                                                    as="td"
                                                                 >
                                                                     <span className="space-detail">
                                                                         {vehicleSpace(sailing)}{' '}
@@ -2492,7 +2501,7 @@ export function App() {
                                                                     <span className="space-percent-only">
                                                                         <MobileSpacePercent sailing={sailing} />
                                                                     </span>
-                                                                </td>
+                                                                </Help>
                                                             </tr>
                                                         );
                                                     })}
@@ -2517,18 +2526,18 @@ export function App() {
                                                 </h2>
                                                 {/* The Catch tab hides the selection band, so this is the only way to its terminal card. */}
                                                 {catchOriginTerminal && (
-                                                    <button
+                                                    <HintButton
                                                         type="button"
                                                         className="card-link schedule-node-terminal"
                                                         aria-label={`Show the ${catchOriginTerminal.name} terminal card`}
-                                                        title={`Show the ${catchOriginTerminal.name} terminal card`}
+                                                        hint={`Show the ${catchOriginTerminal.name} terminal card`}
                                                         onClick={() =>
                                                             showTerminalOnTerminalsTab(catchOriginTerminal.id)
                                                         }
                                                     >
                                                         <MapPin size={13} />
                                                         {catchOriginTerminal.name}
-                                                    </button>
+                                                    </HintButton>
                                                 )}
                                             </div>
                                             {favoriteRoutes.length > 1 && (
@@ -2537,16 +2546,16 @@ export function App() {
                                                         const key = routeKey(route);
                                                         const active = key === catchRouteKeyValue;
                                                         return (
-                                                            <button
+                                                            <HintButton
                                                                 key={key}
                                                                 type="button"
                                                                 className={`route-chip${active ? ' active' : ''}`}
                                                                 aria-pressed={active}
-                                                                title={routePairName(route, terminals)}
+                                                                hint={routePairName(route, terminals)}
                                                                 onClick={() => changeCatchRoute(key)}
                                                             >
                                                                 {routeName(route, terminals)}
-                                                            </button>
+                                                            </HintButton>
                                                         );
                                                     })}
                                                 </div>
@@ -2597,15 +2606,15 @@ export function App() {
                                                             />
                                                         </label>
                                                         {timing.overridden && (
-                                                            <button
+                                                            <HintButton
                                                                 className="catch-timing-reset"
                                                                 type="button"
-                                                                title="Go back to the padding in Settings"
+                                                                hint={'Go back to the padding in Settings'}
                                                                 onClick={resetCatchOverride}
                                                             >
                                                                 <RotateCcw size={13} aria-hidden="true" />
                                                                 <span className="catch-timing-words">Use settings</span>
-                                                            </button>
+                                                            </HintButton>
                                                         )}
                                                     </div>
                                                 )}
@@ -2639,9 +2648,9 @@ export function App() {
                                                                 {fieldTime(nextCatch.departureAt)}
                                                                 <CatchDelay window={nextCatch} />
                                                                 {nextCatch.expectedDepartureAt && (
-                                                                    <span
+                                                                    <Help
                                                                         className="catch-departure-estimate"
-                                                                        title={
+                                                                        help={
                                                                             nextCatch.delaySource === 'observed'
                                                                                 ? 'Delay observed so far; not a future departure forecast'
                                                                                 : 'Earliest departure from the inbound vessel ETA'
@@ -2652,7 +2661,7 @@ export function App() {
                                                                         {nextCatch.delaySource === 'observed'
                                                                             ? ' (delay so far)'
                                                                             : ''}
-                                                                    </span>
+                                                                    </Help>
                                                                 )}
                                                             </>
                                                         }
@@ -2757,12 +2766,14 @@ export function App() {
                                                         {clockTime(nextWave.disruptionAt)}
                                                     </span>
                                                     {nextWave.source === 'schedule' && (
-                                                        <span
+                                                        <Help
                                                             className="countdown-at"
-                                                            title="Published arrival, or scheduled departure plus a 35-minute crossing when arrival is unavailable"
+                                                            help={
+                                                                'Published arrival, or scheduled departure plus a 35-minute crossing when arrival is unavailable'
+                                                            }
                                                         >
                                                             Scheduled estimate
-                                                        </span>
+                                                        </Help>
                                                     )}
                                                 </div>
                                                 <dl className="countdown-detail">
@@ -2871,11 +2882,11 @@ export function App() {
                                                                 className={`${favorite ? 'is-favorite' : ''}${draggedFavoriteId === terminal.id ? ' is-dragging' : ''}`}
                                                             >
                                                                 {favorite ? (
-                                                                    <button
+                                                                    <HintButton
                                                                         className="favorite-grip"
                                                                         type="button"
                                                                         aria-label={`Reorder ${terminal.name}`}
-                                                                        title="Drag to reorder, or use the arrow keys"
+                                                                        hint={'Drag to reorder, or use the arrow keys'}
                                                                         onPointerDown={(event) => {
                                                                             event.preventDefault();
                                                                             event.currentTarget.focus({
@@ -2898,12 +2909,12 @@ export function App() {
                                                                         }}
                                                                     >
                                                                         <GripVertical size={14} />
-                                                                    </button>
+                                                                    </HintButton>
                                                                 ) : (
                                                                     <span className="favorite-grip is-placeholder" />
                                                                 )}
                                                                 <span className="favorite-name">{terminal.name}</span>
-                                                                <button
+                                                                <HintButton
                                                                     className={`favorite-star${favorite ? ' active' : ''}`}
                                                                     type="button"
                                                                     aria-pressed={favorite}
@@ -2912,7 +2923,7 @@ export function App() {
                                                                             ? `Remove ${terminal.name} from favorites`
                                                                             : `Add ${terminal.name} to favorites`
                                                                     }
-                                                                    title={
+                                                                    hint={
                                                                         favorite
                                                                             ? 'Remove from favorites'
                                                                             : 'Add to favorites'
@@ -2923,7 +2934,7 @@ export function App() {
                                                                         fill={favorite ? 'currentColor' : 'none'}
                                                                         size={15}
                                                                     />
-                                                                </button>
+                                                                </HintButton>
                                                             </li>
                                                         ))}
                                                     </ul>
@@ -2962,11 +2973,11 @@ export function App() {
                                                                     data-route-key={key}
                                                                     className={`is-favorite${draggedRouteKey === key ? ' is-dragging' : ''}`}
                                                                 >
-                                                                    <button
+                                                                    <HintButton
                                                                         className="favorite-grip"
                                                                         type="button"
                                                                         aria-label={`Reorder ${pair}`}
-                                                                        title="Drag to reorder, or use the arrow keys"
+                                                                        hint={'Drag to reorder, or use the arrow keys'}
                                                                         onPointerDown={(event) => {
                                                                             event.preventDefault();
                                                                             event.currentTarget.focus({
@@ -2989,7 +3000,7 @@ export function App() {
                                                                         }}
                                                                     >
                                                                         <GripVertical size={14} />
-                                                                    </button>
+                                                                    </HintButton>
                                                                     <span className="favorite-route">
                                                                         <input
                                                                             className="favorite-label"
@@ -3013,11 +3024,11 @@ export function App() {
                                                                                 hasOverview && <em> · not sailing</em>}
                                                                         </span>
                                                                     </span>
-                                                                    <button
+                                                                    <HintButton
                                                                         className="favorite-remove"
                                                                         type="button"
                                                                         aria-label={`Remove ${pair} from favorite routes`}
-                                                                        title="Remove this route"
+                                                                        hint={'Remove this route'}
                                                                         onClick={() =>
                                                                             changeFavoriteRoutes(
                                                                                 removeFavoriteRoute(favoriteRoutes, key)
@@ -3025,7 +3036,7 @@ export function App() {
                                                                         }
                                                                     >
                                                                         <X size={15} />
-                                                                    </button>
+                                                                    </HintButton>
                                                                 </li>
                                                             );
                                                         })}
@@ -3059,11 +3070,11 @@ export function App() {
                                                                         ?.name ?? 'Unknown',
                                                             }))}
                                                         />
-                                                        <button
+                                                        <HintButton
                                                             className="route-add-button"
                                                             type="button"
                                                             disabled={!canAddRoute}
-                                                            title={
+                                                            hint={
                                                                 canAddRoute
                                                                     ? 'Save this route'
                                                                     : 'Pick a route that is not already saved'
@@ -3072,7 +3083,7 @@ export function App() {
                                                         >
                                                             <Plus size={14} />
                                                             Add route
-                                                        </button>
+                                                        </HintButton>
                                                     </div>
                                                 </>
                                             )}

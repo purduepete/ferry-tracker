@@ -71,6 +71,12 @@ when explicitly used on the unmigrated source.
 
 A local Phase 0 explorer for Washington State Ferries terminal, vessel, and schedule data.
 
+Contextual help uses the shared `InfoBox` component in `frontend/src/components/InfoBox.tsx`.
+Explanations open from the Info icon, and service-alert details open from a separate warning icon.
+Existing action buttons keep their actions and use compact custom hints. Help supports keyboard
+focus, tap, Escape and outside dismissal, with themed boxes portaled outside scrolling containers.
+Keep browser `title` tooltips out of the frontend.
+
 ## Run the POC
 
 ```powershell

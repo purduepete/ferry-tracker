@@ -96,7 +96,7 @@ test('shows unavailable Pushover configuration without a working checkbox', asyn
     await expect(info).toHaveAttribute('aria-expanded', 'false');
     await info.focus();
     await expect(page.getByRole('tooltip')).toContainText('Pushover is unavailable');
-    await expect(page.locator('.notification-description.is-open')).toBeVisible();
+    await expect(page.locator('.info-box.is-open')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(info).toHaveAttribute('aria-expanded', 'false');
     await info.click();

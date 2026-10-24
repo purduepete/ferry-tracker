@@ -115,7 +115,7 @@ describe('terminal alerts', () => {
         expect(screen.queryByText(/All Alerts/)).toBeNull();
     });
 
-    it('marks the Sailings back-link without renaming it', async () => {
+    it('keeps the Sailings alert information separate from terminal navigation', async () => {
         mockApi();
         render(
             <ThemeProvider>
@@ -123,10 +123,12 @@ describe('terminal alerts', () => {
             </ThemeProvider>
         );
 
-        // The button keeps its exact accessible name; the count rides on the icon inside it.
         const link = await screen.findByRole('button', { name: 'Show the Seattle terminal card' });
-        expect(await screen.findByRole('img', { name: '1 service alert' })).toBeInTheDocument();
-        expect(link).toContainElement(screen.getByRole('img', { name: '1 service alert' }));
+        const warning = await screen.findByRole('button', { name: '1 service alert' });
+        expect(link).not.toContainElement(warning);
+        await userEvent.click(warning);
+        expect(screen.getByRole('tooltip')).toHaveTextContent(alerts[0].text);
+        expect(screen.getByRole('tab', { name: 'Sailings', selected: true })).toBeInTheDocument();
     });
 
     it('shows no alert marker when a terminal has none', async () => {

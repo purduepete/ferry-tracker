@@ -91,7 +91,7 @@
     color: var(--muted);
     cursor: default;
 }
-.notification-description {
+.info-box {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -102,17 +102,17 @@
     white-space: nowrap;
     border: 0;
 }
-.notification-description.is-open {
-    z-index: 30;
-    top: calc(100% - 2px);
-    left: 12px;
+.info-box.is-open {
+    position: fixed;
+    z-index: 1000;
     display: grid;
     gap: 8px;
-    width: min(340px, calc(100% - 24px));
+    width: min(340px, calc(100vw - 16px));
     height: auto;
     margin: 0;
     padding: 12px 14px;
-    overflow: visible;
+    max-height: calc(100dvh - 16px);
+    overflow: auto;
     clip-path: none;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -123,12 +123,25 @@
     font-size: 12px;
     line-height: 1.5;
 }
-.notification-description strong {
+.info-box.is-hint {
+    pointer-events: none;
+}
+.info-box-panel {
+    margin-top: 8px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--muted);
+    box-shadow: var(--shadow);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.info-box strong {
     color: var(--text);
     font-size: 13px;
     font-weight: 600;
 }
-.notification-info {
+.info-box-trigger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -137,12 +150,18 @@
     background: none;
     color: var(--muted);
     cursor: help;
+    vertical-align: middle;
+    flex: 0 0 auto;
+    margin-inline-start: 3px;
 }
-.notification-info:focus-visible {
+.info-box-trigger.is-warning {
+    color: var(--warning);
+}
+.info-box-trigger:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
-.notification-description .notification-error {
+.info-box .notification-error {
     color: var(--danger);
 }
 

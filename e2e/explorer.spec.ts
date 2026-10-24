@@ -115,11 +115,12 @@ test('marks a terminal that WSF has posted a service alert against', async ({ pa
     await page.getByRole('button', { name: 'Origin' }).click();
     await page.getByRole('option', { name: 'Seattle' }).click();
 
-    // The back-link keeps its own name; the icon inside it carries the count.
     const backLink = page.getByRole('button', { name: 'Show the Seattle terminal card' });
-    await expect(backLink.locator('.terminal-alert-icon')).toBeVisible();
-
-    await page.getByRole('tab', { name: 'Terminals' }).click();
+    const warning = page.getByRole('button', { name: /^\d+ service alerts?$/ });
+    await warning.click();
+    await expect(page.getByRole('tooltip')).toContainText('4:40');
+    await expect(page.getByRole('tab', { name: 'Sailings', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await backLink.click();
     const card = page.locator('.data-card').filter({ has: page.getByRole('heading', { name: 'Seattle' }) });
     await expect(card.locator('.terminal-alert-icon').first()).toBeVisible();
     await card.getByRole('button', { name: /Alerts/ }).click();

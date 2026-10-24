@@ -197,6 +197,6 @@ describe('Stale refresh cue', () => {
         // The cue rides a 30s ticker, so it lands on the first tick past the five-minute mark.
         await advance(360_000);
         await waitFor(() => expect(document.querySelector('.refresh-time')).toHaveClass('is-stale'));
-        expect(screen.getByTitle(/Data may be out of date/)).toBeInTheDocument();
+        expect(screen.getByText(/Data may be out of date/)).toBeInTheDocument();
     });
 });

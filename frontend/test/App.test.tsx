@@ -163,7 +163,7 @@ describe('Ferry data explorer', () => {
         expect(document.querySelector('.refresh-time')).toBeNull();
         expect(await screen.findByRole('heading', { name: 'Seattle' })).toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'Tacoma' })).toBeInTheDocument();
-        expect(screen.getByText(/Seattle to Bainbridge Island/)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Seattle to Bainbridge Island' })).toBeInTheDocument();
         expect(
             screen.getByText(
                 new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short', hour12: false }).format(
@@ -1093,7 +1093,7 @@ describe('Departure delay', () => {
                 <App />
             </ThemeProvider>
         );
-        const pill = await screen.findByTitle('Left 6 minutes after the scheduled departure');
+        const pill = await screen.findByLabelText('Left 6 minutes after the scheduled departure');
         expect(pill).toHaveTextContent('6 min');
         expect(pill.parentElement).toHaveClass('departure-delay');
         expect(pill.parentElement?.textContent).toBe(`Left ${at}6 min`);
@@ -2640,7 +2640,7 @@ describe('Bainbridge disruption', () => {
         await screen.findByRole('heading', { name: 'Seattle' });
         await userEvent.click(screen.getByRole('tab', { name: 'Disruption' }));
 
-        const capacity = await screen.findByTitle('85% of 197 vehicle spaces taken');
+        const capacity = await screen.findByLabelText('85% of 197 vehicle spaces taken');
         expect(capacity.closest('.field')?.querySelector('dt')).toHaveTextContent('Capacity');
         expect(capacity).toHaveTextContent('85%');
     });
@@ -3000,7 +3000,7 @@ describe('Catching a ferry', () => {
         await waitFor(() => expect(document.querySelector('.countdown-value')).toHaveTextContent('20 min'));
         expect(document.querySelector('.countdown-headline')).toHaveClass('is-clear');
         expect(screen.getByText('176 drive-up / 202', { selector: 'dd' })).toBeInTheDocument();
-        expect(screen.getAllByTitle('13% of 202 vehicle spaces taken').length).toBeGreaterThan(0);
+        expect(screen.getAllByLabelText('13% of 202 vehicle spaces taken').length).toBeGreaterThan(0);
         expect(document.querySelectorAll('.countdown-later .sailing-list li')).toHaveLength(1);
 
         await user.click(screen.getByRole('tab', { name: 'Settings' }));
@@ -3080,7 +3080,10 @@ describe('Catching a ferry', () => {
             return found as HTMLElement;
         });
         expect(pill).toHaveTextContent('6 min');
-        expect(pill).toHaveAttribute('title', 'Still at the dock 6 minutes after the scheduled departure');
+        await userEvent.hover(within(pill).getByRole('button', { name: 'Details information' }));
+        expect(screen.getByRole('tooltip')).toHaveTextContent(
+            'Still at the dock 6 minutes after the scheduled departure'
+        );
         expect(document.querySelectorAll('.countdown-detail .delay-pill')).toHaveLength(1);
         const scheduled = screen.getByRole('group', { name: 'Scheduled leave by' });
         const estimated = screen.getByRole('group', { name: 'Estimated leave by' });

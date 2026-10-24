@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Monitor, Palette, Sparkles, Sun } from 'lucide-react';
 import { THEME_PREFERENCES, type ThemePreference } from '@ferry-tracker/shared';
 import { useTheme } from './ThemeProvider';
+import { HintButton } from '../components/InfoBox';
 
 const labels: Record<ThemePreference, string> = {
     system: 'System',
@@ -53,18 +54,18 @@ export function ThemeMenu() {
 
     return (
         <div className="theme-menu" ref={containerRef}>
-            <button
+            <HintButton
                 ref={triggerRef}
                 className="icon-button"
                 type="button"
-                title="Appearance"
+                hint={'Appearance'}
                 aria-label="Appearance"
                 aria-haspopup="dialog"
                 aria-expanded={open}
                 onClick={() => setOpen((current) => !current)}
             >
                 <Palette size={18} />
-            </button>
+            </HintButton>
             {open && (
                 <div className="theme-popover" role="dialog" aria-label="Appearance settings" onKeyDown={handleKeys}>
                     <span className="control-label">Theme</span>

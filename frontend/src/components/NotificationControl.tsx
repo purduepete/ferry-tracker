@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import { Info } from 'lucide-react';
+import { useId } from 'react';
+import { InfoBox } from './InfoBox';
 import type { useNotifications } from '../useNotifications';
 
 interface NotificationControlProps {
@@ -9,26 +9,6 @@ interface NotificationControlProps {
 
 export function NotificationControl({ notifications, kind }: NotificationControlProps) {
     const descriptionId = useId();
-    const [open, setOpen] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const triggerRef = useRef<HTMLButtonElement>(null);
-    useEffect(() => {
-        if (!open) return;
-        const dismiss = (event: PointerEvent) => {
-            if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
-        };
-        const escape = (event: KeyboardEvent) => {
-            if (event.key !== 'Escape') return;
-            setOpen(false);
-            if (containerRef.current?.contains(document.activeElement)) triggerRef.current?.focus();
-        };
-        document.addEventListener('pointerdown', dismiss);
-        document.addEventListener('keydown', escape);
-        return () => {
-            document.removeEventListener('pointerdown', dismiss);
-            document.removeEventListener('keydown', escape);
-        };
-    }, [open]);
     const explanation =
         kind === 'catch'
             ? 'Leave-by alert for each sailing on this route, using the delay estimate when available.'
@@ -47,16 +27,7 @@ export function NotificationControl({ notifications, kind }: NotificationControl
                   ? 'Monitoring on the server, including when this page is closed.'
                   : 'Notifications are off.';
     return (
-        <div
-            className="notification-control"
-            ref={containerRef}
-            onMouseLeave={() => {
-                if (!containerRef.current?.contains(document.activeElement)) setOpen(false);
-            }}
-            onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-            }}
-        >
+        <div className="notification-control">
             <label className="notification-label">
                 <input
                     type="checkbox"
@@ -67,27 +38,16 @@ export function NotificationControl({ notifications, kind }: NotificationControl
                 />
                 <span>Notify via Pushover</span>
             </label>
-            <button
-                type="button"
-                className="notification-info"
-                ref={triggerRef}
-                aria-label="Pushover notification information"
-                aria-describedby={descriptionId}
-                aria-expanded={open}
-                aria-controls={descriptionId}
-                onMouseEnter={() => setOpen(true)}
-                onFocus={() => setOpen(true)}
-                onClick={() => setOpen(true)}
+            <InfoBox
+                heading="Pushover notifications"
+                label="Pushover notification information"
+                descriptionId={descriptionId}
             >
-                <Info size={14} aria-hidden="true" />
-            </button>
-            <div id={descriptionId} role="tooltip" className={`notification-description${open ? ' is-open' : ''}`}>
-                <strong>Pushover notifications</strong>
                 <span>{explanation} Shared across browsers.</span>
                 <span className={notifications.error ? 'notification-error' : undefined} role="status">
                     {status}
                 </span>
-            </div>
+            </InfoBox>
         </div>
     );
 }
