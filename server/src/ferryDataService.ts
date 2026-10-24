@@ -173,10 +173,10 @@ export class FerryDataService {
         return { data, raw: { basics: basicsRaw, locations: locationsRaw } };
     }
 
-    async vessels(): Promise<{ data: VesselView[]; raw: unknown }> {
+    async vessels(fresh = false): Promise<{ data: VesselView[]; raw: unknown }> {
         const [basicsRaw, locationsRaw] = await Promise.all([
             this.client.getVesselBasics(),
-            this.client.getVesselLocations(),
+            this.client.getVesselLocations(fresh),
         ]);
         const basics = z.array(vesselBasicSchema).parse(basicsRaw);
         const locations = z.array(vesselLocationSchema).parse(locationsRaw);
@@ -257,14 +257,15 @@ export class FerryDataService {
     async schedule(
         departingId: number,
         arrivingId: number,
-        _onlyRemaining: boolean
+        _onlyRemaining: boolean,
+        fresh = false
     ): Promise<{ data: SailingView[]; raw: unknown }> {
         const now = this.now();
         const windowStart = now - TWO_HOURS_MS;
         const windowEnd = now + TWELVE_HOURS_MS;
         const [raw, spacesRaw] = await Promise.all([
-            this.client.getScheduleRange(departingId, arrivingId, windowStart, windowEnd),
-            this.client.getTerminalSailingSpaces(),
+            this.client.getScheduleRange(departingId, arrivingId, windowStart, windowEnd, fresh),
+            this.client.getTerminalSailingSpaces(fresh),
         ]);
         const spaces = z.array(terminalSailingSpaceSchema).parse(spacesRaw);
         const sailings: SailingView[] = [];
@@ -301,7 +302,9 @@ export class FerryDataService {
                     arrivingTime: parseWsdotDate(record.ArrivingTime ?? record.ScheduledArrival),
                     departingTerminalId: nextContext.departingId,
                     arrivingTerminalId: nextContext.arrivingId,
-                    isCancelled: departureSpace?.IsCancelled ?? null,
+                    isCancelled:
+                        departureSpace?.IsCancelled ??
+                        (typeof record.IsCancelled === 'boolean' ? record.IsCancelled : null),
                     driveUpSpaceCount: destinationSpace?.DisplayDriveUpSpace
                         ? spaceCount(destinationSpace.DriveUpSpaceCount)
                         : null,
@@ -336,6 +339,20 @@ export class FerryDataService {
                 .sort((left, right) => (left.departingTime ?? '').localeCompare(right.departingTime ?? '')),
             raw: { schedule: raw, sailingSpace: spacesRaw },
         };
+    }
+
+    async notificationSnapshot(departingId: number, arrivingId: number) {
+        const [schedule, vessels, measured] = await Promise.all([
+            this.schedule(departingId, arrivingId, false, true),
+            this.vessels(true),
+            this.history?.crossings(),
+        ]);
+        const crossings: Crossings = new Map();
+        for (const crossing of measured ?? []) {
+            const key = crossingKey(crossing.departingTerminalId, crossing.arrivingTerminalId);
+            if (key !== null) crossings.set(key, crossing);
+        }
+        return { sailings: schedule.data, vessels: vessels.data, crossings };
     }
 
     // The same rules the Catch tab runs, answered server-side so a watch complication can read one

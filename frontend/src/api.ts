@@ -1,6 +1,9 @@
 import type {
     ApiEnvelope,
     CrossingView,
+    NotificationScope,
+    NotificationStatus,
+    NotificationUpdate,
     SailingView,
     TerminalMateView,
     TerminalView,
@@ -18,8 +21,8 @@ function reauthenticate(): never {
     throw new Error('Your session expired. Reloading to sign in again.');
 }
 
-async function get<T>(path: string, signal?: AbortSignal): Promise<ApiEnvelope<T>> {
-    const response = await fetch(path, { signal });
+async function request<T>(path: string, init: RequestInit): Promise<ApiEnvelope<T>> {
+    const response = await fetch(path, init);
     if (response.status === 401 || response.status === 403) reauthenticate();
     if ((response.headers.get('content-type') ?? '').includes('text/html')) reauthenticate();
 
@@ -35,7 +38,19 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<ApiEnvelope<T
     return body as ApiEnvelope<T>;
 }
 
+function get<T>(path: string, signal?: AbortSignal): Promise<ApiEnvelope<T>> {
+    return request<T>(path, { signal });
+}
+
 export const ferryApi = {
+    notifications: (scope: NotificationScope, signal?: AbortSignal) =>
+        get<NotificationStatus>(`/api/notifications?scope=${encodeURIComponent(scope)}`, signal),
+    updateNotifications: (update: NotificationUpdate) =>
+        request<NotificationStatus>('/api/notifications', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(update),
+        }),
     terminals: (signal?: AbortSignal) => get<TerminalView[]>('/api/terminals', signal),
     vessels: (signal?: AbortSignal) => get<VesselView[]>('/api/vessels', signal),
     terminalMates: (signal?: AbortSignal) => get<TerminalMateView[]>('/api/terminal-mates', signal),

@@ -11,7 +11,7 @@ Target structured storage is PostgreSQL in the dedicated `ferry_tracker`
 database. See [the PostgreSQL cutover procedure](deploy/postgresql/README.md) for
 the explicit SQL/import steps, source hashes, review gates, and backup/restore
 checks. `STORAGE_BACKEND=postgresql` requires private `DATABASE_URL` and schema
-version 1. Connection/schema errors stop startup without SQLite fallback.
+version 2. Connection/schema errors stop startup without SQLite fallback.
 
 `deploy\application.json` describes the `jimbrownhome` checkout and its
 `FerryTracker`, `FerryTracker-Watchdog`, and `FerryTracker-Backup` tasks. The
@@ -104,6 +104,41 @@ npm start
 Open `http://127.0.0.1:8787` on this computer, or `http://<this-computer-ip>:8787` on another device on the same LAN. To find this computer's IPv4 address, run `Get-NetIPAddress -AddressFamily IPv4` in PowerShell and use the address for the active network adapter.
 
 Both run modes listen on all local interfaces by default. Set `HOST=127.0.0.1` to restrict the production server to this computer. If another device cannot connect, allow Node.js or the relevant TCP port through Windows Defender Firewall for private networks.
+
+## Shared Pushover notifications
+
+Notifications are off by default. Set `NOTIFICATIONS_ENABLED=true` and provide
+server-only `PUSHOVER_APP_TOKEN` and `PUSHOVER_USER_KEY` in the private environment.
+Live notifications require explicit PostgreSQL storage and reviewed schema 2.
+Apply `deploy\postgresql\002_notifications.sql` with the migration identity before
+starting this release. The runtime never creates PostgreSQL tables. Local fixture
+development can explicitly use SQLite, whose additive migration is version 4.
+
+The Catch checkbox subscribes the selected terminal pair. The Disruption checkbox
+subscribes Bainbridge traffic. These are shared settings for all browsers using
+this app and its single Pushover destination. Opt-in continues until disabled.
+Enabling saves the current traffic/queue or disruption settings on the server.
+The monitor runs with the page closed, checks every 15 seconds, refreshes sources
+at least every 60 seconds and reconciles fresh data before a due send. Catch uses
+the effective estimated leave-by when present. An already-due target at first
+opt-in does not send retroactively. A stalled tick/restart has 2 minutes of grace.
+Fresh ETA or settings changes can move an armed, still-actionable target into
+the past and send it immediately.
+
+Disruption notifications announce the start and final clear of each overlapping
+or touching traffic episode. Delivery status is available beside the checkbox;
+there is no notification history page. Event rows are retained. A durable unique
+claim prevents duplicate sends across instances. A timeout, 5xx, invalid response
+or process crash after claiming can mean uncertain delivery and is never resent
+automatically. A confirmed 429 rejection can retry once within the same grace
+window. Missed, rejected and uncertain deliveries are reported by the API.
+
+`GET /api/notifications?scope=catch:3:7` (or `scope=disruption`) and
+`PUT /api/notifications` return the confirmed server subscription. PUT requires
+same-origin browser metadata and a bounded strict JSON body. Cloudflare Access
+protects these routes; only `/api/catch` retains its separate token exception.
+The private fallback relies on Tailscale controls. Keep the origin private.
+Missing configuration returns generic unavailable status without exposing keys.
 
 ## Data capture
 

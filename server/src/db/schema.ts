@@ -194,6 +194,30 @@ export const migrations: Migration[] = [
             `ALTER TABLE schedule_snapshot ADD COLUMN withdrawn_at TEXT`,
         ],
     },
+    {
+        version: 4,
+        statements: [
+            `CREATE TABLE notification_subscriptions (
+                scope TEXT PRIMARY KEY,
+                enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+                settings_json TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                revision INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            )`,
+            `CREATE TABLE notification_events (
+                event_key TEXT PRIMARY KEY,
+                scope TEXT NOT NULL REFERENCES notification_subscriptions(scope),
+                status TEXT NOT NULL CHECK (status IN ('claimed', 'accepted', 'failed', 'uncertain')),
+                claimed_at TEXT NOT NULL,
+                finished_at TEXT,
+                retry_at TEXT,
+                attempts INTEGER NOT NULL DEFAULT 1,
+                detail TEXT
+            )`,
+            `CREATE INDEX ix_notification_events_scope ON notification_events(scope, claimed_at)`,
+        ],
+    },
 ];
 
 export const latestVersion = migrations.reduce((highest, migration) => Math.max(highest, migration.version), 0);

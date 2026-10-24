@@ -9,20 +9,22 @@ import {
     DEFAULT_SETTINGS,
     LATE_MINUTES,
     UNDERWAY_KNOTS,
+    BAINBRIDGE_TERMINAL_ID,
+    SEATTLE_TERMINAL_ID,
     crossingFor,
-    minutesFromClock,
+    estimatedArrival,
     openSpaceCount,
     openSpacePercent,
-    projectedArrival,
     spaceCounts,
     vesselDelayMinutes,
-    vesselEta,
 } from '@ferry-tracker/shared';
-import type { CatchOverride, Crossings, FerrySettings } from '@ferry-tracker/shared';
+import type { ArrivalSource, CatchOverride, Crossings, FerrySettings } from '@ferry-tracker/shared';
 
 // The catch core is shared with the server so /api/catch answers from the same rules the
 // Catch tab renders. Re-exported here so every caller keeps importing from one module.
 export {
+    BAINBRIDGE_TERMINAL_ID,
+    SEATTLE_TERMINAL_ID,
     CATCH_DEFAULT_PAD_MINUTES,
     CATCH_FEED_FRESH_MINUTES,
     CATCH_QUEUE_MINUTES,
@@ -43,14 +45,20 @@ export {
     compactVehicleSpace,
     crossingFor,
     crossingKey,
+    disruptionLevel,
+    disruptionWaves,
+    estimatedArrival,
     openSpaceCount,
     openSpacePercent,
     projectedArrival,
     spaceCounts,
     vesselDelayMinutes,
     vesselEta,
+    vesselArrival,
 } from '@ferry-tracker/shared';
 export type {
+    ArrivalEstimate,
+    ArrivalSource,
     CatchDelaySource,
     CatchDeparture,
     CatchOverride,
@@ -59,6 +67,7 @@ export type {
     CatchWindow,
     Crossings,
     FerrySettings,
+    DisruptionWave,
 } from '@ferry-tracker/shared';
 
 export function localTime(value: string | null) {
@@ -161,54 +170,6 @@ export function departureDelayMinutes(sailing: Pick<SailingView, 'actualDepartur
     if (!sailing.actualDeparture || sailing.departureDelayMinutes === null) return null;
     const minutes = Math.floor(sailing.departureDelayMinutes);
     return minutes < LATE_MINUTES ? null : minutes;
-}
-
-export const BAINBRIDGE_TERMINAL_ID = 3;
-export const SEATTLE_TERMINAL_ID = 7;
-
-// 'clock' means the boat is overdue and the estimate is only walking forward with the current
-// time, which is a different claim from either of the other two and has to be labelled as one.
-export type ArrivalSource = 'median' | 'feed' | 'clock';
-
-export interface ArrivalEstimate {
-    at: string;
-    source: ArrivalSource;
-}
-
-// The median beats WSDOT's estimate right up until the boat overruns it. Past that the median has
-// nothing left to say and the feed takes over, because it is still tracking the vessel's real
-// position. With both spent the clock is all that is left, and an arrival that has been and gone
-// is worse than one that walks forward.
-export function estimatedArrival(
-    departedAt: string | null | undefined,
-    medianMinutes: number | null,
-    vessel: Pick<VesselView, 'eta' | 'leftDock' | 'scheduledDeparture'>,
-    now: number
-): ArrivalEstimate | null {
-    const projected = projectedArrival(departedAt, medianMinutes);
-    // Minutes into a crossing the feed is still anchored to a stale position, so a late boat needs
-    // its delay added back. An hour into a 31 minute crossing that delay is long since priced in,
-    // and the raw ETA is the only figure re-estimated against where the boat actually is.
-    if (projected === null) {
-        const live = vesselEta(vessel) ?? vessel.eta;
-        return live === null ? null : { at: live, source: 'feed' };
-    }
-    if (Date.parse(projected) >= now) return { at: projected, source: 'median' };
-    const tracked = vessel.eta === null ? Number.NaN : Date.parse(vessel.eta);
-    if (tracked >= now) return { at: vessel.eta as string, source: 'feed' };
-    return { at: new Date(now).toISOString(), source: 'clock' };
-}
-
-// The last few crossings on this pair beat WSDOT's estimate, which is anchored to some other
-// vessel's stale position. The feed is still the answer for a pair with no measured history.
-export function vesselArrival(
-    vessel: Pick<VesselView, 'eta' | 'leftDock' | 'scheduledDeparture' | 'arrivingTerminalId'> &
-        Partial<Pick<VesselView, 'departingTerminalId'>>,
-    crossings: Crossings = new Map(),
-    now: number = Date.now()
-): ArrivalEstimate | null {
-    const crossing = crossingFor(crossings, vessel.departingTerminalId, vessel.arrivingTerminalId);
-    return estimatedArrival(vessel.leftDock, crossing?.medianMinutes ?? null, vessel, now);
 }
 
 export const CATCH_MINUTE_CHOICES = [0, 5, 10, 15, 20, 25, 30, 40, 45, 60, 75, 90];
@@ -552,147 +513,6 @@ export function setCatchOverride(
 
 export function clearCatchOverride(overrides: CatchOverrides, key: string): CatchOverrides {
     return Object.fromEntries(Object.entries(overrides).filter(([entryKey]) => entryKey !== key));
-}
-
-export interface DisruptionWave {
-    vesselId: number | null;
-    vesselName: string;
-    source: 'observed' | 'live' | 'schedule';
-    landingAt: string;
-    disruptionAt: string;
-    clearsAt: string;
-    minutesAway: number;
-    minutesLeft: number;
-    active: boolean;
-    ongoing: boolean;
-}
-
-export function disruptionLevel(minutesAway: number, settings: FerrySettings = DEFAULT_SETTINGS) {
-    return minutesAway < settings.disruptionImminentMinutes
-        ? 'imminent'
-        : minutesAway < settings.disruptionSoonMinutes
-          ? 'soon'
-          : 'clear';
-}
-
-// A boat can still read as underway for a tick after it ties up, so an observed arrival
-// this close to a live ETA is the same landing seen twice.
-const DISRUPTION_MERGE_MINUTES = 30;
-// Only reached before the pair has enough measured crossings to speak for itself.
-const BAINBRIDGE_CROSSING_MINUTES = 35;
-
-function disruptionWave(
-    vesselId: number | null,
-    vesselName: string,
-    landing: number,
-    now: number,
-    settings: FerrySettings,
-    source: DisruptionWave['source']
-): DisruptionWave[] {
-    const disruption = landing + settings.disruptionLeadMinutes * 60000;
-    const clears = disruption + settings.disruptionDurationMinutes * 60000;
-    if (clears <= now) return [];
-    return [
-        {
-            vesselId,
-            vesselName,
-            source,
-            landingAt: new Date(landing).toISOString(),
-            disruptionAt: new Date(disruption).toISOString(),
-            clearsAt: new Date(clears).toISOString(),
-            minutesAway: minutesFromClock(disruption, now),
-            minutesLeft: Math.max(0, minutesFromClock(clears, now)),
-            active: disruption <= now,
-            ongoing: false,
-        },
-    ];
-}
-
-// A wave lives from the offload reaching the road until the duration runs out, so a window
-// already open still counts. Docked boats leave the vessel feed, so the boat that most
-// recently landed comes from the observed arrival on its inbound leg instead.
-export function disruptionWaves(
-    vessels: Array<
-        Pick<VesselView, 'id' | 'name' | 'arrivingTerminalId' | 'atDock' | 'eta' | 'leftDock' | 'scheduledDeparture'> &
-            Partial<Pick<VesselView, 'departingTerminalId'>>
-    >,
-    now: number,
-    settings: FerrySettings = DEFAULT_SETTINGS,
-    landed: Array<
-        Pick<SailingView, 'vesselId' | 'vesselName' | 'actualArrival'> &
-            Partial<
-                Pick<
-                    SailingView,
-                    'departingTime' | 'arrivingTime' | 'isCancelled' | 'departingTerminalId' | 'arrivingTerminalId'
-                >
-            >
-    > = [],
-    crossings: Crossings = new Map()
-): DisruptionWave[] {
-    const crossingMinutes =
-        crossingFor(crossings, SEATTLE_TERMINAL_ID, BAINBRIDGE_TERMINAL_ID)?.medianMinutes ??
-        BAINBRIDGE_CROSSING_MINUTES;
-    const inbound = landed.filter(
-        (leg) =>
-            !leg.isCancelled &&
-            (leg.departingTerminalId == null || leg.departingTerminalId === SEATTLE_TERMINAL_ID) &&
-            (leg.arrivingTerminalId == null || leg.arrivingTerminalId === BAINBRIDGE_TERMINAL_ID)
-    );
-    const observed = inbound.flatMap((leg) => {
-        if (!leg.actualArrival) return [];
-        const landing = Date.parse(leg.actualArrival);
-        if (Number.isNaN(landing)) return [];
-        return disruptionWave(leg.vesselId, leg.vesselName ?? 'Ferry', landing, now, settings, 'observed');
-    });
-    const underway = vessels.flatMap((vessel) => {
-        if (vessel.arrivingTerminalId !== BAINBRIDGE_TERMINAL_ID || vessel.atDock !== false || !vessel.eta) return [];
-        const landing = Date.parse(vesselArrival(vessel, crossings, now)?.at ?? vessel.eta);
-        if (Number.isNaN(landing)) return [];
-        const duplicate = observed.some(
-            (seen) =>
-                seen.vesselId === vessel.id &&
-                Math.abs(Date.parse(seen.landingAt) - landing) < DISRUPTION_MERGE_MINUTES * 60000
-        );
-        return duplicate ? [] : disruptionWave(vessel.id, vessel.name, landing, now, settings, 'live');
-    });
-    const scheduled = inbound.flatMap((leg) => {
-        if (leg.actualArrival && Number.isFinite(Date.parse(leg.actualArrival))) return [];
-        const departure = leg.departingTime ? Date.parse(leg.departingTime) : NaN;
-        if (!Number.isFinite(departure)) return [];
-        const publishedArrival = leg.arrivingTime ? Date.parse(leg.arrivingTime) : NaN;
-        const landing =
-            Number.isFinite(publishedArrival) && publishedArrival > departure
-                ? publishedArrival
-                : departure + crossingMinutes * 60000;
-        const uniqueSlot =
-            inbound.filter((candidate) => candidate.departingTime && Date.parse(candidate.departingTime) === departure)
-                .length === 1;
-        const live = vessels.find(
-            (vessel) =>
-                vessel.arrivingTerminalId === BAINBRIDGE_TERMINAL_ID &&
-                vessel.atDock === false &&
-                vessel.eta &&
-                Number.isFinite(Date.parse(vesselArrival(vessel, crossings, now)?.at ?? vessel.eta)) &&
-                ((vessel.scheduledDeparture &&
-                    Date.parse(vessel.scheduledDeparture) === departure &&
-                    (vessel.id === leg.vesselId ||
-                        (uniqueSlot && vessel.departingTerminalId === SEATTLE_TERMINAL_ID))) ||
-                    (vessel.id === leg.vesselId &&
-                        !vessel.scheduledDeparture &&
-                        Math.abs(Date.parse(vesselArrival(vessel, crossings, now)?.at ?? vessel.eta) - landing) <
-                            DISRUPTION_MERGE_MINUTES * 60000))
-        );
-        if (live) return [];
-        return disruptionWave(leg.vesselId, leg.vesselName ?? 'Ferry', landing, now, settings, 'schedule');
-    });
-    const waves = [...observed, ...underway, ...scheduled].sort((left, right) =>
-        left.disruptionAt.localeCompare(right.disruptionAt)
-    );
-    // Traffic never lets up when the boat behind arrives before this one's window closes.
-    for (const [index, wave] of waves.entries()) {
-        wave.ongoing = waves[index + 1] !== undefined && waves[index + 1].disruptionAt <= wave.clearsAt;
-    }
-    return waves;
 }
 
 // The recorded leg only lands once the crossing closes, so a boat still underway gets its

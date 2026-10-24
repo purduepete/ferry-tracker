@@ -98,7 +98,7 @@ export async function openPostgres(connectionString: string | undefined, pool?: 
         const ledger = await database.pool.query('SELECT version FROM public.solutiondeploy_schema WHERE app_id=$1', [
             'ferry-tracker',
         ]);
-        if (ledger.rows.length !== 1 || ledger.rows[0].version !== 1) {
+        if (ledger.rows.length !== 1 || ledger.rows[0].version !== 2) {
             throw new Error('Ferry PostgreSQL schema version mismatch. Apply the reviewed migration explicitly.');
         }
         return database;

@@ -133,6 +133,7 @@ describe('Ferry data explorer', () => {
                     },
                 ]);
             if (url.includes('/api/history') || url.includes('/api/crossings')) return json([]);
+            if (url.includes('/api/notifications')) return json({ available: false, subscription: null });
             scheduleCalls += 1;
             return json([
                 {
@@ -539,6 +540,7 @@ describe('Ferry data explorer', () => {
                     },
                 ]);
             if (url.includes('/api/history') || url.includes('/api/crossings')) return json([]);
+            if (url.includes('/api/notifications')) return json({ available: false, subscription: null });
             scheduleCalls += 1;
             if (scheduleCalls > 1) return changedRouteResponse;
             return json([

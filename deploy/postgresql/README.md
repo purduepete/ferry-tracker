@@ -4,7 +4,7 @@ Production uses its own `ferry_tracker` database on `jimbrownhome1`. Set
 `STORAGE_BACKEND=postgresql` explicitly and place `DATABASE_URL` in private
 `app.env`. Do not put connection credentials in process arguments, source files,
 reports, or release archives. Missing credentials, connection errors, or a schema
-version other than 1 prevent startup. The default backend remains SQLite for the
+version other than 2 prevent startup. The default backend remains SQLite for the
 unmigrated source host. Unknown backend names are rejected.
 
 Source environment files are archival only:
@@ -48,9 +48,18 @@ before conversion to a JavaScript number. For example, `600 / 197` must produce
 `3.045685279187817`, rather than `3.0456852791878175`. The generator retains these
 casts. Existing installations with NUMERIC percentage columns require an explicit
 reviewed view replacement and restoration of all existing grants; startup never
-repairs views. Durable tables and the runtime schema-version contract stay at 1.
+repairs views.
 
-`generate-schema.mjs` generates the review SQL from the existing schema/views;
+`001_initial.sql` remains immutable. After importing an initial capture snapshot,
+apply the separately reviewed additive `002_notifications.sql` with the migration
+identity. It creates only `public.notification_subscriptions` and
+`public.notification_events` plus an event lookup index, then advances the ledger
+from 1 to 2 in the same transaction. Existing capture data is unchanged. Grant the
+runtime SELECT/INSERT/UPDATE on these two tables through the deployment framework.
+The monitor does not delete event rows. No new sequence privileges are needed.
+SQLite's equivalent additive migration is version 4.
+
+`generate-schema.mjs` generates the initial review SQL from SQLite migrations 1-3 and the views;
 it never connects to a database. Regeneration changes the artifact hash and
 requires another review. Startup reads only
 `SELECT version FROM public.solutiondeploy_schema WHERE app_id=$1`

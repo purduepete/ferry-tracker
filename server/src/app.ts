@@ -9,6 +9,8 @@ import type { AppConfig } from './config.js';
 import { FerryDataService } from './ferryDataService.js';
 import type { SailingHistory } from './history/sailingHistory.js';
 import { WsdotClient } from './wsdotClient.js';
+import { notificationRouter } from './notifications/api.js';
+import type { NotificationStore } from './notifications/store.js';
 
 function terminalId(value: unknown): number | null {
     if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
@@ -42,11 +44,13 @@ export function createApp(
     config: AppConfig,
     now: () => number = Date.now,
     capture?: CaptureService,
-    history?: SailingHistory
+    history?: SailingHistory,
+    dependencies?: { service?: FerryDataService; notifications?: NotificationStore }
 ) {
     const app = express();
-    const service = new FerryDataService(new WsdotClient(config), now, history);
+    const service = dependencies?.service ?? new FerryDataService(new WsdotClient(config), now, history);
     service.warmCameras();
+    app.use('/api/notifications', notificationRouter(config, dependencies?.notifications, now));
 
     const send = <T>(response: Response, result: { data: T; raw: unknown }) => {
         const envelope: ApiEnvelope<T> = {

@@ -7,7 +7,7 @@
     "name": "ferry_tracker",
     "connectionEnvironment": "DATABASE_URL",
     "backendEnvironment": "STORAGE_BACKEND",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "migrationsDirectory": "deploy\\postgresql",
     "backupFormat": "custom"
   },

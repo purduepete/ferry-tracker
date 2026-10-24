@@ -120,6 +120,8 @@ import {
     type CatchWindow,
 } from './format';
 import { FilterSelect } from './components/FilterSelect';
+import { NotificationControl } from './components/NotificationControl';
+import { useNotifications } from './useNotifications';
 import { ThemeMenu } from './theme/ThemeMenu';
 
 type Tab = 'sailings' | 'terminals' | 'vessels' | 'historical' | 'catch' | 'disruption' | 'settings';
@@ -1168,6 +1170,14 @@ export function App() {
     const catchRouteKeyValue = catchRoute ? routeKey(catchRoute) : null;
     const catchOriginTerminal = terminals.find((terminal) => terminal.id === catchOriginId) ?? null;
     const timing = catchTiming(settings, catchRouteKeyValue === null ? undefined : catchOverrides[catchRouteKeyValue]);
+    const catchNotifications = useNotifications(
+        catchOriginId !== null && catchDestinationId !== null ? `catch:${catchOriginId}:${catchDestinationId}` : null,
+        { trafficMinutes: timing.trafficMinutes, queueMinutes: timing.queueMinutes }
+    );
+    const disruptionNotifications = useNotifications('disruption', {
+        disruptionLeadMinutes: settings.disruptionLeadMinutes,
+        disruptionDurationMinutes: settings.disruptionDurationMinutes,
+    });
     const newRouteDestinationIds = [
         ...new Set(
             mates.filter((mate) => mate.departingTerminalId === newRouteOriginId).map((mate) => mate.arrivingTerminalId)
@@ -2543,6 +2553,9 @@ export function App() {
                                             )}
                                         </div>
                                         {catchRoute && (
+                                            <NotificationControl notifications={catchNotifications} kind="catch" />
+                                        )}
+                                        {catchRoute && (
                                             <div className="catch-timing">
                                                 <button
                                                     className="settings-disclosure"
@@ -2714,6 +2727,10 @@ export function App() {
                                             <span className="node-type">Next disruption</span>
                                             <h2>Bainbridge Island offload</h2>
                                         </div>
+                                        <NotificationControl
+                                            notifications={disruptionNotifications}
+                                            kind="disruption"
+                                        />
                                         {inboundError && (
                                             <div className="empty" role="status">
                                                 {inboundResponse

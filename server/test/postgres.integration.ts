@@ -36,6 +36,9 @@ it('applies reviewed schema only to an empty disposable DB and preserves transac
         const tables = await pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");
         expect(tables.rows).toEqual([]);
         await pool.query(await readFile(new URL('../../deploy/postgresql/001_initial.sql', import.meta.url), 'utf8'));
+        await pool.query(
+            await readFile(new URL('../../deploy/postgresql/002_notifications.sql', import.meta.url), 'utf8')
+        );
         const db = await openPostgres(connectionString, pool);
         const capturedAt = '2026-09-01T18:30:00.000Z';
         const vessel = {

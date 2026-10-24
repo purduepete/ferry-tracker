@@ -23,6 +23,7 @@ export default defineConfig({
             PORT: port,
             DATA_SOURCE: 'fixture',
             CAPTURE_ENABLED: 'false',
+            NOTIFICATIONS_ENABLED: 'false',
             FIXTURE_NOW: '2026-09-01T18:30:00.000Z',
         },
     },

@@ -30,7 +30,7 @@ it('keeps the release stateless and preserves both catch aliases and source task
         },
     });
     expect(manifest.launch.environment).not.toHaveProperty(manifest.launch.stopFileEnvironment);
-    expect(manifest.database).toMatchObject({ engine: 'postgresql', name: 'ferry_tracker', schemaVersion: 1 });
+    expect(manifest.database).toMatchObject({ engine: 'postgresql', name: 'ferry_tracker', schemaVersion: 2 });
     expect(manifest.managedState).toEqual([
         { source: 'data\\raw', target: 'data\\raw', kind: 'directory', required: true },
     ]);

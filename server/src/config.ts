@@ -26,6 +26,7 @@ export interface CaptureConfig {
 }
 
 export interface AppConfig {
+    notifications?: { enabled: boolean; appToken?: string; userKey?: string };
     host: string;
     port: number;
     dataSource: 'live' | 'fixture';
@@ -49,9 +50,18 @@ export function getConfig(): AppConfig {
         dataSource,
         apiAccessCode,
         catchToken,
-        secrets: [apiAccessCode, catchToken, process.env.DATABASE_URL].filter((secret): secret is string =>
-            Boolean(secret)
-        ),
+        notifications: {
+            enabled: process.env.NOTIFICATIONS_ENABLED === 'true',
+            appToken: process.env.PUSHOVER_APP_TOKEN,
+            userKey: process.env.PUSHOVER_USER_KEY,
+        },
+        secrets: [
+            apiAccessCode,
+            catchToken,
+            process.env.DATABASE_URL,
+            process.env.PUSHOVER_APP_TOKEN,
+            process.env.PUSHOVER_USER_KEY,
+        ].filter((secret): secret is string => Boolean(secret)),
         rawInspector: process.env.ENABLE_RAW_INSPECTOR !== 'false',
         fixtureNow: dataSource === 'fixture' ? process.env.FIXTURE_NOW : undefined,
         capture: getCaptureConfig(),

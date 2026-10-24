@@ -86,12 +86,22 @@ export class WsdotClient {
         );
     }
 
-    async getScheduleRange(departingId: number, arrivingId: number, start: number, end: number): Promise<unknown> {
+    async getScheduleRange(
+        departingId: number,
+        arrivingId: number,
+        start: number,
+        end: number,
+        bypassCache = false
+    ): Promise<unknown> {
         if (this.config.dataSource === 'fixture') {
             return this.readFixture(`schedule-${departingId}-${arrivingId}.json`);
         }
         const dates = [...new Set([pacificDate(start), pacificDate(end)])];
-        return Promise.all(dates.map((date) => this.get('Schedule', `schedule/${date}/${departingId}/${arrivingId}`)));
+        return Promise.all(
+            dates.map((date) =>
+                this.get('Schedule', `schedule/${date}/${departingId}/${arrivingId}`, undefined, bypassCache)
+            )
+        );
     }
 
     private async get(

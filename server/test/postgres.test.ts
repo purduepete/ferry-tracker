@@ -14,7 +14,7 @@ function fakePool() {
     };
     const pool = {
         query: vi.fn(async (_sql: string, _values?: unknown[]) => ({
-            rows: [{ version: 1 }],
+            rows: [{ version: 2 }],
             fields: [],
             rowCount: 1,
         })),
@@ -75,7 +75,7 @@ describe('PostgreSQL runtime without database access', () => {
 
     it('fails closed and closes its pool on a schema mismatch', async () => {
         const { pool } = fakePool();
-        pool.query.mockResolvedValue({ rows: [{ version: 2 }], fields: [], rowCount: 1 });
+        pool.query.mockResolvedValue({ rows: [{ version: 1 }], fields: [], rowCount: 1 });
         await expect(openPostgres('postgresql://not-used', pool as unknown as Pool)).rejects.toThrow('schema version');
         expect(pool.end).toHaveBeenCalledOnce();
     });

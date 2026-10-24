@@ -12,6 +12,7 @@ async function sourceModule(path) {
 const { migrations } = await sourceModule('../../server/src/db/schema.ts');
 const { views } = await sourceModule('../../server/src/db/views.ts');
 const statements = migrations
+    .filter((migration) => migration.version <= 3)
     .flatMap((migration) => migration.statements)
     .map((sql) =>
         sql
