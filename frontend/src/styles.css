@@ -2043,12 +2043,23 @@ tbody tr.is-linked {
     display: none;
 }
 
-@media (min-width: 768px) and (max-width: 1439px) {
+@media (min-width: 768px) and (max-width: 1023px) {
     .header-inner {
         padding: 0 40px;
     }
     main {
         padding: 0 40px calc(48px + var(--safe-area-bottom));
+    }
+}
+
+@media (min-width: 1024px) {
+    .header-inner {
+        padding-left: max(20px, var(--safe-area-left));
+        padding-right: max(20px, var(--safe-area-right));
+    }
+    main {
+        padding-left: max(20px, var(--safe-area-left));
+        padding-right: max(20px, var(--safe-area-right));
     }
 }
 
