@@ -2053,6 +2053,13 @@ tbody tr.is-linked {
 }
 
 @media (min-width: 1024px) {
+    html {
+        scrollbar-gutter: stable;
+        scrollbar-width: auto;
+    }
+    html::-webkit-scrollbar {
+        width: auto;
+    }
     .header-inner {
         padding-left: max(20px, var(--safe-area-left));
         padding-right: max(20px, var(--safe-area-right));
