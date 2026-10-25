@@ -11,6 +11,7 @@ it('keeps the release stateless and preserves both catch aliases and source task
         { tool: 'npm', arguments: ['rebuild', 'esbuild'], workingDirectory: '.' },
         { tool: 'npm', arguments: ['run', 'verify:dependencies'], workingDirectory: '.' },
         { tool: 'npm', arguments: ['run', 'build'], workingDirectory: '.' },
+        { tool: 'npm', arguments: ['prune', '--omit=dev', '--ignore-scripts'], workingDirectory: '.' },
     ]);
     expect(manifest.source.root).toBe('C:\\Files\\Dev\\main\\ferry-tracker');
     expect(manifest.launch).toMatchObject({

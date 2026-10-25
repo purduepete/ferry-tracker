@@ -17,7 +17,8 @@
       { "tool": "npm", "arguments": ["ci", "--ignore-scripts"], "workingDirectory": "." },
       { "tool": "npm", "arguments": ["rebuild", "esbuild"], "workingDirectory": "." },
       { "tool": "npm", "arguments": ["run", "verify:dependencies"], "workingDirectory": "." },
-      { "tool": "npm", "arguments": ["run", "build"], "workingDirectory": "." }
+      { "tool": "npm", "arguments": ["run", "build"], "workingDirectory": "." },
+      { "tool": "npm", "arguments": ["prune", "--omit=dev", "--ignore-scripts"], "workingDirectory": "." }
     ]
   },
   "launch": {
