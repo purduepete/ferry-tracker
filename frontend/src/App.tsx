@@ -360,30 +360,43 @@ function latestTimestamp(current: string | null, ...values: string[]) {
     );
 }
 
-function CapacityPill({ openPercent, total }: { openPercent: number | null; total: number | null }) {
+function CapacityPill({
+    openPercent,
+    total,
+    showDetails = true,
+}: {
+    openPercent: number | null;
+    total: number | null;
+    showDetails?: boolean;
+}) {
     if (openPercent === null) return null;
     // WSDOT reports space left; the pill reads how full the boat is, which is what people ask.
     const full = 100 - openPercent;
     const label = `${full}% of ${total} vehicle spaces taken`;
-    return (
-        <Help className={`capacity-pill ${capacityLevel(openPercent)}`} aria-label={label} help={label}>
+    const className = `capacity-pill ${capacityLevel(openPercent)}`;
+    return showDetails ? (
+        <Help className={className} aria-label={label} help={label}>
             {full}%
         </Help>
+    ) : (
+        <span className={className} aria-label={label}>
+            {full}%
+        </span>
     );
 }
 
-function CapacityMeter({ sailing }: { sailing: SailingView }) {
+function CapacityMeter({ sailing, showDetails = true }: { sailing: SailingView; showDetails?: boolean }) {
     const percent = openSpacePercent(sailing);
     // A wide-open sailing carries no decision value, so only a partial boat gets a pill.
     if (percent === 100) return null;
-    return <CapacityPill openPercent={percent} total={sailing.maxSpaceCount} />;
+    return <CapacityPill openPercent={percent} total={sailing.maxSpaceCount} showDetails={showDetails} />;
 }
 
 // The phone table shows only a percentage, so a wide-open boat still gets an explicit 0%.
-function MobileSpacePercent({ sailing }: { sailing: SailingView }) {
+function MobileSpacePercent({ sailing, showDetails = true }: { sailing: SailingView; showDetails?: boolean }) {
     const percent = openSpacePercent(sailing);
     if (percent === null) return <>—</>;
-    return <CapacityPill openPercent={percent} total={sailing.maxSpaceCount} />;
+    return <CapacityPill openPercent={percent} total={sailing.maxSpaceCount} showDetails={showDetails} />;
 }
 
 // The pill is the whole statement, so the word "late" is never printed beside it.
@@ -2227,11 +2240,8 @@ export function App() {
                                                                         {sailing.vesselName ?? 'Vessel unassigned'}
                                                                     </span>
                                                                     {sailing.spaceAvailable && (
-                                                                        <Help
+                                                                        <span
                                                                             className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`}
-                                                                            help={
-                                                                                recordedSpaceLabel(sailing) ?? undefined
-                                                                            }
                                                                         >
                                                                             <Car
                                                                                 className="space-icon"
@@ -2241,8 +2251,11 @@ export function App() {
                                                                             />
                                                                             {phoneVehicleSpace(sailing)}{' '}
                                                                             <RecordedSpaceMark sailing={sailing} />{' '}
-                                                                            <CapacityMeter sailing={sailing} />
-                                                                        </Help>
+                                                                            <CapacityMeter
+                                                                                sailing={sailing}
+                                                                                showDetails={false}
+                                                                            />
+                                                                        </span>
                                                                     )}
                                                                 </div>
                                                             </li>
@@ -2478,26 +2491,30 @@ export function App() {
                                                                         onOpen={openRoute}
                                                                     />
                                                                 </td>
-                                                                <Help
+                                                                <td
                                                                     className={
                                                                         sailing.spaceSource === 'recorded'
                                                                             ? 'is-recorded'
                                                                             : undefined
                                                                     }
-                                                                    help={recordedSpaceLabel(sailing) ?? undefined}
-                                                                    as="td"
                                                                 >
                                                                     <span className="space-detail">
                                                                         {vehicleSpace(sailing)}{' '}
                                                                         <RecordedSpaceMark sailing={sailing} />
                                                                     </span>
                                                                     <span className="space-desktop-pill">
-                                                                        <CapacityMeter sailing={sailing} />
+                                                                        <CapacityMeter
+                                                                            sailing={sailing}
+                                                                            showDetails={false}
+                                                                        />
                                                                     </span>
                                                                     <span className="space-percent-only">
-                                                                        <MobileSpacePercent sailing={sailing} />
+                                                                        <MobileSpacePercent
+                                                                            sailing={sailing}
+                                                                            showDetails={false}
+                                                                        />
                                                                     </span>
-                                                                </Help>
+                                                                </td>
                                                             </tr>
                                                         );
                                                     })}

@@ -965,6 +965,9 @@ describe('Recorded vehicle space', () => {
         expect(marks[0]).toHaveClass('recorded-mark');
         expect(document.querySelectorAll('.space-count.is-recorded')).toHaveLength(1);
         expect(await screen.findByText(/40 drv \/ 202/)).toBeInTheDocument();
+        expect(
+            within(document.querySelector('.sailing-list')!).queryByRole('button', { name: 'Details information' })
+        ).not.toBeInTheDocument();
     });
 });
 
@@ -1386,9 +1389,9 @@ describe('Card navigation', () => {
                     reservableSpaceCount: null,
                     maxSpaceCount: 202,
                     spaceAvailable: true,
-                    spaceSource: 'live',
-                    spaceObservedAt: null,
-                    spaceLeadSeconds: null,
+                    spaceSource: 'recorded',
+                    spaceObservedAt: '2026-09-01T16:57:00.000Z',
+                    spaceLeadSeconds: 180,
                     actualDeparture: null,
                     departureDelayMinutes: null,
                     raw: {},
@@ -1404,6 +1407,9 @@ describe('Card navigation', () => {
         await screen.findByRole('heading', { name: 'Seattle' });
 
         await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
+        const row = await screen.findByRole('row', { name: /Wenatchee/ });
+        expect(within(row).getByText('176 drive-up of 202 spaces')).toBeInTheDocument();
+        expect(within(row).queryByRole('button', { name: 'Details information' })).not.toBeInTheDocument();
         await userEvent.click(await screen.findByRole('button', { name: 'Wenatchee' }));
 
         expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');

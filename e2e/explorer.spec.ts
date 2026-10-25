@@ -46,6 +46,7 @@ test('shows the terminal to ferry to schedule sailings view without external net
     await expect(page.getByText(/TerminalID|VesselID/)).toHaveCount(0);
     await expect(page.locator('.schedule-node h2')).toHaveText('Seattle to Bainbridge Island');
     await expect(page.getByText('176 drv / 202')).toBeVisible();
+    await expect(page.locator('.schedule-node .info-box-trigger:not(.is-warning)')).toHaveCount(0);
     await expect(page.getByText('Current vehicle-space reports')).toHaveCount(0);
     await expect(page.locator('.refresh-time')).toContainText('Last refresh');
     // The badge is the only warning that this is canned data, and a live server never renders it.
@@ -670,6 +671,7 @@ test('trims the Historical table to fit a phone without horizontal scroll', asyn
     await page.getByRole('option', { name: 'Seattle' }).click();
     await page.getByRole('tab', { name: 'Historical' }).click();
     await expect(page.locator('table')).toBeVisible();
+    await expect(page.locator('.table-wrap tbody .info-box-trigger')).toHaveCount(0);
 
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await expect(page.locator('.col-vessel').first()).toBeHidden();
