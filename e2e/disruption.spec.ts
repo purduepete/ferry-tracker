@@ -150,7 +150,7 @@ test('scheduled Disruption fits all themes and supported widths', async ({ page 
     await openDisruption(page);
     for (const theme of ['light', 'midnight']) {
         await page.getByRole('button', { name: 'Appearance' }).click();
-        await page.getByRole('radio', { name: new RegExp(`^${theme}$`, 'i') }).click();
+        await page.getByRole('button', { name: new RegExp(`^${theme}$`, 'i') }).click();
         await page.keyboard.press('Escape');
         for (const width of [390, 767, 768, 1024, 1440]) {
             await page.setViewportSize({ width, height: 900 });

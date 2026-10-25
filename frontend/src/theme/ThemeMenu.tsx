@@ -12,9 +12,9 @@ const labels: Record<ThemePreference, string> = {
 
 export function ThemeMenu() {
     const { preference, setPreference } = useTheme();
-    const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
+    const [open, setOpen] = useState(false);
 
     useEffect(() => {
         if (!open) return;
@@ -25,17 +25,14 @@ export function ThemeMenu() {
         return () => document.removeEventListener('pointerdown', closeOutside);
     }, [open]);
 
-    const closeFromKeyboard = () => {
-        setOpen(false);
-        triggerRef.current?.focus();
-    };
-
     const handleKeys = (event: KeyboardEvent<HTMLDivElement>) => {
         if (event.key === 'Escape') {
             event.preventDefault();
-            closeFromKeyboard();
+            setOpen(false);
+            triggerRef.current?.focus();
             return;
         }
+        if (!(event.target instanceof HTMLElement) || !event.target.closest('[data-theme-option]')) return;
         const currentIndex = THEME_PREFERENCES.indexOf(preference);
         const offset =
             event.key === 'ArrowRight' || event.key === 'ArrowDown'
@@ -43,22 +40,33 @@ export function ThemeMenu() {
                 : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
                   ? -1
                   : 0;
-        if (!offset) return;
+        if (!offset && event.key !== 'Home' && event.key !== 'End') return;
         event.preventDefault();
-        const next = THEME_PREFERENCES[(currentIndex + offset + THEME_PREFERENCES.length) % THEME_PREFERENCES.length];
+        const nextIndex =
+            event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                  ? THEME_PREFERENCES.length - 1
+                  : (currentIndex + offset + THEME_PREFERENCES.length) % THEME_PREFERENCES.length;
+        const next = THEME_PREFERENCES[nextIndex];
         setPreference(next);
-        requestAnimationFrame(() =>
-            containerRef.current?.querySelector<HTMLButtonElement>(`[data-theme-option="${next}"]`)?.focus()
-        );
+        containerRef.current?.querySelector<HTMLButtonElement>(`[data-theme-option="${next}"]`)?.focus();
     };
 
     return (
-        <div className="theme-menu" ref={containerRef}>
+        <div
+            className="theme-menu"
+            ref={containerRef}
+            onKeyDown={handleKeys}
+            onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+            }}
+        >
             <HintButton
                 ref={triggerRef}
                 className="icon-button"
                 type="button"
-                hint={'Appearance'}
+                hint="Appearance"
                 aria-label="Appearance"
                 aria-haspopup="dialog"
                 aria-expanded={open}
@@ -67,17 +75,22 @@ export function ThemeMenu() {
                 <Palette size={18} />
             </HintButton>
             {open && (
-                <div className="theme-popover" role="dialog" aria-label="Appearance settings" onKeyDown={handleKeys}>
+                <div className="theme-popover" role="dialog" aria-label="Appearance settings">
                     <span className="control-label">Theme</span>
-                    <div className="segmented" role="radiogroup" aria-label="Theme">
+                    <div className="theme-segments" role="group" aria-label="Theme">
+                        <span
+                            className="theme-selection"
+                            aria-hidden="true"
+                            style={{ transform: `translateX(${THEME_PREFERENCES.indexOf(preference) * 100}%)` }}
+                        />
                         {THEME_PREFERENCES.map((value) => (
                             <button
                                 key={value}
                                 data-theme-option={value}
                                 tabIndex={preference === value ? 0 : -1}
                                 type="button"
-                                role="radio"
-                                aria-checked={preference === value}
+                                aria-label={labels[value]}
+                                aria-pressed={preference === value}
                                 onClick={() => setPreference(value)}
                             >
                                 {value === 'system' ? (
@@ -87,7 +100,7 @@ export function ThemeMenu() {
                                 ) : (
                                     <Sparkles size={15} />
                                 )}
-                                {labels[value]}
+                                <span className="theme-option-label">{labels[value]}</span>
                             </button>
                         ))}
                     </div>

@@ -4,7 +4,7 @@ test('uses custom icon help throughout the tabs in Light and Midnight without cl
     await page.goto('/');
     for (const theme of ['Light', 'Midnight']) {
         await page.getByRole('button', { name: 'Appearance', exact: true }).click();
-        await page.getByRole('radio', { name: theme, exact: true }).click();
+        await page.getByRole('button', { name: theme, exact: true }).click();
         await page.keyboard.press('Escape');
         for (const width of [390, 1440]) {
             await page.setViewportSize({ width, height: 900 });

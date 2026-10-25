@@ -289,7 +289,10 @@ The bootstrap works with
 `ferry.jimlertech.com` pins the retired inline script and does not describe the
 current hostname's policy. No edge policy change is required for this bootstrap.
 
-Appearance lists Light, Midnight and System. Midnight is the default; System
+The header's Appearance icon opens a popup with one square segmented theme control
+for Light, Midnight and System, with a sliding selection fill. Arrow keys and
+Home/End change the selection; Escape returns focus to the icon, and Tab or an
+outside click dismisses the popup when focus leaves. Midnight is the default; System
 tracks OS changes live. `ferry-tracker-theme` stores the plain preference string.
 The reserved browser strip matches the opaque header: white in Light, slate-900
 in Midnight. Installed iOS rendering still needs device verification.

@@ -13,6 +13,7 @@
     color: #111827;
     background: #ffffff;
     --bg: #ffffff;
+    --header-control-height: 36px;
     --surface: #ffffff;
     --surface-2: #f3f4f6;
     --surface-3: #e5e7eb;
@@ -307,7 +308,7 @@ select:focus-visible {
     text-transform: uppercase;
 }
 .header-actions {
-    height: 100%;
+    height: var(--header-control-height);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -384,6 +385,22 @@ select:focus-visible {
     box-shadow: var(--shadow);
     z-index: 40;
 }
+.theme-segments {
+    position: relative;
+    height: 38px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    padding: 2px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+}
+.theme-selection {
+    position: absolute;
+    inset: 2px auto 2px 2px;
+    width: calc((100% - 4px) / 3);
+    background: var(--accent);
+    transition: transform 0.25s ease-out;
+}
 .control-label {
     display: block;
     font-size: 11px;
@@ -392,27 +409,24 @@ select:focus-visible {
     margin-bottom: 9px;
     text-transform: uppercase;
 }
-.segmented {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 5px;
-}
-.segmented button {
-    min-height: 38px;
-    border: 1px solid var(--line);
-    border-radius: 0;
-    background: var(--surface-2);
+.theme-segments button {
+    position: relative;
+    min-width: 0;
+    padding: 0 4px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 7px;
+    gap: 6px;
 }
-.segmented button:hover {
-    background: var(--surface-3);
+.theme-segments button:hover {
+    color: var(--text);
 }
-.segmented button[aria-checked='true'] {
-    border-color: var(--accent);
-    background: var(--accent-soft);
+.theme-segments button[aria-pressed='true'] {
+    color: var(--surface);
 }
 .source-badge {
     padding: 5px 9px;

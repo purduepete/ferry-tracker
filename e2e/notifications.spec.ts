@@ -64,7 +64,7 @@ test('persists server-backed Catch and Disruption opt-ins across themes and resp
 
     for (const theme of ['Light', 'Midnight']) {
         await page.getByRole('button', { name: 'Appearance' }).click();
-        await page.getByRole('radio', { name: theme, exact: true }).click();
+        await page.getByRole('button', { name: theme, exact: true }).click();
         await page.keyboard.press('Escape');
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme.toLowerCase());
         for (const width of [390, 767, 768, 1024, 1440]) {

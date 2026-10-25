@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
@@ -41,39 +41,54 @@ describe('ThemeMenu', () => {
     it('uses midnight by default and persists a selected theme', async () => {
         const user = userEvent.setup();
         renderMenu();
+        expect(screen.queryByRole('group', { name: 'Theme' })).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'Appearance' }));
-        expect(screen.getByRole('radio', { name: 'Midnight' })).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByRole('group', { name: 'Theme' })).toBeVisible();
+        expect(screen.getByRole('button', { name: 'Midnight' })).toHaveAttribute('aria-pressed', 'true');
         expect(screen.queryByLabelText('Accent')).not.toBeInTheDocument();
 
-        await user.click(screen.getByRole('radio', { name: 'Light' }));
+        await user.click(screen.getByRole('button', { name: 'Light' }));
         expect(localStorage.getItem('ferry-tracker-theme')).toBe('light');
         await waitFor(() => expect(document.documentElement.dataset.theme).toBe('light'));
     });
 
-    it('removes the legacy accent and supports radio arrow keys', async () => {
+    it('removes the legacy accent and supports wrapping arrow keys', async () => {
         localStorage.setItem('ferry-tracker-accent', '#ffffff');
         const user = userEvent.setup();
         renderMenu();
         await user.click(screen.getByRole('button', { name: 'Appearance' }));
-        const midnight = screen.getByRole('radio', { name: 'Midnight' });
-        midnight.focus();
+        const midnight = screen.getByRole('button', { name: 'Midnight' });
+        act(() => midnight.focus());
         await user.keyboard('{ArrowRight}');
-        expect(screen.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'System' })).toHaveFocus();
+        await user.keyboard('{ArrowRight}');
+        expect(screen.getByRole('button', { name: 'Light' })).toHaveFocus();
+        await user.keyboard('{ArrowLeft}');
+        expect(screen.getByRole('button', { name: 'System' })).toHaveFocus();
         expect(localStorage.getItem('ferry-tracker-accent')).toBeNull();
     });
 
-    it('closes on Escape and returns focus to the trigger', async () => {
+    it('supports Home, End and activation with Space and Enter', async () => {
         const user = userEvent.setup();
         renderMenu();
-        const trigger = screen.getByRole('button', { name: 'Appearance' });
-        await user.click(trigger);
-        screen.getByRole('radio', { name: 'Midnight' }).focus();
-        await user.keyboard('{Escape}');
-        expect(screen.queryByRole('dialog', { name: 'Appearance settings' })).not.toBeInTheDocument();
-        expect(trigger).toHaveFocus();
+        await user.click(screen.getByRole('button', { name: 'Appearance' }));
+        act(() => screen.getByRole('button', { name: 'Midnight' }).focus());
+        await user.keyboard('{Home}');
+        expect(screen.getByRole('button', { name: 'Light' })).toHaveFocus();
+        expect(localStorage.getItem('ferry-tracker-theme')).toBe('light');
+        await user.keyboard('{End}');
+        expect(screen.getByRole('button', { name: 'System' })).toHaveFocus();
+        expect(localStorage.getItem('ferry-tracker-theme')).toBe('system');
+        act(() => screen.getByRole('button', { name: 'Light' }).focus());
+        await user.keyboard(' ');
+        expect(localStorage.getItem('ferry-tracker-theme')).toBe('light');
+        act(() => screen.getByRole('button', { name: 'Midnight' }).focus());
+        await user.keyboard('{Enter}');
+        expect(localStorage.getItem('ferry-tracker-theme')).toBe('midnight');
     });
 
-    it('closes on an outside pointer interaction', async () => {
+    it('has one Tab stop and lets Tab leave the group', async () => {
         const user = userEvent.setup();
         render(
             <ThemeProvider>
@@ -81,8 +96,27 @@ describe('ThemeMenu', () => {
                 <button type="button">Outside</button>
             </ThemeProvider>
         );
-        await user.click(screen.getByRole('button', { name: 'Appearance' }));
-        await user.click(screen.getByRole('button', { name: 'Outside' }));
-        expect(screen.queryByRole('dialog', { name: 'Appearance settings' })).not.toBeInTheDocument();
+        await user.tab();
+        expect(screen.getByRole('button', { name: 'Appearance' })).toHaveFocus();
+        await user.keyboard('{Enter}');
+        await user.tab();
+        expect(screen.getByRole('button', { name: 'Midnight' })).toHaveFocus();
+        await user.tab();
+        expect(screen.getByRole('button', { name: 'Outside' })).toHaveFocus();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('dismisses on Escape with focus return and on outside pointer interaction', async () => {
+        const user = userEvent.setup();
+        renderMenu();
+        const trigger = screen.getByRole('button', { name: 'Appearance' });
+        await user.click(trigger);
+        act(() => screen.getByRole('button', { name: 'Midnight' }).focus());
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(trigger).toHaveFocus();
+        await user.click(trigger);
+        await user.click(document.body);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 });

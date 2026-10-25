@@ -140,7 +140,7 @@ test('marks a terminal that WSF has posted a service alert against', async ({ pa
 test('persists a selected theme and exposes semantic keyboard tabs', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Appearance' }).click();
-    await page.getByRole('radio', { name: 'Light' }).click();
+    await page.getByRole('button', { name: 'Light', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
