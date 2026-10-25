@@ -2238,7 +2238,7 @@ describe('Favorite routes in the app', () => {
     ];
     const scheduleUrls: string[] = [];
 
-    function mockApp() {
+    function mockApp(sailings: unknown[] = []) {
         scheduleUrls.length = 0;
         vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
             const url = String(input);
@@ -2246,7 +2246,10 @@ describe('Favorite routes in the app', () => {
             if (url.includes('/api/vessels')) return json(vessels);
             if (url.includes('/api/terminal-mates')) return json(bothWays);
             if (url.includes('/api/history')) return json([]);
-            if (url.includes('/api/schedule')) scheduleUrls.push(url);
+            if (url.includes('/api/schedule')) {
+                scheduleUrls.push(url);
+                return json(sailings);
+            }
             return json([]);
         });
     }
@@ -2385,6 +2388,36 @@ describe('Favorite routes in the app', () => {
             expect(scheduleUrls.some((url) => url.includes('departingTerminalId=7&arrivingTerminalId=3'))).toBe(true)
         );
         expect(localStorage.getItem('ferry-tracker-catch-route')).toBe('7-3');
+    });
+
+    it('shows catch capacity without an info button', async () => {
+        freezeClock('2026-09-01T17:00:00.000Z');
+        mockApp([
+            {
+                vesselId: 18,
+                vesselName: 'Tacoma',
+                departingTime: '2026-09-01T18:00:00.000Z',
+                departingTerminalId: 3,
+                arrivingTerminalId: 7,
+                isCancelled: false,
+                driveUpSpaceCount: 176,
+                reservableSpaceCount: null,
+                maxSpaceCount: 202,
+                spaceAvailable: true,
+            },
+        ]);
+        const user = userEvent.setup();
+        render(
+            <ThemeProvider>
+                <App />
+            </ThemeProvider>
+        );
+        await screen.findByRole('heading', { name: 'Seattle' });
+        await user.click(screen.getByRole('tab', { name: 'Catch' }));
+
+        const capacity = await screen.findByLabelText('13% of 202 vehicle spaces taken');
+        expect(capacity).toHaveTextContent('13%');
+        expect(screen.getByRole('tabpanel', { name: 'Catch' }).querySelector('.capacity-pill button')).toBeNull();
     });
 
     it('asks for a favorite route when there are none', async () => {
@@ -2649,6 +2682,7 @@ describe('Bainbridge disruption', () => {
         const capacity = await screen.findByLabelText('85% of 197 vehicle spaces taken');
         expect(capacity.closest('.field')?.querySelector('dt')).toHaveTextContent('Capacity');
         expect(capacity).toHaveTextContent('85%');
+        expect(capacity.querySelector('button')).toBeNull();
     });
 
     it('leaves the capacity out when the inbound leg has no counts', async () => {

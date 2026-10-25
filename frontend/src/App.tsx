@@ -2701,6 +2701,7 @@ export function App() {
                                                                     <CapacityPill
                                                                         openPercent={nextCatch.spacePercent}
                                                                         total={nextCatch.spaceTotal}
+                                                                        showDetails={false}
                                                                     />
                                                                 </>
                                                             )
@@ -2729,6 +2730,7 @@ export function App() {
                                                                         <CapacityPill
                                                                             openPercent={window.spacePercent}
                                                                             total={window.spaceTotal}
+                                                                            showDetails={false}
                                                                         />
                                                                     </span>
                                                                 </li>
@@ -2817,6 +2819,7 @@ export function App() {
                                                                 <CapacityPill
                                                                     openPercent={nextLoad.openPercent}
                                                                     total={nextLoad.totalSpace}
+                                                                    showDetails={false}
                                                                 />
                                                             )
                                                         }
