@@ -792,6 +792,9 @@ h2 {
     place-items: center;
     animation: data-reveal 0.6s ease-out;
 }
+.loading-spinner.is-panel {
+    min-height: 96px;
+}
 .loading-spinner-ring {
     width: 40px;
     height: 40px;

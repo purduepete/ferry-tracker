@@ -2855,13 +2855,18 @@ export function App() {
                                                 )}
                                             </>
                                         ) : (
-                                            !inboundError && (
+                                            !inboundError &&
+                                            (inboundResponse === null ? (
+                                                <LoadingSpinner
+                                                    isLoading
+                                                    label="Loading the inbound schedule"
+                                                    className="is-panel"
+                                                />
+                                            ) : (
                                                 <div className="empty">
-                                                    {inboundResponse === null
-                                                        ? 'Loading the inbound schedule...'
-                                                        : 'No upcoming arrival is available in the current schedule.'}
+                                                    No upcoming arrival is available in the current schedule.
                                                 </div>
-                                            )
+                                            ))
                                         )}
                                     </div>
                                 )}
