@@ -121,6 +121,7 @@ import {
     type CatchWindow,
 } from './format';
 import { FilterSelect } from './components/FilterSelect';
+import { LoadingSpinner } from './components/LoadingSpinner';
 import { NotificationControl } from './components/NotificationControl';
 import { Help, HintButton, InfoBox } from './components/InfoBox';
 import { useNotifications } from './useNotifications';
@@ -1057,10 +1058,10 @@ export function App() {
     // Staleness is measured against the client clock, since fetchedAt comes from the server's.
     const [lastRefreshMs, setLastRefreshMs] = useState<number | null>(null);
     const [staleClock, setStaleClock] = useState(() => Date.now());
-    const [minimumInitialSkeletonElapsed, setMinimumInitialSkeletonElapsed] = useState(false);
-    const [initialScheduleSettled, setInitialScheduleSettled] = useState(false);
+    const [settledScheduleKey, setSettledScheduleKey] = useState<string | null>(null);
     const [initialDataVisible, setInitialDataVisible] = useState(false);
-    const [initialSkeletonVisible, setInitialSkeletonVisible] = useState(true);
+    const hasRevealedRef = useRef(false);
+    const [initialPanelTab, setInitialPanelTab] = useState<Tab | null>(null);
     const [retainedUpdateSkeleton, setRetainedUpdateSkeleton] = useState(false);
     const [backgroundRefresh, setBackgroundRefresh] = useState(false);
     const [favoriteTerminalIds, setFavoriteTerminalIds] = useState<number[]>(loadFavoriteTerminalIds);
@@ -1158,11 +1159,6 @@ export function App() {
         return () => controller.abort();
     }, [refreshVersion]);
 
-    useEffect(() => {
-        const timer = window.setTimeout(() => setMinimumInitialSkeletonElapsed(true), MINIMUM_SKELETON_MS);
-        return () => window.clearTimeout(timer);
-    }, []);
-
     const terminals = terminalResponse?.data ?? [];
     const orderedTerminals = orderTerminals(terminals, favoriteTerminalIds);
     const favoriteOrder = orderedTerminals.filter((entry) => entry.favorite).map((entry) => entry.terminal.id);
@@ -1192,6 +1188,10 @@ export function App() {
     ];
     const effectiveDestinationId =
         destinationId !== null && destinationIds.includes(destinationId) ? destinationId : (destinationIds[0] ?? null);
+    const scheduleKey =
+        selectedTerminalId !== null && effectiveDestinationId !== null
+            ? `${selectedTerminalId}:${effectiveDestinationId}:${serviceDate}`
+            : null;
     const catchRoute =
         favoriteRoutes.find((route) => routeKey(route) === selectedCatchRoute) ?? favoriteRoutes[0] ?? null;
     const catchOriginId = catchRoute?.originId ?? null;
@@ -1269,8 +1269,10 @@ export function App() {
         const controller = new AbortController();
         const requestId = ++scheduleRequestId.current;
         const startedAt = performance.now();
+        const holdSkeleton = hasRevealedRef.current;
         let finishTimer: number | undefined;
         let active = true;
+        setSettledScheduleKey(null);
         setScheduleLoading(true);
         setError(null);
         const request =
@@ -1279,21 +1281,25 @@ export function App() {
                 : ferryApi.historySailings(selectedTerminalId, effectiveDestinationId, serviceDate, controller.signal);
         request
             .then((schedule) => {
-                if (requestId !== scheduleRequestId.current) return;
+                if (!active || requestId !== scheduleRequestId.current) return;
                 setScheduleResponse(schedule);
-                setInitialScheduleSettled(true);
+                setSettledScheduleKey(scheduleKey);
                 setLastRefreshAt((current) => latestTimestamp(current, schedule.fetchedAt));
                 setLastRefreshMs(Date.now());
             })
             .catch((cause: unknown) => {
-                if (requestId === scheduleRequestId.current && (cause as Error).name !== 'AbortError') {
+                if (active && requestId === scheduleRequestId.current && (cause as Error).name !== 'AbortError') {
                     setScheduleResponse(null);
-                    setInitialScheduleSettled(true);
+                    setSettledScheduleKey(scheduleKey);
                     setError(cause instanceof Error ? cause.message : 'Unable to load schedule.');
                 }
             })
             .finally(() => {
                 if (!active || requestId !== scheduleRequestId.current) return;
+                if (!holdSkeleton) {
+                    setScheduleLoading(false);
+                    return;
+                }
                 const remaining = Math.max(0, MINIMUM_SKELETON_MS - (performance.now() - startedAt));
                 finishTimer = window.setTimeout(() => {
                     if (active && requestId === scheduleRequestId.current) setScheduleLoading(false);
@@ -1304,7 +1310,7 @@ export function App() {
             controller.abort();
             if (finishTimer !== undefined) window.clearTimeout(finishTimer);
         };
-    }, [effectiveDestinationId, refreshVersion, selectedTerminalId, serviceDate]);
+    }, [effectiveDestinationId, refreshVersion, scheduleKey, selectedTerminalId, serviceDate]);
 
     // A 404 means capture is off on this server, which leaves the picker showing today only.
     useEffect(() => {
@@ -1333,24 +1339,17 @@ export function App() {
     }, [tab]);
 
     useEffect(() => {
-        const routeSettled = selectedTerminalId === null || effectiveDestinationId === null || initialScheduleSettled;
-        if (minimumInitialSkeletonElapsed && hasOverview && !loading && !scheduleLoading && routeSettled)
+        if (initialDataVisible) return;
+        if (hasOverview && !loading && (scheduleKey === null || settledScheduleKey === scheduleKey)) {
+            hasRevealedRef.current = true;
+            setInitialPanelTab(tab);
             setInitialDataVisible(true);
-    }, [
-        effectiveDestinationId,
-        hasOverview,
-        initialScheduleSettled,
-        loading,
-        minimumInitialSkeletonElapsed,
-        scheduleLoading,
-        selectedTerminalId,
-    ]);
+        }
+    }, [hasOverview, initialDataVisible, loading, scheduleKey, settledScheduleKey, tab]);
 
     useEffect(() => {
-        if (!initialDataVisible) return;
-        const timer = window.setTimeout(() => setInitialSkeletonVisible(false), SKELETON_EXIT_MS);
-        return () => window.clearTimeout(timer);
-    }, [initialDataVisible]);
+        if (initialPanelTab !== null && tab !== initialPanelTab) setInitialPanelTab(null);
+    }, [initialPanelTab, tab]);
 
     // The schedule column dictates the grid row height, so the connectors need the stack measured.
     useEffect(() => {
@@ -1411,8 +1410,11 @@ export function App() {
     refreshingRef.current = refreshing;
     const refreshStale = refreshIsStale(lastRefreshMs, staleClock);
     const viewUpdating =
-        !backgroundRefresh && (loading || (scheduleLoading && (tab === 'sailings' || tab === 'historical')));
-    const initialLoading = !initialDataVisible && (loading || hasOverview);
+        initialDataVisible &&
+        !backgroundRefresh &&
+        (loading || (scheduleLoading && (tab === 'sailings' || tab === 'historical')));
+    const initialLoading =
+        !initialDataVisible && (loading || (hasOverview && scheduleKey !== null && settledScheduleKey !== scheduleKey));
 
     useEffect(() => {
         if (backgroundRefresh && !refreshing) setBackgroundRefresh(false);
@@ -1978,17 +1980,15 @@ export function App() {
                     aria-live="polite"
                     aria-busy={initialLoading || viewUpdating || backgroundRefresh}
                 >
-                    {(initialLoading || (initialDataVisible && initialSkeletonVisible)) && (
-                        <div className={`initial-loading-cover${initialDataVisible ? ' is-exiting' : ''}`}>
-                            <ViewPlaceholder label="Loading ferry data" tab={tab} />
-                        </div>
+                    <LoadingSpinner isLoading={initialLoading} />
+                    {!initialDataVisible && !initialLoading && !hasOverview && (
+                        <div className="state">Ferry data is unavailable.</div>
                     )}
-                    {!initialDataVisible && !initialLoading && <div className="state">Ferry data is unavailable.</div>}
 
                     {initialDataVisible && (
                         <div className={`view-content${viewUpdating ? ' is-updating' : ''}`}>
                             {/* Keyed by tab so React remounts the panel and replays the enter animation on every switch. */}
-                            <div className="view-panel" key={tab}>
+                            <div className={`view-panel${initialPanelTab === tab ? ' is-first-panel' : ''}`} key={tab}>
                                 {tab === 'sailings' && (
                                     <div
                                         className="relationship-grid is-sailings-only"

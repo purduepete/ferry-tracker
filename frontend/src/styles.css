@@ -770,7 +770,7 @@ h2 {
 }
 .view-content {
     position: relative;
-    animation: data-reveal 0.9s cubic-bezier(0.4, 0, 0.2, 1) 0.14s both;
+    animation: data-reveal 0.6s ease-out;
 }
 .view-content > :not(.view-loading-cover) {
     transition: opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1) 0.14s;
@@ -783,12 +783,27 @@ h2 {
 .view-panel {
     animation: panel-enter 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.initial-loading-cover {
-    position: absolute;
-    inset: 22px 0 auto;
-    z-index: 4;
+.view-panel.is-first-panel {
+    animation: none;
+}
+.loading-spinner {
     min-height: 408px;
-    background: var(--bg);
+    display: grid;
+    place-items: center;
+    animation: data-reveal 0.6s ease-out;
+}
+.loading-spinner-ring {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spinner-turn 1s linear infinite;
+}
+@keyframes spinner-turn {
+    to {
+        transform: rotate(360deg);
+    }
 }
 .view-loading-cover {
     position: absolute;
@@ -797,11 +812,9 @@ h2 {
     min-height: 100%;
     background: var(--bg);
 }
-.initial-loading-cover,
 .view-loading-cover {
     transition: opacity 0.52s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.initial-loading-cover.is-exiting,
 .view-loading-cover.is-exiting {
     opacity: 0;
     pointer-events: none;
@@ -2323,5 +2336,15 @@ tbody tr.is-linked {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
+    }
+    .loading-spinner,
+    .loading-spinner-ring,
+    .view-content,
+    .view-panel {
+        animation: none !important;
+    }
+    .view-content > :not(.view-loading-cover),
+    .view-loading-cover {
+        transition: none !important;
     }
 }

@@ -158,7 +158,7 @@ describe('Ferry data explorer', () => {
                 <App />
             </ThemeProvider>
         );
-        expect(screen.getByRole('status', { name: 'Loading ferry data' })).toBeInTheDocument();
+        expect(screen.queryByRole('status', { name: 'Loading ferry data' })).not.toBeInTheDocument();
         expect(document.querySelector('.spin')).not.toBeInTheDocument();
         expect(document.querySelector('.refresh-time')).toBeNull();
         expect(await screen.findByRole('heading', { name: 'Seattle' })).toBeInTheDocument();

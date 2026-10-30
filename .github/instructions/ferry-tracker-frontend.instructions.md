@@ -24,7 +24,8 @@ applyTo: ['frontend/**/*.{tsx,css,html}', 'e2e/**/*.ts']
 - Use icon-only buttons for route reversal, refresh, theme, and similar familiar commands. Give each one stable dimensions so state changes do not move nearby content.
 - Keep the custom thin scrollbar on the page and dropdowns. Extend the existing theme scrollbar tokens when another scrollable surface needs styling.
 - Keep related sailing and vehicle-space information in one view. Do not restore a separate vehicle-space report when the schedule rows already contain it.
-- Keep loaded content mounted during refreshes and route changes. Cover the active data view with a tab-shaped skeleton for at least 500 ms, fade the skeleton out over 520 ms, and start a 900 ms data fade after a 140 ms delay. The data fade must remain visible after the skeleton recedes. Do not combine a fill-mode opacity animation with the skeleton exit transition because it pins the cover opaque.
+- On initial load, use the shared delayed spinner after 250 ms of real loading, then remove it immediately when results settle. Fade its non-rotating wrapper and the first results in over 600 ms, with no minimum display time or nested entrance animation. An overview failure leaves the first-results entrance available for retry; a schedule failure reveals usable overview data with an error. Respect reduced motion, including removing delays and rotation.
+- Keep loaded content mounted during refreshes and route changes. Refreshes retain the current content without a loading cover. On route changes, cover the active data view with a tab-shaped skeleton for at least 500 ms, fade the skeleton out over 520 ms, and start a 900 ms data fade after a 140 ms delay. The data fade must remain visible after the skeleton recedes. Do not combine a fill-mode opacity animation with the skeleton exit transition because it pins the cover opaque.
 
 ## Responsive behavior
 
