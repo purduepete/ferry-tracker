@@ -144,6 +144,7 @@ const BACKGROUND_REFRESH_MS = 60_000;
 const VISIBILITY_REFRESH_MIN_AGE_MS = 10_000;
 const STALE_TICK_MS = 30_000;
 const CAMERA_REFRESH_MS = 120_000;
+const PANEL_LEAVE_MS = 250;
 const SAILING_COLUMN_WIDTH = 340;
 const SAILING_COLUMN_GAP = 28;
 const MINIMUM_SKELETON_MS = 500;
@@ -1062,6 +1063,9 @@ export function App() {
     const [initialDataVisible, setInitialDataVisible] = useState(false);
     const hasRevealedRef = useRef(false);
     const [initialPanelTab, setInitialPanelTab] = useState<Tab | null>(null);
+    // The tab strip follows `tab` at once; the panel shows `shownTab` after the old view fades out.
+    const [shownTab, setShownTab] = useState<Tab>('sailings');
+    const [panelLeaving, setPanelLeaving] = useState(false);
     const [retainedUpdateSkeleton, setRetainedUpdateSkeleton] = useState(false);
     const [backgroundRefresh, setBackgroundRefresh] = useState(false);
     const [favoriteTerminalIds, setFavoriteTerminalIds] = useState<number[]>(loadFavoriteTerminalIds);
@@ -1348,8 +1352,25 @@ export function App() {
     }, [hasOverview, initialDataVisible, loading, scheduleKey, settledScheduleKey, tab]);
 
     useEffect(() => {
-        if (initialPanelTab !== null && tab !== initialPanelTab) setInitialPanelTab(null);
-    }, [initialPanelTab, tab]);
+        if (initialPanelTab !== null && shownTab !== initialPanelTab) setInitialPanelTab(null);
+    }, [initialPanelTab, shownTab]);
+
+    useEffect(() => {
+        if (tab === shownTab) {
+            setPanelLeaving(false);
+            return;
+        }
+        if (!initialDataVisible || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+            setShownTab(tab);
+            return;
+        }
+        setPanelLeaving(true);
+        const timer = window.setTimeout(() => {
+            setShownTab(tab);
+            setPanelLeaving(false);
+        }, PANEL_LEAVE_MS);
+        return () => window.clearTimeout(timer);
+    }, [initialDataVisible, shownTab, tab]);
 
     // The schedule column dictates the grid row height, so the connectors need the stack measured.
     useEffect(() => {
@@ -1358,7 +1379,7 @@ export function App() {
         const observer = new ResizeObserver(([entry]) => setVesselStackHeight(entry.contentRect.height));
         observer.observe(node);
         return () => observer.disconnect();
-    }, [initialDataVisible, tab]);
+    }, [initialDataVisible, shownTab]);
 
     const destination = terminals.find((terminal) => terminal.id === effectiveDestinationId) ?? null;
     const currentSailing = scheduleResponse?.data ? getCurrentSailing(scheduleResponse.data, vessels) : null;
@@ -1987,129 +2008,423 @@ export function App() {
 
                     {initialDataVisible && (
                         <div className={`view-content${viewUpdating ? ' is-updating' : ''}`}>
-                            {/* Keyed by tab so React remounts the panel and replays the enter animation on every switch. */}
-                            <div className={`view-panel${initialPanelTab === tab ? ' is-first-panel' : ''}`} key={tab}>
-                                {tab === 'sailings' && (
+                            <div className="view-stage">
+                                <div className="view-swap" data-leaving={panelLeaving || undefined}>
+                                    {/* Keyed by tab so React remounts the panel and replays the enter animation on every switch. */}
                                     <div
-                                        className="relationship-grid is-sailings-only"
-                                        style={
-                                            vesselStackHeight
-                                                ? ({
-                                                      '--vessel-stack-height': `${vesselStackHeight}px`,
-                                                  } as CSSProperties)
-                                                : undefined
-                                        }
+                                        className={`view-panel${initialPanelTab === shownTab ? ' is-first-panel' : ''}`}
+                                        key={shownTab}
                                     >
-                                        <article
-                                            className={`relationship-node terminal-node${selectedTerminal ? ' is-clickable' : ''}`}
-                                            {...(selectedTerminal
-                                                ? {
-                                                      role: 'button',
-                                                      tabIndex: 0,
-                                                      'aria-label': `Show ${selectedTerminal.name} on the Terminals tab`,
-                                                      onClick: () => showTerminalOnTerminalsTab(selectedTerminal.id),
-                                                      onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
-                                                          if (event.key === 'Enter' || event.key === ' ') {
-                                                              event.preventDefault();
-                                                              showTerminalOnTerminalsTab(selectedTerminal.id);
-                                                          }
-                                                      },
-                                                  }
-                                                : {})}
-                                        >
-                                            <span className="node-type">Terminal</span>
-                                            <h2>{selectedTerminal?.name ?? 'No terminal'}</h2>
-                                            <div className="field">
-                                                <dt>City</dt>
-                                                <dd>
-                                                    {selectedTerminal?.city}
-                                                    {selectedTerminal?.latitude && selectedTerminal?.longitude ? (
-                                                        <>
-                                                            {' '}
-                                                            <a
-                                                                href={`https://maps.google.com/?q=${selectedTerminal.latitude},${selectedTerminal.longitude}`}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                onClick={(event) => event.stopPropagation()}
-                                                                style={{
-                                                                    color: 'var(--accent)',
-                                                                    textDecoration: 'none',
-                                                                    marginLeft: '6px',
-                                                                }}
-                                                            >
-                                                                <ExternalLink size={13} />
-                                                            </a>
-                                                        </>
-                                                    ) : null}
-                                                </dd>
-                                            </div>
-                                            <Field
-                                                label="Coordinates"
-                                                value={
-                                                    selectedTerminal
-                                                        ? `${selectedTerminal.latitude}, ${selectedTerminal.longitude}`
-                                                        : null
+                                        {shownTab === 'sailings' && (
+                                            <div
+                                                className="relationship-grid is-sailings-only"
+                                                style={
+                                                    vesselStackHeight
+                                                        ? ({
+                                                              '--vessel-stack-height': `${vesselStackHeight}px`,
+                                                          } as CSSProperties)
+                                                        : undefined
                                                 }
-                                            />
-                                        </article>
-                                        <div className="relationship-link">
-                                            <span>{associatedVessels.length} associated</span>
-                                            <ArrowRight />
-                                        </div>
-                                        <div
-                                            className={`vessel-stack${recordedDay ? ' is-dimmed' : ''}`}
-                                            ref={vesselStackRef}
-                                        >
-                                            {recordedDay && <p className="vessel-live-note">Live positions only.</p>}
-                                            {associatedVessels.length ? (
-                                                associatedVessels.map((vessel) => {
-                                                    const clickable = vessel.departingTerminalId !== null;
-                                                    return (
-                                                        <article
-                                                            className={`relationship-node vessel-node${clickable ? ' is-clickable' : ''}`}
-                                                            key={vessel.id}
-                                                            {...(clickable
-                                                                ? {
-                                                                      role: 'button',
-                                                                      tabIndex: 0,
-                                                                      'aria-label': `Show ${vessel.name}'s route in the sailings view`,
-                                                                      onClick: () =>
-                                                                          pickRoute(
-                                                                              vessel.departingTerminalId,
-                                                                              vessel.arrivingTerminalId
-                                                                          ),
-                                                                      onKeyDown: (
-                                                                          event: KeyboardEvent<HTMLElement>
-                                                                      ) => {
-                                                                          if (
-                                                                              event.key === 'Enter' ||
-                                                                              event.key === ' '
-                                                                          ) {
-                                                                              event.preventDefault();
-                                                                              pickRoute(
-                                                                                  vessel.departingTerminalId,
-                                                                                  vessel.arrivingTerminalId
-                                                                              );
-                                                                          }
-                                                                      },
+                                            >
+                                                <article
+                                                    className={`relationship-node terminal-node${selectedTerminal ? ' is-clickable' : ''}`}
+                                                    {...(selectedTerminal
+                                                        ? {
+                                                              role: 'button',
+                                                              tabIndex: 0,
+                                                              'aria-label': `Show ${selectedTerminal.name} on the Terminals tab`,
+                                                              onClick: () =>
+                                                                  showTerminalOnTerminalsTab(selectedTerminal.id),
+                                                              onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+                                                                  if (event.key === 'Enter' || event.key === ' ') {
+                                                                      event.preventDefault();
+                                                                      showTerminalOnTerminalsTab(selectedTerminal.id);
                                                                   }
-                                                                : {})}
-                                                        >
-                                                            <span className="node-type">Vessel</span>
-                                                            <div className="vessel-status-icon">
-                                                                {vessel.atDock ? (
-                                                                    <Anchor size={20} />
-                                                                ) : (
-                                                                    <Wind size={20} />
-                                                                )}
+                                                              },
+                                                          }
+                                                        : {})}
+                                                >
+                                                    <span className="node-type">Terminal</span>
+                                                    <h2>{selectedTerminal?.name ?? 'No terminal'}</h2>
+                                                    <div className="field">
+                                                        <dt>City</dt>
+                                                        <dd>
+                                                            {selectedTerminal?.city}
+                                                            {selectedTerminal?.latitude &&
+                                                            selectedTerminal?.longitude ? (
+                                                                <>
+                                                                    {' '}
+                                                                    <a
+                                                                        href={`https://maps.google.com/?q=${selectedTerminal.latitude},${selectedTerminal.longitude}`}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        onClick={(event) => event.stopPropagation()}
+                                                                        style={{
+                                                                            color: 'var(--accent)',
+                                                                            textDecoration: 'none',
+                                                                            marginLeft: '6px',
+                                                                        }}
+                                                                    >
+                                                                        <ExternalLink size={13} />
+                                                                    </a>
+                                                                </>
+                                                            ) : null}
+                                                        </dd>
+                                                    </div>
+                                                    <Field
+                                                        label="Coordinates"
+                                                        value={
+                                                            selectedTerminal
+                                                                ? `${selectedTerminal.latitude}, ${selectedTerminal.longitude}`
+                                                                : null
+                                                        }
+                                                    />
+                                                </article>
+                                                <div className="relationship-link">
+                                                    <span>{associatedVessels.length} associated</span>
+                                                    <ArrowRight />
+                                                </div>
+                                                <div
+                                                    className={`vessel-stack${recordedDay ? ' is-dimmed' : ''}`}
+                                                    ref={vesselStackRef}
+                                                >
+                                                    {recordedDay && (
+                                                        <p className="vessel-live-note">Live positions only.</p>
+                                                    )}
+                                                    {associatedVessels.length ? (
+                                                        associatedVessels.map((vessel) => {
+                                                            const clickable = vessel.departingTerminalId !== null;
+                                                            return (
+                                                                <article
+                                                                    className={`relationship-node vessel-node${clickable ? ' is-clickable' : ''}`}
+                                                                    key={vessel.id}
+                                                                    {...(clickable
+                                                                        ? {
+                                                                              role: 'button',
+                                                                              tabIndex: 0,
+                                                                              'aria-label': `Show ${vessel.name}'s route in the sailings view`,
+                                                                              onClick: () =>
+                                                                                  pickRoute(
+                                                                                      vessel.departingTerminalId,
+                                                                                      vessel.arrivingTerminalId
+                                                                                  ),
+                                                                              onKeyDown: (
+                                                                                  event: KeyboardEvent<HTMLElement>
+                                                                              ) => {
+                                                                                  if (
+                                                                                      event.key === 'Enter' ||
+                                                                                      event.key === ' '
+                                                                                  ) {
+                                                                                      event.preventDefault();
+                                                                                      pickRoute(
+                                                                                          vessel.departingTerminalId,
+                                                                                          vessel.arrivingTerminalId
+                                                                                      );
+                                                                                  }
+                                                                              },
+                                                                          }
+                                                                        : {})}
+                                                                >
+                                                                    <span className="node-type">Vessel</span>
+                                                                    <div className="vessel-status-icon">
+                                                                        {vessel.atDock ? (
+                                                                            <Anchor size={20} />
+                                                                        ) : (
+                                                                            <Wind size={20} />
+                                                                        )}
+                                                                    </div>
+                                                                    <h2>{vessel.name}</h2>
+                                                                    <p>
+                                                                        {vessel.departingTerminalName ?? '—'}{' '}
+                                                                        <ArrowRight size={14} />{' '}
+                                                                        {vessel.arrivingTerminalName ?? '—'}
+                                                                    </p>
+                                                                    <Field label="Class" value={vessel.vesselClass} />
+                                                                    <Field
+                                                                        label="Left dock"
+                                                                        value={<VesselDeparture vessel={vessel} />}
+                                                                    />
+                                                                    <Field
+                                                                        label="ETA"
+                                                                        value={
+                                                                            <VesselEta
+                                                                                vessel={vessel}
+                                                                                crossings={crossings}
+                                                                                now={countdownNow}
+                                                                            />
+                                                                        }
+                                                                    />
+                                                                    <Field
+                                                                        label="ETA basis"
+                                                                        value={
+                                                                            vessel.etaBasis ? (
+                                                                                <span className="field-note">
+                                                                                    {vessel.etaBasis}
+                                                                                </span>
+                                                                            ) : null
+                                                                        }
+                                                                    />
+                                                                    <Field
+                                                                        label="Speed"
+                                                                        value={
+                                                                            vessel.speed === null
+                                                                                ? null
+                                                                                : `${vessel.speed} knots`
+                                                                        }
+                                                                    />
+                                                                    <Field
+                                                                        label="Updated"
+                                                                        value={fieldTime(vessel.updatedAt)}
+                                                                    />
+                                                                </article>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <div className="empty">
+                                                            No vessel currently references this terminal.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="relationship-link">
+                                                    <span>{scheduleResponse?.data.length ?? 0} sailings</span>
+                                                    <ArrowRight />
+                                                </div>
+                                                <article className="relationship-node schedule-node">
+                                                    <HintButton
+                                                        type="button"
+                                                        className="schedule-node-header"
+                                                        hint={'Show the Historical tab'}
+                                                        onClick={() => setTab('historical')}
+                                                    >
+                                                        <span className="node-type">Sailings schedule</span>
+                                                        <h2>
+                                                            {selectedTerminal?.name ?? '—'} to{' '}
+                                                            {destination?.name ?? '—'}
+                                                        </h2>
+                                                    </HintButton>
+                                                    {/* The terminal card is collapsed out of this view, so this is the only way back to it. */}
+                                                    {selectedTerminal && (
+                                                        <div className="schedule-node-terminal">
+                                                            <HintButton
+                                                                type="button"
+                                                                className="card-link"
+                                                                aria-label={`Show the ${selectedTerminal.name} terminal card`}
+                                                                hint={`Show the ${selectedTerminal.name} terminal card`}
+                                                                onClick={() =>
+                                                                    showTerminalOnTerminalsTab(selectedTerminal.id)
+                                                                }
+                                                            >
+                                                                <MapPin size={13} />
+                                                                {selectedTerminal.name}
+                                                            </HintButton>
+                                                            <AlertInfo alerts={selectedTerminal.alerts} />
+                                                        </div>
+                                                    )}
+                                                    {scheduleResponse?.data.length ? (
+                                                        <ol className="sailing-list" ref={sailingColumns.ref}>
+                                                            {scheduleResponse.data.map((sailing, index) => {
+                                                                const linkedVesselId = sailingRowVesselId(sailing);
+                                                                const itemClasses = [
+                                                                    isCurrentSailing(sailing, currentSailing)
+                                                                        ? 'current'
+                                                                        : '',
+                                                                    linkedVesselId !== null ? 'is-linked' : '',
+                                                                ]
+                                                                    .filter(Boolean)
+                                                                    .join(' ');
+                                                                return (
+                                                                    <li
+                                                                        key={`${sailing.departingTime}-${index}`}
+                                                                        className={itemClasses || undefined}
+                                                                        style={
+                                                                            sailingColumns.breaks.has(index)
+                                                                                ? { breakBefore: 'column' }
+                                                                                : undefined
+                                                                        }
+                                                                        {...(linkedVesselId !== null
+                                                                            ? {
+                                                                                  tabIndex: 0,
+                                                                                  'aria-label': `View ${sailing.vesselName} on the Vessels tab`,
+                                                                                  onClick: () =>
+                                                                                      showVesselOnVesselsTab(
+                                                                                          linkedVesselId
+                                                                                      ),
+                                                                                  onKeyDown: (
+                                                                                      event: KeyboardEvent<HTMLLIElement>
+                                                                                  ) => {
+                                                                                      if (
+                                                                                          event.key === 'Enter' ||
+                                                                                          event.key === ' '
+                                                                                      ) {
+                                                                                          event.preventDefault();
+                                                                                          showVesselOnVesselsTab(
+                                                                                              linkedVesselId
+                                                                                          );
+                                                                                      }
+                                                                                  },
+                                                                              }
+                                                                            : {})}
+                                                                    >
+                                                                        <div className="sailing-row">
+                                                                            <strong>
+                                                                                {localTime(sailing.departingTime)}
+                                                                            </strong>
+                                                                            <DepartureDelay
+                                                                                sailing={sailing}
+                                                                                vessels={vessels}
+                                                                            />
+                                                                        </div>
+                                                                        <div className="sailing-row">
+                                                                            <span>
+                                                                                {sailing.vesselName ??
+                                                                                    'Vessel unassigned'}
+                                                                            </span>
+                                                                            {sailing.spaceAvailable && (
+                                                                                <span
+                                                                                    className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`}
+                                                                                >
+                                                                                    <Car
+                                                                                        className="space-icon"
+                                                                                        size={13}
+                                                                                        role="img"
+                                                                                        aria-label="Vehicle space"
+                                                                                    />
+                                                                                    {phoneVehicleSpace(sailing)}{' '}
+                                                                                    <RecordedSpaceMark
+                                                                                        sailing={sailing}
+                                                                                    />{' '}
+                                                                                    <CapacityMeter
+                                                                                        sailing={sailing}
+                                                                                        showDetails={false}
+                                                                                    />
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </li>
+                                                                );
+                                                            })}
+                                                        </ol>
+                                                    ) : scheduleLoading ? (
+                                                        <div className="sailing-placeholder" aria-hidden="true">
+                                                            <i />
+                                                            <i />
+                                                            <i />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="empty">No sailings in this 14-hour window.</div>
+                                                    )}
+                                                </article>
+                                            </div>
+                                        )}
+
+                                        {shownTab === 'terminals' && (
+                                            <div className="data-grid">
+                                                {terminals.map((terminal) => (
+                                                    <article
+                                                        className={`data-card${terminal.id === highlightedTerminalId ? ' is-highlighted' : ''}`}
+                                                        key={terminal.id}
+                                                        ref={(element) => {
+                                                            if (element)
+                                                                terminalCardRefs.current[terminal.id] = element;
+                                                            else delete terminalCardRefs.current[terminal.id];
+                                                        }}
+                                                    >
+                                                        <h2>
+                                                            <HintButton
+                                                                className="card-link"
+                                                                type="button"
+                                                                hint={`Show ${terminal.name} in the sailings view`}
+                                                                onClick={() => openRoute(terminal.id, null)}
+                                                            >
+                                                                {terminal.name}
+                                                            </HintButton>
+                                                        </h2>
+                                                        <dl>
+                                                            <div className="field">
+                                                                <dt>City</dt>
+                                                                <dd>
+                                                                    {terminal.city}
+                                                                    {terminal.latitude && terminal.longitude ? (
+                                                                        <>
+                                                                            {' '}
+                                                                            <a
+                                                                                href={`https://maps.google.com/?q=${terminal.latitude},${terminal.longitude}`}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                style={{
+                                                                                    color: 'var(--accent)',
+                                                                                    textDecoration: 'none',
+                                                                                    marginLeft: '6px',
+                                                                                }}
+                                                                            >
+                                                                                <ExternalLink size={13} />
+                                                                            </a>
+                                                                        </>
+                                                                    ) : null}
+                                                                </dd>
                                                             </div>
-                                                            <h2>{vessel.name}</h2>
-                                                            <p>
-                                                                {vessel.departingTerminalName ?? '—'}{' '}
-                                                                <ArrowRight size={14} />{' '}
-                                                                {vessel.arrivingTerminalName ?? '—'}
-                                                            </p>
+                                                            <Field label="Latitude" value={terminal.latitude} />
+                                                            <Field label="Longitude" value={terminal.longitude} />
+                                                        </dl>
+                                                        <TerminalAlerts alerts={terminal.alerts} />
+                                                        <TerminalCameras
+                                                            terminalName={terminal.name}
+                                                            cameras={orderCameras(
+                                                                terminal.cameras,
+                                                                cameraOrder[terminal.id]
+                                                            )}
+                                                            stamp={cameraStamp}
+                                                            onReorder={(ids) => changeCameraOrder(terminal.id, ids)}
+                                                            onOpen={(camera, opener) =>
+                                                                openCamera(terminal.id, camera.id, opener)
+                                                            }
+                                                        />
+                                                    </article>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {shownTab === 'vessels' && (
+                                            <div className="data-grid">
+                                                {vessels.map((vessel) => (
+                                                    <article
+                                                        className={`data-card${vessel.id === highlightedVesselId ? ' is-highlighted' : ''}`}
+                                                        key={vessel.id}
+                                                        ref={(element) => {
+                                                            if (element) vesselCardRefs.current[vessel.id] = element;
+                                                            else delete vesselCardRefs.current[vessel.id];
+                                                        }}
+                                                    >
+                                                        <div className="vessel-status-icon">
+                                                            {vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}
+                                                        </div>
+                                                        <h2>
+                                                            {vessel.departingTerminalId === null ? (
+                                                                vessel.name
+                                                            ) : (
+                                                                <HintButton
+                                                                    className="card-link"
+                                                                    type="button"
+                                                                    hint={`Show ${vessel.name}'s route in the sailings view`}
+                                                                    onClick={() =>
+                                                                        openRoute(
+                                                                            vessel.departingTerminalId,
+                                                                            vessel.arrivingTerminalId
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    {vessel.name}
+                                                                </HintButton>
+                                                            )}
+                                                        </h2>
+                                                        <dl>
                                                             <Field label="Class" value={vessel.vesselClass} />
+                                                            <Field
+                                                                label="Direction"
+                                                                value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`}
+                                                            />
+                                                            <Field label="In service" value={vessel.inService} />
+                                                            <Field label="At dock" value={vessel.atDock} />
                                                             <Field
                                                                 label="Left dock"
                                                                 value={<VesselDeparture vessel={vessel} />}
@@ -2135,1094 +2450,887 @@ export function App() {
                                                                 }
                                                             />
                                                             <Field
-                                                                label="Speed"
-                                                                value={
-                                                                    vessel.speed === null
-                                                                        ? null
-                                                                        : `${vessel.speed} knots`
-                                                                }
-                                                            />
-                                                            <Field
                                                                 label="Updated"
                                                                 value={fieldTime(vessel.updatedAt)}
                                                             />
-                                                        </article>
-                                                    );
-                                                })
-                                            ) : (
-                                                <div className="empty">
-                                                    No vessel currently references this terminal.
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="relationship-link">
-                                            <span>{scheduleResponse?.data.length ?? 0} sailings</span>
-                                            <ArrowRight />
-                                        </div>
-                                        <article className="relationship-node schedule-node">
-                                            <HintButton
-                                                type="button"
-                                                className="schedule-node-header"
-                                                hint={'Show the Historical tab'}
-                                                onClick={() => setTab('historical')}
-                                            >
-                                                <span className="node-type">Sailings schedule</span>
-                                                <h2>
-                                                    {selectedTerminal?.name ?? '—'} to {destination?.name ?? '—'}
-                                                </h2>
-                                            </HintButton>
-                                            {/* The terminal card is collapsed out of this view, so this is the only way back to it. */}
-                                            {selectedTerminal && (
-                                                <div className="schedule-node-terminal">
-                                                    <HintButton
-                                                        type="button"
-                                                        className="card-link"
-                                                        aria-label={`Show the ${selectedTerminal.name} terminal card`}
-                                                        hint={`Show the ${selectedTerminal.name} terminal card`}
-                                                        onClick={() => showTerminalOnTerminalsTab(selectedTerminal.id)}
-                                                    >
-                                                        <MapPin size={13} />
-                                                        {selectedTerminal.name}
-                                                    </HintButton>
-                                                    <AlertInfo alerts={selectedTerminal.alerts} />
-                                                </div>
-                                            )}
-                                            {scheduleResponse?.data.length ? (
-                                                <ol className="sailing-list" ref={sailingColumns.ref}>
-                                                    {scheduleResponse.data.map((sailing, index) => {
-                                                        const linkedVesselId = sailingRowVesselId(sailing);
-                                                        const itemClasses = [
-                                                            isCurrentSailing(sailing, currentSailing) ? 'current' : '',
-                                                            linkedVesselId !== null ? 'is-linked' : '',
-                                                        ]
-                                                            .filter(Boolean)
-                                                            .join(' ');
-                                                        return (
-                                                            <li
-                                                                key={`${sailing.departingTime}-${index}`}
-                                                                className={itemClasses || undefined}
-                                                                style={
-                                                                    sailingColumns.breaks.has(index)
-                                                                        ? { breakBefore: 'column' }
-                                                                        : undefined
-                                                                }
-                                                                {...(linkedVesselId !== null
-                                                                    ? {
-                                                                          tabIndex: 0,
-                                                                          'aria-label': `View ${sailing.vesselName} on the Vessels tab`,
-                                                                          onClick: () =>
-                                                                              showVesselOnVesselsTab(linkedVesselId),
-                                                                          onKeyDown: (
-                                                                              event: KeyboardEvent<HTMLLIElement>
-                                                                          ) => {
-                                                                              if (
-                                                                                  event.key === 'Enter' ||
-                                                                                  event.key === ' '
-                                                                              ) {
-                                                                                  event.preventDefault();
-                                                                                  showVesselOnVesselsTab(
-                                                                                      linkedVesselId
-                                                                                  );
-                                                                              }
-                                                                          },
-                                                                      }
-                                                                    : {})}
-                                                            >
-                                                                <div className="sailing-row">
-                                                                    <strong>{localTime(sailing.departingTime)}</strong>
-                                                                    <DepartureDelay
-                                                                        sailing={sailing}
-                                                                        vessels={vessels}
-                                                                    />
-                                                                </div>
-                                                                <div className="sailing-row">
-                                                                    <span>
-                                                                        {sailing.vesselName ?? 'Vessel unassigned'}
-                                                                    </span>
-                                                                    {sailing.spaceAvailable && (
-                                                                        <span
-                                                                            className={`space-count${sailing.spaceSource === 'recorded' ? ' is-recorded' : ''}`}
-                                                                        >
-                                                                            <Car
-                                                                                className="space-icon"
-                                                                                size={13}
-                                                                                role="img"
-                                                                                aria-label="Vehicle space"
-                                                                            />
-                                                                            {phoneVehicleSpace(sailing)}{' '}
-                                                                            <RecordedSpaceMark sailing={sailing} />{' '}
-                                                                            <CapacityMeter
-                                                                                sailing={sailing}
-                                                                                showDetails={false}
-                                                                            />
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </li>
-                                                        );
-                                                    })}
-                                                </ol>
-                                            ) : scheduleLoading ? (
-                                                <div className="sailing-placeholder" aria-hidden="true">
-                                                    <i />
-                                                    <i />
-                                                    <i />
-                                                </div>
-                                            ) : (
-                                                <div className="empty">No sailings in this 14-hour window.</div>
-                                            )}
-                                        </article>
-                                    </div>
-                                )}
-
-                                {tab === 'terminals' && (
-                                    <div className="data-grid">
-                                        {terminals.map((terminal) => (
-                                            <article
-                                                className={`data-card${terminal.id === highlightedTerminalId ? ' is-highlighted' : ''}`}
-                                                key={terminal.id}
-                                                ref={(element) => {
-                                                    if (element) terminalCardRefs.current[terminal.id] = element;
-                                                    else delete terminalCardRefs.current[terminal.id];
-                                                }}
-                                            >
-                                                <h2>
-                                                    <HintButton
-                                                        className="card-link"
-                                                        type="button"
-                                                        hint={`Show ${terminal.name} in the sailings view`}
-                                                        onClick={() => openRoute(terminal.id, null)}
-                                                    >
-                                                        {terminal.name}
-                                                    </HintButton>
-                                                </h2>
-                                                <dl>
-                                                    <div className="field">
-                                                        <dt>City</dt>
-                                                        <dd>
-                                                            {terminal.city}
-                                                            {terminal.latitude && terminal.longitude ? (
-                                                                <>
-                                                                    {' '}
-                                                                    <a
-                                                                        href={`https://maps.google.com/?q=${terminal.latitude},${terminal.longitude}`}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        style={{
-                                                                            color: 'var(--accent)',
-                                                                            textDecoration: 'none',
-                                                                            marginLeft: '6px',
-                                                                        }}
-                                                                    >
-                                                                        <ExternalLink size={13} />
-                                                                    </a>
-                                                                </>
-                                                            ) : null}
-                                                        </dd>
-                                                    </div>
-                                                    <Field label="Latitude" value={terminal.latitude} />
-                                                    <Field label="Longitude" value={terminal.longitude} />
-                                                </dl>
-                                                <TerminalAlerts alerts={terminal.alerts} />
-                                                <TerminalCameras
-                                                    terminalName={terminal.name}
-                                                    cameras={orderCameras(terminal.cameras, cameraOrder[terminal.id])}
-                                                    stamp={cameraStamp}
-                                                    onReorder={(ids) => changeCameraOrder(terminal.id, ids)}
-                                                    onOpen={(camera, opener) =>
-                                                        openCamera(terminal.id, camera.id, opener)
-                                                    }
-                                                />
-                                            </article>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {tab === 'vessels' && (
-                                    <div className="data-grid">
-                                        {vessels.map((vessel) => (
-                                            <article
-                                                className={`data-card${vessel.id === highlightedVesselId ? ' is-highlighted' : ''}`}
-                                                key={vessel.id}
-                                                ref={(element) => {
-                                                    if (element) vesselCardRefs.current[vessel.id] = element;
-                                                    else delete vesselCardRefs.current[vessel.id];
-                                                }}
-                                            >
-                                                <div className="vessel-status-icon">
-                                                    {vessel.atDock ? <Anchor size={20} /> : <Wind size={20} />}
-                                                </div>
-                                                <h2>
-                                                    {vessel.departingTerminalId === null ? (
-                                                        vessel.name
-                                                    ) : (
-                                                        <HintButton
-                                                            className="card-link"
-                                                            type="button"
-                                                            hint={`Show ${vessel.name}'s route in the sailings view`}
-                                                            onClick={() =>
-                                                                openRoute(
-                                                                    vessel.departingTerminalId,
-                                                                    vessel.arrivingTerminalId
-                                                                )
-                                                            }
-                                                        >
-                                                            {vessel.name}
-                                                        </HintButton>
-                                                    )}
-                                                </h2>
-                                                <dl>
-                                                    <Field label="Class" value={vessel.vesselClass} />
-                                                    <Field
-                                                        label="Direction"
-                                                        value={`${vessel.departingTerminalName ?? '?'} → ${vessel.arrivingTerminalName ?? '?'}`}
-                                                    />
-                                                    <Field label="In service" value={vessel.inService} />
-                                                    <Field label="At dock" value={vessel.atDock} />
-                                                    <Field
-                                                        label="Left dock"
-                                                        value={<VesselDeparture vessel={vessel} />}
-                                                    />
-                                                    <Field
-                                                        label="ETA"
-                                                        value={
-                                                            <VesselEta
-                                                                vessel={vessel}
-                                                                crossings={crossings}
-                                                                now={countdownNow}
-                                                            />
-                                                        }
-                                                    />
-                                                    <Field
-                                                        label="ETA basis"
-                                                        value={
-                                                            vessel.etaBasis ? (
-                                                                <span className="field-note">{vessel.etaBasis}</span>
-                                                            ) : null
-                                                        }
-                                                    />
-                                                    <Field label="Updated" value={fieldTime(vessel.updatedAt)} />
-                                                </dl>
-                                            </article>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {tab === 'historical' && (
-                                    <div className="schedule-card">
-                                        <div className="schedule-heading">
-                                            <span className="node-type">Historical sailings</span>
-                                        </div>
-                                        <div className="table-wrap">
-                                            <table>
-                                                <thead>
-                                                    <tr>
-                                                        <th>Departure</th>
-                                                        <th>Left</th>
-                                                        <th>Arrival</th>
-                                                        <th>Sailing time</th>
-                                                        <th className="col-vessel">Vessel</th>
-                                                        <th>Vehicle space</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {scheduleResponse?.data.map((sailing, index) => {
-                                                        const linkedVesselId = sailingRowVesselId(sailing);
-                                                        const rowClasses = [
-                                                            isCurrentSailing(sailing, currentSailing) ? 'current' : '',
-                                                            linkedVesselId !== null ? 'is-linked' : '',
-                                                        ]
-                                                            .filter(Boolean)
-                                                            .join(' ');
-                                                        return (
-                                                            <tr
-                                                                key={`${sailing.departingTime}-${index}`}
-                                                                className={rowClasses || undefined}
-                                                                {...(linkedVesselId !== null
-                                                                    ? {
-                                                                          tabIndex: 0,
-                                                                          'aria-label': `View ${sailing.vesselName} on the Vessels tab`,
-                                                                          onClick: () =>
-                                                                              showVesselOnVesselsTab(linkedVesselId),
-                                                                          onKeyDown: (
-                                                                              event: KeyboardEvent<HTMLTableRowElement>
-                                                                          ) => {
-                                                                              if (
-                                                                                  event.key === 'Enter' ||
-                                                                                  event.key === ' '
-                                                                              ) {
-                                                                                  event.preventDefault();
-                                                                                  showVesselOnVesselsTab(
-                                                                                      linkedVesselId
-                                                                                  );
-                                                                              }
-                                                                          },
-                                                                      }
-                                                                    : {})}
-                                                            >
-                                                                <td>{localTime(sailing.departingTime)}</td>
-                                                                <td>
-                                                                    <DepartureDelay
-                                                                        sailing={sailing}
-                                                                        vessels={vessels}
-                                                                        placeholder="—"
-                                                                    />
-                                                                </td>
-                                                                <td>
-                                                                    <SailingArrival
-                                                                        sailing={sailing}
-                                                                        vessels={vessels}
-                                                                        crossings={crossings}
-                                                                        now={countdownNow}
-                                                                    />
-                                                                </td>
-                                                                <td>
-                                                                    <SailingTime
-                                                                        sailing={sailing}
-                                                                        vessels={vessels}
-                                                                        crossings={crossings}
-                                                                        now={countdownNow}
-                                                                    />
-                                                                </td>
-                                                                <td className="col-vessel">
-                                                                    <SailingVessel
-                                                                        sailing={sailing}
-                                                                        vessels={vessels}
-                                                                        onOpen={openRoute}
-                                                                    />
-                                                                </td>
-                                                                <td
-                                                                    className={
-                                                                        sailing.spaceSource === 'recorded'
-                                                                            ? 'is-recorded'
-                                                                            : undefined
-                                                                    }
-                                                                >
-                                                                    <span className="space-detail">
-                                                                        {vehicleSpace(sailing)}{' '}
-                                                                        <RecordedSpaceMark sailing={sailing} />
-                                                                    </span>
-                                                                    <span className="space-desktop-pill">
-                                                                        <CapacityMeter
-                                                                            sailing={sailing}
-                                                                            showDetails={false}
-                                                                        />
-                                                                    </span>
-                                                                    <span className="space-percent-only">
-                                                                        <MobileSpacePercent
-                                                                            sailing={sailing}
-                                                                            showDetails={false}
-                                                                        />
-                                                                    </span>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                            {!scheduleLoading && !scheduleResponse?.data.length && (
-                                                <div className="empty">No sailings in this 14-hour window.</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {tab === 'catch' && (
-                                    <div className="countdown-card">
-                                        <div className="schedule-heading catch-heading has-switcher">
-                                            <div>
-                                                <span className="node-type">Leave by</span>
-                                                <h2>
-                                                    {catchRoute
-                                                        ? routeName(catchRoute, terminals)
-                                                        : 'No favorite route'}
-                                                </h2>
-                                                {/* The Catch tab hides the selection band, so this is the only way to its terminal card. */}
-                                                {catchOriginTerminal && (
-                                                    <HintButton
-                                                        type="button"
-                                                        className="card-link schedule-node-terminal"
-                                                        aria-label={`Show the ${catchOriginTerminal.name} terminal card`}
-                                                        hint={`Show the ${catchOriginTerminal.name} terminal card`}
-                                                        onClick={() =>
-                                                            showTerminalOnTerminalsTab(catchOriginTerminal.id)
-                                                        }
-                                                    >
-                                                        <MapPin size={13} />
-                                                        {catchOriginTerminal.name}
-                                                    </HintButton>
-                                                )}
+                                                        </dl>
+                                                    </article>
+                                                ))}
                                             </div>
-                                            {favoriteRoutes.length > 1 && (
-                                                <div className="route-chips" role="group" aria-label="Catch route">
-                                                    {favoriteRoutes.map((route) => {
-                                                        const key = routeKey(route);
-                                                        const active = key === catchRouteKeyValue;
-                                                        return (
-                                                            <HintButton
-                                                                key={key}
-                                                                type="button"
-                                                                className={`route-chip${active ? ' active' : ''}`}
-                                                                aria-pressed={active}
-                                                                hint={routePairName(route, terminals)}
-                                                                onClick={() => changeCatchRoute(key)}
-                                                            >
-                                                                {routeName(route, terminals)}
-                                                            </HintButton>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-                                        {catchRoute && (
-                                            <NotificationControl notifications={catchNotifications} kind="catch" />
                                         )}
-                                        {catchRoute && (
-                                            <div className="catch-timing">
-                                                <button
-                                                    className="settings-disclosure"
-                                                    type="button"
-                                                    aria-expanded={catchPaddingOpen}
-                                                    onClick={toggleCatchPadding}
-                                                >
-                                                    <ChevronDown className={catchPaddingOpen ? 'open' : ''} size={14} />
-                                                    <span className="node-type">Padding</span>
-                                                    <span className="settings-disclosure-count">
-                                                        {timing.padMinutes} min
-                                                    </span>
-                                                    {timing.overridden && (
-                                                        <span className="catch-timing-custom">Custom</span>
+
+                                        {shownTab === 'historical' && (
+                                            <div className="schedule-card">
+                                                <div className="schedule-heading">
+                                                    <span className="node-type">Historical sailings</span>
+                                                </div>
+                                                <div className="table-wrap">
+                                                    <table>
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Departure</th>
+                                                                <th>Left</th>
+                                                                <th>Arrival</th>
+                                                                <th>Sailing time</th>
+                                                                <th className="col-vessel">Vessel</th>
+                                                                <th>Vehicle space</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {scheduleResponse?.data.map((sailing, index) => {
+                                                                const linkedVesselId = sailingRowVesselId(sailing);
+                                                                const rowClasses = [
+                                                                    isCurrentSailing(sailing, currentSailing)
+                                                                        ? 'current'
+                                                                        : '',
+                                                                    linkedVesselId !== null ? 'is-linked' : '',
+                                                                ]
+                                                                    .filter(Boolean)
+                                                                    .join(' ');
+                                                                return (
+                                                                    <tr
+                                                                        key={`${sailing.departingTime}-${index}`}
+                                                                        className={rowClasses || undefined}
+                                                                        {...(linkedVesselId !== null
+                                                                            ? {
+                                                                                  tabIndex: 0,
+                                                                                  'aria-label': `View ${sailing.vesselName} on the Vessels tab`,
+                                                                                  onClick: () =>
+                                                                                      showVesselOnVesselsTab(
+                                                                                          linkedVesselId
+                                                                                      ),
+                                                                                  onKeyDown: (
+                                                                                      event: KeyboardEvent<HTMLTableRowElement>
+                                                                                  ) => {
+                                                                                      if (
+                                                                                          event.key === 'Enter' ||
+                                                                                          event.key === ' '
+                                                                                      ) {
+                                                                                          event.preventDefault();
+                                                                                          showVesselOnVesselsTab(
+                                                                                              linkedVesselId
+                                                                                          );
+                                                                                      }
+                                                                                  },
+                                                                              }
+                                                                            : {})}
+                                                                    >
+                                                                        <td>{localTime(sailing.departingTime)}</td>
+                                                                        <td>
+                                                                            <DepartureDelay
+                                                                                sailing={sailing}
+                                                                                vessels={vessels}
+                                                                                placeholder="—"
+                                                                            />
+                                                                        </td>
+                                                                        <td>
+                                                                            <SailingArrival
+                                                                                sailing={sailing}
+                                                                                vessels={vessels}
+                                                                                crossings={crossings}
+                                                                                now={countdownNow}
+                                                                            />
+                                                                        </td>
+                                                                        <td>
+                                                                            <SailingTime
+                                                                                sailing={sailing}
+                                                                                vessels={vessels}
+                                                                                crossings={crossings}
+                                                                                now={countdownNow}
+                                                                            />
+                                                                        </td>
+                                                                        <td className="col-vessel">
+                                                                            <SailingVessel
+                                                                                sailing={sailing}
+                                                                                vessels={vessels}
+                                                                                onOpen={openRoute}
+                                                                            />
+                                                                        </td>
+                                                                        <td
+                                                                            className={
+                                                                                sailing.spaceSource === 'recorded'
+                                                                                    ? 'is-recorded'
+                                                                                    : undefined
+                                                                            }
+                                                                        >
+                                                                            <span className="space-detail">
+                                                                                {vehicleSpace(sailing)}{' '}
+                                                                                <RecordedSpaceMark sailing={sailing} />
+                                                                            </span>
+                                                                            <span className="space-desktop-pill">
+                                                                                <CapacityMeter
+                                                                                    sailing={sailing}
+                                                                                    showDetails={false}
+                                                                                />
+                                                                            </span>
+                                                                            <span className="space-percent-only">
+                                                                                <MobileSpacePercent
+                                                                                    sailing={sailing}
+                                                                                    showDetails={false}
+                                                                                />
+                                                                            </span>
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                    {!scheduleLoading && !scheduleResponse?.data.length && (
+                                                        <div className="empty">No sailings in this 14-hour window.</div>
                                                     )}
-                                                </button>
-                                                {catchPaddingOpen && (
-                                                    <div className="catch-timing-controls">
-                                                        <label>
-                                                            <span>Traffic</span>
-                                                            <FilterSelect
-                                                                ariaLabel="Catch traffic"
-                                                                value={timing.trafficMinutes}
-                                                                onChange={(value) =>
-                                                                    changeCatchOverride({ trafficMinutes: value })
-                                                                }
-                                                                options={minuteOptions}
-                                                            />
-                                                        </label>
-                                                        <label>
-                                                            <span>Queue</span>
-                                                            <FilterSelect
-                                                                ariaLabel="Catch queue"
-                                                                value={timing.queueMinutes}
-                                                                onChange={(value) =>
-                                                                    changeCatchOverride({ queueMinutes: value })
-                                                                }
-                                                                options={minuteOptions}
-                                                            />
-                                                        </label>
-                                                        {timing.overridden && (
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {shownTab === 'catch' && (
+                                            <div className="countdown-card">
+                                                <div className="schedule-heading catch-heading has-switcher">
+                                                    <div>
+                                                        <span className="node-type">Leave by</span>
+                                                        <h2>
+                                                            {catchRoute
+                                                                ? routeName(catchRoute, terminals)
+                                                                : 'No favorite route'}
+                                                        </h2>
+                                                        {/* The Catch tab hides the selection band, so this is the only way to its terminal card. */}
+                                                        {catchOriginTerminal && (
                                                             <HintButton
-                                                                className="catch-timing-reset"
                                                                 type="button"
-                                                                hint={'Go back to the padding in Settings'}
-                                                                onClick={resetCatchOverride}
+                                                                className="card-link schedule-node-terminal"
+                                                                aria-label={`Show the ${catchOriginTerminal.name} terminal card`}
+                                                                hint={`Show the ${catchOriginTerminal.name} terminal card`}
+                                                                onClick={() =>
+                                                                    showTerminalOnTerminalsTab(catchOriginTerminal.id)
+                                                                }
                                                             >
-                                                                <RotateCcw size={13} aria-hidden="true" />
-                                                                <span className="catch-timing-words">Use settings</span>
+                                                                <MapPin size={13} />
+                                                                {catchOriginTerminal.name}
                                                             </HintButton>
                                                         )}
                                                     </div>
+                                                    {favoriteRoutes.length > 1 && (
+                                                        <div
+                                                            className="route-chips"
+                                                            role="group"
+                                                            aria-label="Catch route"
+                                                        >
+                                                            {favoriteRoutes.map((route) => {
+                                                                const key = routeKey(route);
+                                                                const active = key === catchRouteKeyValue;
+                                                                return (
+                                                                    <HintButton
+                                                                        key={key}
+                                                                        type="button"
+                                                                        className={`route-chip${active ? ' active' : ''}`}
+                                                                        aria-pressed={active}
+                                                                        hint={routePairName(route, terminals)}
+                                                                        onClick={() => changeCatchRoute(key)}
+                                                                    >
+                                                                        {routeName(route, terminals)}
+                                                                    </HintButton>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {catchRoute && (
+                                                    <NotificationControl
+                                                        notifications={catchNotifications}
+                                                        kind="catch"
+                                                    />
+                                                )}
+                                                {catchRoute && (
+                                                    <div className="catch-timing">
+                                                        <button
+                                                            className="settings-disclosure"
+                                                            type="button"
+                                                            aria-expanded={catchPaddingOpen}
+                                                            onClick={toggleCatchPadding}
+                                                        >
+                                                            <ChevronDown
+                                                                className={catchPaddingOpen ? 'open' : ''}
+                                                                size={14}
+                                                            />
+                                                            <span className="node-type">Padding</span>
+                                                            <span className="settings-disclosure-count">
+                                                                {timing.padMinutes} min
+                                                            </span>
+                                                            {timing.overridden && (
+                                                                <span className="catch-timing-custom">Custom</span>
+                                                            )}
+                                                        </button>
+                                                        {catchPaddingOpen && (
+                                                            <div className="catch-timing-controls">
+                                                                <label>
+                                                                    <span>Traffic</span>
+                                                                    <FilterSelect
+                                                                        ariaLabel="Catch traffic"
+                                                                        value={timing.trafficMinutes}
+                                                                        onChange={(value) =>
+                                                                            changeCatchOverride({
+                                                                                trafficMinutes: value,
+                                                                            })
+                                                                        }
+                                                                        options={minuteOptions}
+                                                                    />
+                                                                </label>
+                                                                <label>
+                                                                    <span>Queue</span>
+                                                                    <FilterSelect
+                                                                        ariaLabel="Catch queue"
+                                                                        value={timing.queueMinutes}
+                                                                        onChange={(value) =>
+                                                                            changeCatchOverride({ queueMinutes: value })
+                                                                        }
+                                                                        options={minuteOptions}
+                                                                    />
+                                                                </label>
+                                                                {timing.overridden && (
+                                                                    <HintButton
+                                                                        className="catch-timing-reset"
+                                                                        type="button"
+                                                                        hint={'Go back to the padding in Settings'}
+                                                                        onClick={resetCatchOverride}
+                                                                    >
+                                                                        <RotateCcw size={13} aria-hidden="true" />
+                                                                        <span className="catch-timing-words">
+                                                                            Use settings
+                                                                        </span>
+                                                                    </HintButton>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {!catchRoute ? (
+                                                    <div className="empty">
+                                                        Add a favorite route in Settings to see when to leave.
+                                                    </div>
+                                                ) : catchLoading && !catchResponse ? (
+                                                    <div className="sailing-placeholder" aria-hidden="true">
+                                                        <i />
+                                                        <i />
+                                                        <i />
+                                                    </div>
+                                                ) : catchError ? (
+                                                    <div className="empty">{catchError}</div>
+                                                ) : nextCatch ? (
+                                                    <>
+                                                        <div
+                                                            className={`countdown-headline is-${catchWindowLevel(nextCatch, settings)}`}
+                                                        >
+                                                            <CatchTimes window={nextCatch} settings={settings} />
+                                                        </div>
+                                                        <dl className="countdown-detail">
+                                                            <Field
+                                                                label="Departure"
+                                                                value={
+                                                                    <>
+                                                                        {nextCatch.expectedDepartureAt && 'Scheduled '}
+                                                                        {fieldTime(nextCatch.departureAt)}
+                                                                        <CatchDelay window={nextCatch} />
+                                                                        {nextCatch.expectedDepartureAt && (
+                                                                            <Help
+                                                                                className="catch-departure-estimate"
+                                                                                help={
+                                                                                    nextCatch.delaySource === 'observed'
+                                                                                        ? 'Delay observed so far; not a future departure forecast'
+                                                                                        : 'Earliest departure from the inbound vessel ETA'
+                                                                                }
+                                                                            >
+                                                                                Estimated{' '}
+                                                                                {fieldTime(
+                                                                                    nextCatch.expectedDepartureAt
+                                                                                )}
+                                                                                {nextCatch.delaySource === 'observed'
+                                                                                    ? ' (delay so far)'
+                                                                                    : ''}
+                                                                            </Help>
+                                                                        )}
+                                                                    </>
+                                                                }
+                                                            />
+                                                            <Field
+                                                                label="Vessel"
+                                                                value={
+                                                                    nextCatch.vesselName && (
+                                                                        <VesselLink
+                                                                            vesselId={nextCatch.vesselId}
+                                                                            vesselName={nextCatch.vesselName}
+                                                                            vessels={vessels}
+                                                                            onOpen={openRoute}
+                                                                        />
+                                                                    )
+                                                                }
+                                                            />
+                                                            <Field
+                                                                label="Space"
+                                                                value={
+                                                                    nextCatch.spaceLabel && (
+                                                                        <>
+                                                                            {nextCatch.spaceLabel}{' '}
+                                                                            <CapacityPill
+                                                                                openPercent={nextCatch.spacePercent}
+                                                                                total={nextCatch.spaceTotal}
+                                                                                showDetails={false}
+                                                                            />
+                                                                        </>
+                                                                    )
+                                                                }
+                                                            />
+                                                        </dl>
+                                                        {laterCatches.length > 0 && (
+                                                            <div className="countdown-later">
+                                                                <span className="node-type">Then</span>
+                                                                <ol className="sailing-list">
+                                                                    {laterCatches.slice(0, 4).map((window) => (
+                                                                        <li key={window.departureAt}>
+                                                                            <strong>
+                                                                                {clockTime(window.departureAt)}
+                                                                                <CatchDelay window={window} />
+                                                                            </strong>
+                                                                            <CatchTimes
+                                                                                window={window}
+                                                                                settings={settings}
+                                                                                compact
+                                                                            />
+                                                                            <span>
+                                                                                {window.spaceLabel
+                                                                                    ? `${window.spaceLabel} `
+                                                                                    : ''}
+                                                                                <CapacityPill
+                                                                                    openPercent={window.spacePercent}
+                                                                                    total={window.spaceTotal}
+                                                                                    showDetails={false}
+                                                                                />
+                                                                            </span>
+                                                                        </li>
+                                                                    ))}
+                                                                </ol>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <div className="empty">
+                                                        No sailing left today that you can still make.
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
-                                        {!catchRoute ? (
-                                            <div className="empty">
-                                                Add a favorite route in Settings to see when to leave.
-                                            </div>
-                                        ) : catchLoading && !catchResponse ? (
-                                            <div className="sailing-placeholder" aria-hidden="true">
-                                                <i />
-                                                <i />
-                                                <i />
-                                            </div>
-                                        ) : catchError ? (
-                                            <div className="empty">{catchError}</div>
-                                        ) : nextCatch ? (
-                                            <>
-                                                <div
-                                                    className={`countdown-headline is-${catchWindowLevel(nextCatch, settings)}`}
-                                                >
-                                                    <CatchTimes window={nextCatch} settings={settings} />
+
+                                        {shownTab === 'disruption' && (
+                                            <div className="countdown-card">
+                                                <div className="schedule-heading">
+                                                    <span className="node-type">Next disruption</span>
+                                                    <h2>Bainbridge Island offload</h2>
                                                 </div>
-                                                <dl className="countdown-detail">
-                                                    <Field
-                                                        label="Departure"
-                                                        value={
-                                                            <>
-                                                                {nextCatch.expectedDepartureAt && 'Scheduled '}
-                                                                {fieldTime(nextCatch.departureAt)}
-                                                                <CatchDelay window={nextCatch} />
-                                                                {nextCatch.expectedDepartureAt && (
-                                                                    <Help
-                                                                        className="catch-departure-estimate"
-                                                                        help={
-                                                                            nextCatch.delaySource === 'observed'
-                                                                                ? 'Delay observed so far; not a future departure forecast'
-                                                                                : 'Earliest departure from the inbound vessel ETA'
-                                                                        }
-                                                                    >
-                                                                        Estimated{' '}
-                                                                        {fieldTime(nextCatch.expectedDepartureAt)}
-                                                                        {nextCatch.delaySource === 'observed'
-                                                                            ? ' (delay so far)'
-                                                                            : ''}
-                                                                    </Help>
-                                                                )}
-                                                            </>
-                                                        }
-                                                    />
-                                                    <Field
-                                                        label="Vessel"
-                                                        value={
-                                                            nextCatch.vesselName && (
-                                                                <VesselLink
-                                                                    vesselId={nextCatch.vesselId}
-                                                                    vesselName={nextCatch.vesselName}
-                                                                    vessels={vessels}
-                                                                    onOpen={openRoute}
-                                                                />
-                                                            )
-                                                        }
-                                                    />
-                                                    <Field
-                                                        label="Space"
-                                                        value={
-                                                            nextCatch.spaceLabel && (
-                                                                <>
-                                                                    {nextCatch.spaceLabel}{' '}
-                                                                    <CapacityPill
-                                                                        openPercent={nextCatch.spacePercent}
-                                                                        total={nextCatch.spaceTotal}
-                                                                        showDetails={false}
+                                                <NotificationControl
+                                                    notifications={disruptionNotifications}
+                                                    kind="disruption"
+                                                />
+                                                {inboundError && (
+                                                    <div className="empty" role="status">
+                                                        {inboundResponse
+                                                            ? 'Schedule refresh failed. Showing the last loaded schedule.'
+                                                            : inboundError}
+                                                    </div>
+                                                )}
+                                                {nextWave ? (
+                                                    <>
+                                                        <div
+                                                            className={`countdown-headline is-${disruptionLevel(nextWave.minutesAway, settings)}`}
+                                                        >
+                                                            <strong className="countdown-value">
+                                                                {nextWave.active
+                                                                    ? nextWave.ongoing
+                                                                        ? 'Ongoing'
+                                                                        : `${nextWave.minutesLeft} min left`
+                                                                    : nextWave.minutesAway < 1
+                                                                      ? 'under 1 min'
+                                                                      : `${nextWave.minutesAway} min`}
+                                                            </strong>
+                                                            <span className="countdown-at">
+                                                                Traffic {nextWave.active ? 'since' : 'from'}{' '}
+                                                                {clockTime(nextWave.disruptionAt)}
+                                                            </span>
+                                                            {nextWave.source === 'schedule' && (
+                                                                <Help
+                                                                    className="countdown-at"
+                                                                    help={
+                                                                        'Published arrival, or scheduled departure plus a 35-minute crossing when arrival is unavailable'
+                                                                    }
+                                                                >
+                                                                    Scheduled estimate
+                                                                </Help>
+                                                            )}
+                                                        </div>
+                                                        <dl className="countdown-detail">
+                                                            <Field
+                                                                label="Vessel"
+                                                                value={
+                                                                    <VesselLink
+                                                                        vesselId={nextWave.vesselId}
+                                                                        vesselName={nextWave.vesselName}
+                                                                        vessels={vessels}
+                                                                        onOpen={openRoute}
                                                                     />
-                                                                </>
-                                                            )
-                                                        }
-                                                    />
-                                                </dl>
-                                                {laterCatches.length > 0 && (
-                                                    <div className="countdown-later">
-                                                        <span className="node-type">Then</span>
-                                                        <ol className="sailing-list">
-                                                            {laterCatches.slice(0, 4).map((window) => (
-                                                                <li key={window.departureAt}>
-                                                                    <strong>
-                                                                        {clockTime(window.departureAt)}
-                                                                        <CatchDelay window={window} />
-                                                                    </strong>
-                                                                    <CatchTimes
-                                                                        window={window}
-                                                                        settings={settings}
-                                                                        compact
-                                                                    />
-                                                                    <span>
-                                                                        {window.spaceLabel
-                                                                            ? `${window.spaceLabel} `
-                                                                            : ''}
+                                                                }
+                                                            />
+                                                            <Field
+                                                                label="Lands"
+                                                                value={fieldTime(nextWave.landingAt)}
+                                                            />
+                                                            <Field
+                                                                label="Disruption"
+                                                                value={
+                                                                    nextWave.ongoing
+                                                                        ? `${clockTime(nextWave.disruptionAt)} onward`
+                                                                        : `${clockTime(nextWave.disruptionAt)} to ${clockTime(nextWave.clearsAt)}`
+                                                                }
+                                                            />
+                                                            <Field
+                                                                label="Capacity"
+                                                                value={
+                                                                    nextLoad && (
                                                                         <CapacityPill
-                                                                            openPercent={window.spacePercent}
-                                                                            total={window.spaceTotal}
+                                                                            openPercent={nextLoad.openPercent}
+                                                                            total={nextLoad.totalSpace}
                                                                             showDetails={false}
                                                                         />
-                                                                    </span>
-                                                                </li>
-                                                            ))}
-                                                        </ol>
-                                                    </div>
-                                                )}
-                                            </>
-                                        ) : (
-                                            <div className="empty">No sailing left today that you can still make.</div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {tab === 'disruption' && (
-                                    <div className="countdown-card">
-                                        <div className="schedule-heading">
-                                            <span className="node-type">Next disruption</span>
-                                            <h2>Bainbridge Island offload</h2>
-                                        </div>
-                                        <NotificationControl
-                                            notifications={disruptionNotifications}
-                                            kind="disruption"
-                                        />
-                                        {inboundError && (
-                                            <div className="empty" role="status">
-                                                {inboundResponse
-                                                    ? 'Schedule refresh failed. Showing the last loaded schedule.'
-                                                    : inboundError}
-                                            </div>
-                                        )}
-                                        {nextWave ? (
-                                            <>
-                                                <div
-                                                    className={`countdown-headline is-${disruptionLevel(nextWave.minutesAway, settings)}`}
-                                                >
-                                                    <strong className="countdown-value">
-                                                        {nextWave.active
-                                                            ? nextWave.ongoing
-                                                                ? 'Ongoing'
-                                                                : `${nextWave.minutesLeft} min left`
-                                                            : nextWave.minutesAway < 1
-                                                              ? 'under 1 min'
-                                                              : `${nextWave.minutesAway} min`}
-                                                    </strong>
-                                                    <span className="countdown-at">
-                                                        Traffic {nextWave.active ? 'since' : 'from'}{' '}
-                                                        {clockTime(nextWave.disruptionAt)}
-                                                    </span>
-                                                    {nextWave.source === 'schedule' && (
-                                                        <Help
-                                                            className="countdown-at"
-                                                            help={
-                                                                'Published arrival, or scheduled departure plus a 35-minute crossing when arrival is unavailable'
-                                                            }
-                                                        >
-                                                            Scheduled estimate
-                                                        </Help>
-                                                    )}
-                                                </div>
-                                                <dl className="countdown-detail">
-                                                    <Field
-                                                        label="Vessel"
-                                                        value={
-                                                            <VesselLink
-                                                                vesselId={nextWave.vesselId}
-                                                                vesselName={nextWave.vesselName}
-                                                                vessels={vessels}
-                                                                onOpen={openRoute}
+                                                                    )
+                                                                }
                                                             />
-                                                        }
-                                                    />
-                                                    <Field label="Lands" value={fieldTime(nextWave.landingAt)} />
-                                                    <Field
-                                                        label="Disruption"
-                                                        value={
-                                                            nextWave.ongoing
-                                                                ? `${clockTime(nextWave.disruptionAt)} onward`
-                                                                : `${clockTime(nextWave.disruptionAt)} to ${clockTime(nextWave.clearsAt)}`
-                                                        }
-                                                    />
-                                                    <Field
-                                                        label="Capacity"
-                                                        value={
-                                                            nextLoad && (
-                                                                <CapacityPill
-                                                                    openPercent={nextLoad.openPercent}
-                                                                    total={nextLoad.totalSpace}
-                                                                    showDetails={false}
-                                                                />
-                                                            )
-                                                        }
-                                                    />
-                                                </dl>
-                                                {laterWaves.length > 0 && (
-                                                    <div className="countdown-later">
-                                                        <span className="node-type">Behind it</span>
-                                                        <ol className="sailing-list">
-                                                            {laterWaves.slice(0, 4).map((wave) => (
-                                                                <li key={`${wave.vesselId}-${wave.disruptionAt}`}>
-                                                                    <strong>
-                                                                        {clockTime(wave.disruptionAt)}
-                                                                        <span
-                                                                            className={`capacity-pill ${catchPillClass(disruptionLevel(wave.minutesAway, settings))}`}
+                                                        </dl>
+                                                        {laterWaves.length > 0 && (
+                                                            <div className="countdown-later">
+                                                                <span className="node-type">Behind it</span>
+                                                                <ol className="sailing-list">
+                                                                    {laterWaves.slice(0, 4).map((wave) => (
+                                                                        <li
+                                                                            key={`${wave.vesselId}-${wave.disruptionAt}`}
                                                                         >
-                                                                            {wave.active
-                                                                                ? 'now'
-                                                                                : `${wave.minutesAway} min`}
-                                                                        </span>
-                                                                    </strong>
-                                                                    <span>
-                                                                        {wave.vesselName} lands{' '}
-                                                                        {clockTime(wave.landingAt)}
-                                                                        {wave.source === 'schedule'
-                                                                            ? ' (scheduled estimate)'
-                                                                            : ''}
-                                                                    </span>
-                                                                </li>
-                                                            ))}
-                                                        </ol>
-                                                    </div>
+                                                                            <strong>
+                                                                                {clockTime(wave.disruptionAt)}
+                                                                                <span
+                                                                                    className={`capacity-pill ${catchPillClass(disruptionLevel(wave.minutesAway, settings))}`}
+                                                                                >
+                                                                                    {wave.active
+                                                                                        ? 'now'
+                                                                                        : `${wave.minutesAway} min`}
+                                                                                </span>
+                                                                            </strong>
+                                                                            <span>
+                                                                                {wave.vesselName} lands{' '}
+                                                                                {clockTime(wave.landingAt)}
+                                                                                {wave.source === 'schedule'
+                                                                                    ? ' (scheduled estimate)'
+                                                                                    : ''}
+                                                                            </span>
+                                                                        </li>
+                                                                    ))}
+                                                                </ol>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    !inboundError &&
+                                                    (inboundResponse === null ? (
+                                                        <LoadingSpinner
+                                                            isLoading
+                                                            label="Loading the inbound schedule"
+                                                            className="is-panel"
+                                                        />
+                                                    ) : (
+                                                        <div className="empty">
+                                                            No upcoming arrival is available in the current schedule.
+                                                        </div>
+                                                    ))
                                                 )}
-                                            </>
-                                        ) : (
-                                            !inboundError &&
-                                            (inboundResponse === null ? (
-                                                <LoadingSpinner
-                                                    isLoading
-                                                    label="Loading the inbound schedule"
-                                                    className="is-panel"
-                                                />
-                                            ) : (
-                                                <div className="empty">
-                                                    No upcoming arrival is available in the current schedule.
+                                            </div>
+                                        )}
+
+                                        {shownTab === 'settings' && (
+                                            <div className="countdown-card settings-card">
+                                                <div className="schedule-heading">
+                                                    <h2>Settings</h2>
                                                 </div>
-                                            ))
+                                                <div className="settings-section">
+                                                    <button
+                                                        className="settings-disclosure"
+                                                        type="button"
+                                                        aria-expanded={favoritesOpen}
+                                                        onClick={() => setFavoritesOpen(!favoritesOpen)}
+                                                    >
+                                                        <ChevronDown
+                                                            className={favoritesOpen ? 'open' : ''}
+                                                            size={14}
+                                                        />
+                                                        <span className="node-type">Favorite terminals</span>
+                                                        <span className="settings-disclosure-count">
+                                                            {favoriteOrder.length} starred
+                                                        </span>
+                                                    </button>
+                                                    {favoritesOpen && (
+                                                        <>
+                                                            <p className="settings-note">
+                                                                Starred terminals lead the Origin list. Drag a handle to
+                                                                change their order.
+                                                            </p>
+                                                            <ul className="favorite-list" ref={favoriteListRef}>
+                                                                {orderedTerminals.map(({ terminal, favorite }) => (
+                                                                    <li
+                                                                        key={terminal.id}
+                                                                        data-terminal-id={terminal.id}
+                                                                        className={`${favorite ? 'is-favorite' : ''}${draggedFavoriteId === terminal.id ? ' is-dragging' : ''}`}
+                                                                    >
+                                                                        {favorite ? (
+                                                                            <HintButton
+                                                                                className="favorite-grip"
+                                                                                type="button"
+                                                                                aria-label={`Reorder ${terminal.name}`}
+                                                                                hint={
+                                                                                    'Drag to reorder, or use the arrow keys'
+                                                                                }
+                                                                                onPointerDown={(event) => {
+                                                                                    event.preventDefault();
+                                                                                    event.currentTarget.focus({
+                                                                                        preventScroll: true,
+                                                                                    });
+                                                                                    draggedFavoriteIdRef.current =
+                                                                                        terminal.id;
+                                                                                    setDraggedFavoriteId(terminal.id);
+                                                                                }}
+                                                                                onKeyDown={(event) => {
+                                                                                    if (
+                                                                                        event.key !== 'ArrowUp' &&
+                                                                                        event.key !== 'ArrowDown'
+                                                                                    )
+                                                                                        return;
+                                                                                    event.preventDefault();
+                                                                                    nudgeFavoriteTerminal(
+                                                                                        terminal.id,
+                                                                                        event.key === 'ArrowUp' ? -1 : 1
+                                                                                    );
+                                                                                }}
+                                                                            >
+                                                                                <GripVertical size={14} />
+                                                                            </HintButton>
+                                                                        ) : (
+                                                                            <span className="favorite-grip is-placeholder" />
+                                                                        )}
+                                                                        <span className="favorite-name">
+                                                                            {terminal.name}
+                                                                        </span>
+                                                                        <HintButton
+                                                                            className={`favorite-star${favorite ? ' active' : ''}`}
+                                                                            type="button"
+                                                                            aria-pressed={favorite}
+                                                                            aria-label={
+                                                                                favorite
+                                                                                    ? `Remove ${terminal.name} from favorites`
+                                                                                    : `Add ${terminal.name} to favorites`
+                                                                            }
+                                                                            hint={
+                                                                                favorite
+                                                                                    ? 'Remove from favorites'
+                                                                                    : 'Add to favorites'
+                                                                            }
+                                                                            onClick={() =>
+                                                                                toggleFavoriteTerminal(terminal.id)
+                                                                            }
+                                                                        >
+                                                                            <Star
+                                                                                fill={
+                                                                                    favorite ? 'currentColor' : 'none'
+                                                                                }
+                                                                                size={15}
+                                                                            />
+                                                                        </HintButton>
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </>
+                                                    )}
+                                                </div>
+                                                <div className="settings-section">
+                                                    <button
+                                                        className="settings-disclosure"
+                                                        type="button"
+                                                        aria-expanded={favoriteRoutesOpen}
+                                                        onClick={() => setFavoriteRoutesOpen(!favoriteRoutesOpen)}
+                                                    >
+                                                        <ChevronDown
+                                                            className={favoriteRoutesOpen ? 'open' : ''}
+                                                            size={14}
+                                                        />
+                                                        <span className="node-type">Favorite routes</span>
+                                                        <span className="settings-disclosure-count">
+                                                            {favoriteRoutes.length} saved
+                                                        </span>
+                                                    </button>
+                                                    {favoriteRoutesOpen && (
+                                                        <>
+                                                            <p className="settings-note">
+                                                                Favorite routes fill the Catch tab and the quick pick
+                                                                beside the selectors. Drag a handle to change their
+                                                                order.
+                                                            </p>
+                                                            <ul
+                                                                className="favorite-list favorite-route-list"
+                                                                ref={favoriteRouteListRef}
+                                                            >
+                                                                {favoriteRoutes.map((route) => {
+                                                                    const key = routeKey(route);
+                                                                    const pair = routePairName(route, terminals);
+                                                                    return (
+                                                                        <li
+                                                                            key={key}
+                                                                            data-route-key={key}
+                                                                            className={`is-favorite${draggedRouteKey === key ? ' is-dragging' : ''}`}
+                                                                        >
+                                                                            <HintButton
+                                                                                className="favorite-grip"
+                                                                                type="button"
+                                                                                aria-label={`Reorder ${pair}`}
+                                                                                hint={
+                                                                                    'Drag to reorder, or use the arrow keys'
+                                                                                }
+                                                                                onPointerDown={(event) => {
+                                                                                    event.preventDefault();
+                                                                                    event.currentTarget.focus({
+                                                                                        preventScroll: true,
+                                                                                    });
+                                                                                    draggedRouteKeyRef.current = key;
+                                                                                    setDraggedRouteKey(key);
+                                                                                }}
+                                                                                onKeyDown={(event) => {
+                                                                                    if (
+                                                                                        event.key !== 'ArrowUp' &&
+                                                                                        event.key !== 'ArrowDown'
+                                                                                    )
+                                                                                        return;
+                                                                                    event.preventDefault();
+                                                                                    nudgeFavoriteRoute(
+                                                                                        key,
+                                                                                        event.key === 'ArrowUp' ? -1 : 1
+                                                                                    );
+                                                                                }}
+                                                                            >
+                                                                                <GripVertical size={14} />
+                                                                            </HintButton>
+                                                                            <span className="favorite-route">
+                                                                                <input
+                                                                                    className="favorite-label"
+                                                                                    value={route.label}
+                                                                                    maxLength={24}
+                                                                                    placeholder={pair}
+                                                                                    aria-label={`Label for ${pair}`}
+                                                                                    onChange={(event) =>
+                                                                                        changeFavoriteRoutes(
+                                                                                            renameFavoriteRoute(
+                                                                                                favoriteRoutes,
+                                                                                                key,
+                                                                                                event.target.value
+                                                                                            )
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                                <span className="favorite-pair">
+                                                                                    {pair}
+                                                                                    {!isPublishedRoute(route, mates) &&
+                                                                                        hasOverview && (
+                                                                                            <em> · not sailing</em>
+                                                                                        )}
+                                                                                </span>
+                                                                            </span>
+                                                                            <HintButton
+                                                                                className="favorite-remove"
+                                                                                type="button"
+                                                                                aria-label={`Remove ${pair} from favorite routes`}
+                                                                                hint={'Remove this route'}
+                                                                                onClick={() =>
+                                                                                    changeFavoriteRoutes(
+                                                                                        removeFavoriteRoute(
+                                                                                            favoriteRoutes,
+                                                                                            key
+                                                                                        )
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                <X size={15} />
+                                                                            </HintButton>
+                                                                        </li>
+                                                                    );
+                                                                })}
+                                                            </ul>
+                                                            {!favoriteRoutes.length && (
+                                                                <p className="settings-note">No favorite routes yet.</p>
+                                                            )}
+                                                            <div className="route-add">
+                                                                <FilterSelect
+                                                                    ariaLabel="New route origin"
+                                                                    value={newRouteOriginId}
+                                                                    onChange={setNewRouteOriginId}
+                                                                    placeholder="Origin"
+                                                                    options={terminalOptions}
+                                                                />
+                                                                <ArrowRight
+                                                                    className="route-add-arrow"
+                                                                    size={14}
+                                                                    aria-hidden="true"
+                                                                />
+                                                                <FilterSelect
+                                                                    ariaLabel="New route destination"
+                                                                    value={effectiveNewRouteDestinationId}
+                                                                    onChange={setNewRouteDestinationId}
+                                                                    disabled={!newRouteDestinationIds.length}
+                                                                    placeholder="Destination"
+                                                                    options={newRouteDestinationIds.map((id) => ({
+                                                                        value: id,
+                                                                        label:
+                                                                            terminals.find(
+                                                                                (terminal) => terminal.id === id
+                                                                            )?.name ?? 'Unknown',
+                                                                    }))}
+                                                                />
+                                                                <HintButton
+                                                                    className="route-add-button"
+                                                                    type="button"
+                                                                    disabled={!canAddRoute}
+                                                                    hint={
+                                                                        canAddRoute
+                                                                            ? 'Save this route'
+                                                                            : 'Pick a route that is not already saved'
+                                                                    }
+                                                                    onClick={addRoute}
+                                                                >
+                                                                    <Plus size={14} />
+                                                                    Add route
+                                                                </HintButton>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                                <div className="settings-section">
+                                                    <span className="node-type">Catch</span>
+                                                    <div className="settings-subgroup">
+                                                        <span className="settings-subhead">Padding</span>
+                                                        <div className="settings-grid">
+                                                            <SettingField
+                                                                label="Traffic"
+                                                                ariaLabel="Catch traffic default"
+                                                                hint="Time to drive to the terminal"
+                                                                setting="catchTrafficMinutes"
+                                                                unit="min"
+                                                                settings={settings}
+                                                                onChange={changeSetting}
+                                                            />
+                                                            <SettingField
+                                                                label="Queue"
+                                                                ariaLabel="Catch queue default"
+                                                                hint="Time waiting in the holding lane"
+                                                                setting="catchQueueMinutes"
+                                                                unit="min"
+                                                                settings={settings}
+                                                                onChange={changeSetting}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="settings-subgroup">
+                                                        <span className="settings-subhead">Time left to leave</span>
+                                                        <div className="settings-grid">
+                                                            <SettingField
+                                                                label="Turns yellow below"
+                                                                ariaLabel="Catch yellow under"
+                                                                hint="Minutes left to leave"
+                                                                setting="catchSoonMinutes"
+                                                                unit="min"
+                                                                settings={settings}
+                                                                onChange={changeSetting}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="settings-subgroup">
+                                                        <span className="settings-subhead">Vehicle space</span>
+                                                        <div className="settings-grid">
+                                                            <SettingField
+                                                                label="Turns yellow below"
+                                                                ariaLabel="Space yellow under"
+                                                                hint="Remaining capacity"
+                                                                setting="spaceSoonPercent"
+                                                                unit="%"
+                                                                settings={settings}
+                                                                onChange={changeSetting}
+                                                            />
+                                                            <SettingField
+                                                                label="Turns red below"
+                                                                ariaLabel="Space red under"
+                                                                hint="Remaining capacity"
+                                                                setting="spaceImminentPercent"
+                                                                unit="%"
+                                                                settings={settings}
+                                                                onChange={changeSetting}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="settings-section">
+                                                    <span className="node-type">Disruption</span>
+                                                    <div className="settings-grid">
+                                                        <SettingField
+                                                            label="Lead"
+                                                            ariaLabel="Disruption lead"
+                                                            hint="Offload to traffic on the road"
+                                                            setting="disruptionLeadMinutes"
+                                                            unit="min"
+                                                            settings={settings}
+                                                            onChange={changeSetting}
+                                                        />
+                                                        <SettingField
+                                                            label="Lasts"
+                                                            ariaLabel="Disruption duration"
+                                                            hint="How long the traffic disrupts for"
+                                                            setting="disruptionDurationMinutes"
+                                                            unit="min"
+                                                            settings={settings}
+                                                            onChange={changeSetting}
+                                                        />
+                                                        <SettingField
+                                                            label="Turns yellow below"
+                                                            ariaLabel="Disruption yellow under"
+                                                            hint="Minutes until traffic hits"
+                                                            setting="disruptionSoonMinutes"
+                                                            unit="min"
+                                                            settings={settings}
+                                                            onChange={changeSetting}
+                                                        />
+                                                        <SettingField
+                                                            label="Turns red below"
+                                                            ariaLabel="Disruption red under"
+                                                            hint="Minutes until traffic hits"
+                                                            setting="disruptionImminentMinutes"
+                                                            unit="min"
+                                                            settings={settings}
+                                                            onChange={changeSetting}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="settings-footer">
+                                                    <button
+                                                        type="button"
+                                                        className="reset-settings"
+                                                        onClick={resetSettings}
+                                                    >
+                                                        Reset to defaults
+                                                    </button>
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
-                                )}
-
-                                {tab === 'settings' && (
-                                    <div className="countdown-card settings-card">
-                                        <div className="schedule-heading">
-                                            <h2>Settings</h2>
-                                        </div>
-                                        <div className="settings-section">
-                                            <button
-                                                className="settings-disclosure"
-                                                type="button"
-                                                aria-expanded={favoritesOpen}
-                                                onClick={() => setFavoritesOpen(!favoritesOpen)}
-                                            >
-                                                <ChevronDown className={favoritesOpen ? 'open' : ''} size={14} />
-                                                <span className="node-type">Favorite terminals</span>
-                                                <span className="settings-disclosure-count">
-                                                    {favoriteOrder.length} starred
-                                                </span>
-                                            </button>
-                                            {favoritesOpen && (
-                                                <>
-                                                    <p className="settings-note">
-                                                        Starred terminals lead the Origin list. Drag a handle to change
-                                                        their order.
-                                                    </p>
-                                                    <ul className="favorite-list" ref={favoriteListRef}>
-                                                        {orderedTerminals.map(({ terminal, favorite }) => (
-                                                            <li
-                                                                key={terminal.id}
-                                                                data-terminal-id={terminal.id}
-                                                                className={`${favorite ? 'is-favorite' : ''}${draggedFavoriteId === terminal.id ? ' is-dragging' : ''}`}
-                                                            >
-                                                                {favorite ? (
-                                                                    <HintButton
-                                                                        className="favorite-grip"
-                                                                        type="button"
-                                                                        aria-label={`Reorder ${terminal.name}`}
-                                                                        hint={'Drag to reorder, or use the arrow keys'}
-                                                                        onPointerDown={(event) => {
-                                                                            event.preventDefault();
-                                                                            event.currentTarget.focus({
-                                                                                preventScroll: true,
-                                                                            });
-                                                                            draggedFavoriteIdRef.current = terminal.id;
-                                                                            setDraggedFavoriteId(terminal.id);
-                                                                        }}
-                                                                        onKeyDown={(event) => {
-                                                                            if (
-                                                                                event.key !== 'ArrowUp' &&
-                                                                                event.key !== 'ArrowDown'
-                                                                            )
-                                                                                return;
-                                                                            event.preventDefault();
-                                                                            nudgeFavoriteTerminal(
-                                                                                terminal.id,
-                                                                                event.key === 'ArrowUp' ? -1 : 1
-                                                                            );
-                                                                        }}
-                                                                    >
-                                                                        <GripVertical size={14} />
-                                                                    </HintButton>
-                                                                ) : (
-                                                                    <span className="favorite-grip is-placeholder" />
-                                                                )}
-                                                                <span className="favorite-name">{terminal.name}</span>
-                                                                <HintButton
-                                                                    className={`favorite-star${favorite ? ' active' : ''}`}
-                                                                    type="button"
-                                                                    aria-pressed={favorite}
-                                                                    aria-label={
-                                                                        favorite
-                                                                            ? `Remove ${terminal.name} from favorites`
-                                                                            : `Add ${terminal.name} to favorites`
-                                                                    }
-                                                                    hint={
-                                                                        favorite
-                                                                            ? 'Remove from favorites'
-                                                                            : 'Add to favorites'
-                                                                    }
-                                                                    onClick={() => toggleFavoriteTerminal(terminal.id)}
-                                                                >
-                                                                    <Star
-                                                                        fill={favorite ? 'currentColor' : 'none'}
-                                                                        size={15}
-                                                                    />
-                                                                </HintButton>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                </>
-                                            )}
-                                        </div>
-                                        <div className="settings-section">
-                                            <button
-                                                className="settings-disclosure"
-                                                type="button"
-                                                aria-expanded={favoriteRoutesOpen}
-                                                onClick={() => setFavoriteRoutesOpen(!favoriteRoutesOpen)}
-                                            >
-                                                <ChevronDown className={favoriteRoutesOpen ? 'open' : ''} size={14} />
-                                                <span className="node-type">Favorite routes</span>
-                                                <span className="settings-disclosure-count">
-                                                    {favoriteRoutes.length} saved
-                                                </span>
-                                            </button>
-                                            {favoriteRoutesOpen && (
-                                                <>
-                                                    <p className="settings-note">
-                                                        Favorite routes fill the Catch tab and the quick pick beside the
-                                                        selectors. Drag a handle to change their order.
-                                                    </p>
-                                                    <ul
-                                                        className="favorite-list favorite-route-list"
-                                                        ref={favoriteRouteListRef}
-                                                    >
-                                                        {favoriteRoutes.map((route) => {
-                                                            const key = routeKey(route);
-                                                            const pair = routePairName(route, terminals);
-                                                            return (
-                                                                <li
-                                                                    key={key}
-                                                                    data-route-key={key}
-                                                                    className={`is-favorite${draggedRouteKey === key ? ' is-dragging' : ''}`}
-                                                                >
-                                                                    <HintButton
-                                                                        className="favorite-grip"
-                                                                        type="button"
-                                                                        aria-label={`Reorder ${pair}`}
-                                                                        hint={'Drag to reorder, or use the arrow keys'}
-                                                                        onPointerDown={(event) => {
-                                                                            event.preventDefault();
-                                                                            event.currentTarget.focus({
-                                                                                preventScroll: true,
-                                                                            });
-                                                                            draggedRouteKeyRef.current = key;
-                                                                            setDraggedRouteKey(key);
-                                                                        }}
-                                                                        onKeyDown={(event) => {
-                                                                            if (
-                                                                                event.key !== 'ArrowUp' &&
-                                                                                event.key !== 'ArrowDown'
-                                                                            )
-                                                                                return;
-                                                                            event.preventDefault();
-                                                                            nudgeFavoriteRoute(
-                                                                                key,
-                                                                                event.key === 'ArrowUp' ? -1 : 1
-                                                                            );
-                                                                        }}
-                                                                    >
-                                                                        <GripVertical size={14} />
-                                                                    </HintButton>
-                                                                    <span className="favorite-route">
-                                                                        <input
-                                                                            className="favorite-label"
-                                                                            value={route.label}
-                                                                            maxLength={24}
-                                                                            placeholder={pair}
-                                                                            aria-label={`Label for ${pair}`}
-                                                                            onChange={(event) =>
-                                                                                changeFavoriteRoutes(
-                                                                                    renameFavoriteRoute(
-                                                                                        favoriteRoutes,
-                                                                                        key,
-                                                                                        event.target.value
-                                                                                    )
-                                                                                )
-                                                                            }
-                                                                        />
-                                                                        <span className="favorite-pair">
-                                                                            {pair}
-                                                                            {!isPublishedRoute(route, mates) &&
-                                                                                hasOverview && <em> · not sailing</em>}
-                                                                        </span>
-                                                                    </span>
-                                                                    <HintButton
-                                                                        className="favorite-remove"
-                                                                        type="button"
-                                                                        aria-label={`Remove ${pair} from favorite routes`}
-                                                                        hint={'Remove this route'}
-                                                                        onClick={() =>
-                                                                            changeFavoriteRoutes(
-                                                                                removeFavoriteRoute(favoriteRoutes, key)
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        <X size={15} />
-                                                                    </HintButton>
-                                                                </li>
-                                                            );
-                                                        })}
-                                                    </ul>
-                                                    {!favoriteRoutes.length && (
-                                                        <p className="settings-note">No favorite routes yet.</p>
-                                                    )}
-                                                    <div className="route-add">
-                                                        <FilterSelect
-                                                            ariaLabel="New route origin"
-                                                            value={newRouteOriginId}
-                                                            onChange={setNewRouteOriginId}
-                                                            placeholder="Origin"
-                                                            options={terminalOptions}
-                                                        />
-                                                        <ArrowRight
-                                                            className="route-add-arrow"
-                                                            size={14}
-                                                            aria-hidden="true"
-                                                        />
-                                                        <FilterSelect
-                                                            ariaLabel="New route destination"
-                                                            value={effectiveNewRouteDestinationId}
-                                                            onChange={setNewRouteDestinationId}
-                                                            disabled={!newRouteDestinationIds.length}
-                                                            placeholder="Destination"
-                                                            options={newRouteDestinationIds.map((id) => ({
-                                                                value: id,
-                                                                label:
-                                                                    terminals.find((terminal) => terminal.id === id)
-                                                                        ?.name ?? 'Unknown',
-                                                            }))}
-                                                        />
-                                                        <HintButton
-                                                            className="route-add-button"
-                                                            type="button"
-                                                            disabled={!canAddRoute}
-                                                            hint={
-                                                                canAddRoute
-                                                                    ? 'Save this route'
-                                                                    : 'Pick a route that is not already saved'
-                                                            }
-                                                            onClick={addRoute}
-                                                        >
-                                                            <Plus size={14} />
-                                                            Add route
-                                                        </HintButton>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                        <div className="settings-section">
-                                            <span className="node-type">Catch</span>
-                                            <div className="settings-subgroup">
-                                                <span className="settings-subhead">Padding</span>
-                                                <div className="settings-grid">
-                                                    <SettingField
-                                                        label="Traffic"
-                                                        ariaLabel="Catch traffic default"
-                                                        hint="Time to drive to the terminal"
-                                                        setting="catchTrafficMinutes"
-                                                        unit="min"
-                                                        settings={settings}
-                                                        onChange={changeSetting}
-                                                    />
-                                                    <SettingField
-                                                        label="Queue"
-                                                        ariaLabel="Catch queue default"
-                                                        hint="Time waiting in the holding lane"
-                                                        setting="catchQueueMinutes"
-                                                        unit="min"
-                                                        settings={settings}
-                                                        onChange={changeSetting}
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="settings-subgroup">
-                                                <span className="settings-subhead">Time left to leave</span>
-                                                <div className="settings-grid">
-                                                    <SettingField
-                                                        label="Turns yellow below"
-                                                        ariaLabel="Catch yellow under"
-                                                        hint="Minutes left to leave"
-                                                        setting="catchSoonMinutes"
-                                                        unit="min"
-                                                        settings={settings}
-                                                        onChange={changeSetting}
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="settings-subgroup">
-                                                <span className="settings-subhead">Vehicle space</span>
-                                                <div className="settings-grid">
-                                                    <SettingField
-                                                        label="Turns yellow below"
-                                                        ariaLabel="Space yellow under"
-                                                        hint="Remaining capacity"
-                                                        setting="spaceSoonPercent"
-                                                        unit="%"
-                                                        settings={settings}
-                                                        onChange={changeSetting}
-                                                    />
-                                                    <SettingField
-                                                        label="Turns red below"
-                                                        ariaLabel="Space red under"
-                                                        hint="Remaining capacity"
-                                                        setting="spaceImminentPercent"
-                                                        unit="%"
-                                                        settings={settings}
-                                                        onChange={changeSetting}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="settings-section">
-                                            <span className="node-type">Disruption</span>
-                                            <div className="settings-grid">
-                                                <SettingField
-                                                    label="Lead"
-                                                    ariaLabel="Disruption lead"
-                                                    hint="Offload to traffic on the road"
-                                                    setting="disruptionLeadMinutes"
-                                                    unit="min"
-                                                    settings={settings}
-                                                    onChange={changeSetting}
-                                                />
-                                                <SettingField
-                                                    label="Lasts"
-                                                    ariaLabel="Disruption duration"
-                                                    hint="How long the traffic disrupts for"
-                                                    setting="disruptionDurationMinutes"
-                                                    unit="min"
-                                                    settings={settings}
-                                                    onChange={changeSetting}
-                                                />
-                                                <SettingField
-                                                    label="Turns yellow below"
-                                                    ariaLabel="Disruption yellow under"
-                                                    hint="Minutes until traffic hits"
-                                                    setting="disruptionSoonMinutes"
-                                                    unit="min"
-                                                    settings={settings}
-                                                    onChange={changeSetting}
-                                                />
-                                                <SettingField
-                                                    label="Turns red below"
-                                                    ariaLabel="Disruption red under"
-                                                    hint="Minutes until traffic hits"
-                                                    setting="disruptionImminentMinutes"
-                                                    unit="min"
-                                                    settings={settings}
-                                                    onChange={changeSetting}
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="settings-footer">
-                                            <button type="button" className="reset-settings" onClick={resetSettings}>
-                                                Reset to defaults
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
+                                </div>
                             </div>
 
-                            {(viewUpdating || retainedUpdateSkeleton) && (
+                            {(viewUpdating || retainedUpdateSkeleton) && !panelLeaving && (
                                 <div className={`view-loading-cover${viewUpdating ? '' : ' is-exiting'}`}>
                                     <ViewPlaceholder label="Loading updated ferry data" tab={tab} />
                                 </div>

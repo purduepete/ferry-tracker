@@ -179,8 +179,12 @@ describe('Initial ferry loading', () => {
         expect(document.querySelector('.view-content')).toBe(content);
         expect(screen.queryByRole('status', { name: 'Loading ferry data' })).toBeNull();
         fireEvent.click(screen.getByRole('tab', { name: 'Vessels' }));
+        expect(document.querySelector('.view-swap')).toHaveAttribute('data-leaving');
+        await advance(300);
+        expect(document.querySelector('.view-swap')).not.toHaveAttribute('data-leaving');
         expect(document.querySelector('.view-panel')).not.toHaveClass('is-first-panel');
         fireEvent.click(screen.getByRole('tab', { name: 'Sailings' }));
+        await advance(300);
         expect(document.querySelector('.view-content')).toBe(content);
         expect(document.querySelector('.view-panel')).not.toHaveClass('is-first-panel');
     });

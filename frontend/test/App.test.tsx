@@ -103,6 +103,11 @@ function json(data: unknown) {
     );
 }
 
+// A tab switch fades the old panel out for 250ms before the new panel mounts.
+function panelSettled() {
+    return waitFor(() => expect(document.querySelector('.view-swap[data-leaving]')).toBeNull());
+}
+
 // Every countdown measures from the wall-clock MINUTE, so a fixture built from a live clock
 // reads a minute short whenever the run crosses a minute boundary between building it and the
 // card reading the clock. Freeze both ends on one instant. Restored by the global afterEach.
@@ -1469,9 +1474,11 @@ describe('Card navigation', () => {
         await screen.findByRole('heading', { name: 'Seattle' });
 
         await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
+        await panelSettled();
         const row = (await screen.findByRole('button', { name: 'Wenatchee' })).closest('tr');
         if (!row) throw new Error('expected the vessel link to sit inside a table row');
         await userEvent.click(row);
+        await panelSettled();
 
         expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
         expect(document.querySelector('.data-card.is-highlighted')).not.toBeNull();
@@ -1502,6 +1509,7 @@ describe('Card navigation', () => {
         await screen.findByRole('heading', { name: 'Seattle' });
 
         await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
+        await panelSettled();
         const row = (await screen.findByText('Ghost')).closest('tr');
         if (!row) throw new Error('expected a table row');
         await userEvent.click(row);
@@ -1533,6 +1541,7 @@ describe('Card navigation', () => {
         );
         await screen.findByRole('heading', { name: 'Seattle' });
         await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
+        await panelSettled();
 
         const vesselLink = await screen.findByRole('button', { name: 'Wenatchee' });
         const row = vesselLink.closest('tr');
@@ -1540,12 +1549,15 @@ describe('Card navigation', () => {
         row.focus();
         await userEvent.keyboard('{Enter}');
         expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
+        await panelSettled();
 
         await userEvent.click(screen.getByRole('tab', { name: 'Historical' }));
-        vesselLink.focus();
+        await panelSettled();
+        const historicalLink = await screen.findByRole('button', { name: 'Wenatchee' });
+        historicalLink.focus();
         await userEvent.keyboard('{Enter}');
-        // Enter on the nested link must not bubble up and also switch to Vessels.
-        expect(screen.getByRole('tab', { name: 'Historical' })).toHaveAttribute('aria-selected', 'true');
+        // Enter on the nested link opens the vessel's route and must not bubble up to the row's Vessels switch.
+        expect(screen.getByRole('tab', { name: 'Sailings' })).toHaveAttribute('aria-selected', 'true');
         expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'false');
     });
 
@@ -1582,6 +1594,7 @@ describe('Card navigation', () => {
         const item = within(list).getByText('Wenatchee').closest('li');
         if (!item) throw new Error('expected the sailing to sit inside a list item');
         await userEvent.click(item);
+        await panelSettled();
 
         expect(screen.getByRole('tab', { name: 'Vessels' })).toHaveAttribute('aria-selected', 'true');
         expect(document.querySelector('.data-card.is-highlighted')).not.toBeNull();
@@ -2623,6 +2636,7 @@ describe('Bainbridge disruption', () => {
         );
         await screen.findByRole('heading', { name: 'Seattle' });
         await userEvent.click(screen.getByRole('tab', { name: 'Disruption' }));
+        await panelSettled();
 
         expect(screen.getByRole('tabpanel', { name: 'Disruption' })).toBeInTheDocument();
         expect(document.querySelector('.countdown-value')).toHaveTextContent('30 min');
@@ -2678,6 +2692,7 @@ describe('Bainbridge disruption', () => {
         );
         await screen.findByRole('heading', { name: 'Seattle' });
         await userEvent.click(screen.getByRole('tab', { name: 'Disruption' }));
+        await panelSettled();
 
         const capacity = await screen.findByLabelText('85% of 197 vehicle spaces taken');
         expect(capacity.closest('.field')?.querySelector('dt')).toHaveTextContent('Capacity');
@@ -3044,9 +3059,11 @@ describe('Catching a ferry', () => {
         expect(document.querySelectorAll('.countdown-later .sailing-list li')).toHaveLength(1);
 
         await user.click(screen.getByRole('tab', { name: 'Settings' }));
+        await panelSettled();
         await user.click(await screen.findByRole('button', { name: 'Catch traffic default' }));
         await user.click(screen.getByRole('option', { name: '30 min' }));
         await user.click(screen.getByRole('tab', { name: 'Catch' }));
+        await panelSettled();
         expect(document.querySelector('.countdown-value')).toHaveTextContent('5 min');
         expect(document.querySelector('.countdown-headline')).toHaveClass('is-soon');
         expect(JSON.parse(localStorage.getItem('ferry-tracker-settings') ?? '{}').catchTrafficMinutes).toBe(30);
