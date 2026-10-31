@@ -145,6 +145,10 @@ const VISIBILITY_REFRESH_MIN_AGE_MS = 10_000;
 const STALE_TICK_MS = 30_000;
 const CAMERA_REFRESH_MS = 120_000;
 const PANEL_LEAVE_MS = 250;
+
+// Catch, Disruption, Settings, Vessels and Terminals all ignore the route selectors.
+const isRoutelessTab = (value: Tab) =>
+    value === 'catch' || value === 'disruption' || value === 'settings' || value === 'vessels' || value === 'terminals';
 const SAILING_COLUMN_WIDTH = 340;
 const SAILING_COLUMN_GAP = 28;
 const MINIMUM_SKELETON_MS = 500;
@@ -1066,6 +1070,7 @@ export function App() {
     // The tab strip follows `tab` at once; the panel shows `shownTab` after the old view fades out.
     const [shownTab, setShownTab] = useState<Tab>('sailings');
     const [panelLeaving, setPanelLeaving] = useState(false);
+    const [bandEntering, setBandEntering] = useState(false);
     const [retainedUpdateSkeleton, setRetainedUpdateSkeleton] = useState(false);
     const [backgroundRefresh, setBackgroundRefresh] = useState(false);
     const [favoriteTerminalIds, setFavoriteTerminalIds] = useState<number[]>(loadFavoriteTerminalIds);
@@ -1224,8 +1229,10 @@ export function App() {
         newRouteOriginId !== null &&
         effectiveNewRouteDestinationId !== null &&
         !favoriteRoutes.some((route) => routeKey(route) === `${newRouteOriginId}-${effectiveNewRouteDestinationId}`);
-    const routelessTab =
-        tab === 'catch' || tab === 'disruption' || tab === 'settings' || tab === 'vessels' || tab === 'terminals';
+    const routelessTab = isRoutelessTab(tab);
+    // The selector band follows the panel, so it fades out and in with it instead of snapping at the click.
+    const bandRouteless = isRoutelessTab(shownTab);
+    const bandLeaving = panelLeaving && routelessTab && !bandRouteless;
     const quickPickRoutes = favoriteRoutes.filter((route) => isPublishedRoute(route, mates));
     const associatedVessels =
         selectedTerminalId === null
@@ -1361,11 +1368,13 @@ export function App() {
             return;
         }
         if (!initialDataVisible || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+            setBandEntering(false);
             setShownTab(tab);
             return;
         }
         setPanelLeaving(true);
         const timer = window.setTimeout(() => {
+            setBandEntering(isRoutelessTab(shownTab) && !isRoutelessTab(tab));
             setShownTab(tab);
             setPanelLeaving(false);
         }, PANEL_LEAVE_MS);
@@ -1870,7 +1879,9 @@ export function App() {
             <main>
                 {/* Catch follows its own favorite route, Disruption is pinned, and Settings has no route at all. */}
                 <section
-                    className={`selection-band${routelessTab ? ' is-routeless' : ''}`}
+                    className={`selection-band${bandRouteless ? ' is-routeless' : ''}`}
+                    data-leaving={bandLeaving || undefined}
+                    data-entering={bandEntering || undefined}
                     aria-labelledby="route-heading"
                 >
                     <div className="route-title">
@@ -1925,7 +1936,7 @@ export function App() {
                                 />
                             </label>
                         </div>
-                        {!routelessTab && (
+                        {!bandRouteless && (
                             <div className={`route-chips-row${quickPickRoutes.length ? '' : ' is-empty'}`}>
                                 <HintButton
                                     className="route-toggle"

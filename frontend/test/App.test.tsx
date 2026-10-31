@@ -3431,20 +3431,29 @@ describe('Routeless tabs', () => {
         expect(document.querySelector('.selection-band')).not.toHaveClass('is-routeless');
 
         await user.click(screen.getByRole('tab', { name: 'Catch' }));
+        // The band leaves with the old panel rather than snapping away at the click.
+        expect(document.querySelector('.selection-band')).not.toHaveClass('is-routeless');
+        expect(document.querySelector('.selection-band')).toHaveAttribute('data-leaving');
+        await panelSettled();
         expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
 
         await user.click(screen.getByRole('tab', { name: 'Disruption' }));
+        await panelSettled();
         expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
 
         await user.click(screen.getByRole('tab', { name: 'Settings' }));
+        await panelSettled();
         expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
 
         // Vessels lists everything, so its band goes at every width, not just on a phone.
         await user.click(screen.getByRole('tab', { name: 'Vessels' }));
+        await panelSettled();
         expect(document.querySelector('.selection-band')).toHaveClass('is-routeless');
 
         await user.click(screen.getByRole('tab', { name: 'Sailings' }));
+        await panelSettled();
         expect(document.querySelector('.selection-band')).not.toHaveClass('is-routeless');
+        expect(document.querySelector('.selection-band')).toHaveAttribute('data-entering');
     });
 });
 

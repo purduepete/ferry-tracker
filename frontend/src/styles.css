@@ -468,6 +468,13 @@ main {
 .selection-band.is-routeless {
     display: none;
 }
+.selection-band[data-leaving] {
+    opacity: 0;
+    transition: opacity 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.selection-band[data-entering] {
+    animation: data-reveal 0.6s ease-out;
+}
 .eyebrow,
 .node-type {
     color: var(--accent);
@@ -2339,11 +2346,13 @@ tbody tr.is-linked {
     .loading-spinner-ring,
     .view-content,
     .view-panel,
+    .selection-band,
     .view-loading-cover {
         animation: none !important;
     }
     .view-content > :not(.view-loading-cover),
     .view-swap,
+    .selection-band,
     .view-loading-cover {
         transition: none !important;
     }
