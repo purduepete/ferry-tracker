@@ -102,4 +102,14 @@ describe('shared contextual help', () => {
         expect(button).toHaveFocus();
         expect(screen.getByRole('tooltip')).toHaveTextContent('Save the route');
     });
+
+    it('opens a hint on hover and closes it when the pointer leaves', async () => {
+        const user = userEvent.setup();
+        render(<HintButton hint="Refresh ferry data">Refresh</HintButton>);
+        const button = screen.getByRole('button', { name: 'Refresh' });
+        await user.hover(button);
+        expect(screen.getByRole('tooltip')).toHaveTextContent('Refresh ferry data');
+        await user.unhover(button);
+        await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+    });
 });

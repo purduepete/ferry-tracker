@@ -85,13 +85,15 @@ export function InfoBox({ heading, children, label, warning, hover = false, cont
             observer?.disconnect();
         };
     }, [open]);
+    // Disabled controls explain themselves on keyboard focus, not on hover.
+    const opensOnHover = hover && !(control?.props as { disabled?: boolean } | undefined)?.disabled;
     const props: HTMLAttributes<HTMLElement> = {
         'aria-describedby': [control?.props['aria-describedby'], id].filter(Boolean).join(' '),
         ...(control?.props['aria-expanded'] === undefined ? { 'aria-expanded': open } : {}),
         ...(!control ? { 'aria-controls': id } : {}),
         onPointerEnter: (event) => {
             control?.props.onPointerEnter?.(event);
-            if (!hover) return;
+            if (!opensOnHover) return;
             trigger.current = event.currentTarget;
             cancelClose();
             setOpen(true);
@@ -102,7 +104,7 @@ export function InfoBox({ heading, children, label, warning, hover = false, cont
         },
         onMouseEnter: (event) => {
             control?.props.onMouseEnter?.(event);
-            if (!hover) return;
+            if (!opensOnHover) return;
             trigger.current = event.currentTarget;
             cancelClose();
             setOpen(true);
@@ -173,7 +175,11 @@ export function HintButton({
     hint,
     ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { hint: ReactNode; ref?: Ref<HTMLButtonElement> }) {
-    return <InfoBox control={<button {...props} />}>{hint}</InfoBox>;
+    return (
+        <InfoBox control={<button {...props} />} hover>
+            {hint}
+        </InfoBox>
+    );
 }
 
 export function Help({
