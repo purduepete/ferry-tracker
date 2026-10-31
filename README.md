@@ -1,5 +1,7 @@
 # Ferry Tracker
 
+First entry reveals the shell with the initial results after overview, crossing estimates and the selected schedule settle. The entrance lasts 600ms and respects reduced motion. Later refreshes retain the shell and the 900ms data-refresh fade; the documented route skeleton remains.
+
 Repository: [purduepete/ferrytracker](https://github.com/purduepete/ferry-tracker).
 The laptop checkout is `C:\Files\Dev\main\ferry-tracker`. The running source
 checkout on `jimbrownhome` remains `C:\Files\Dev\main\ferry-tracker` until cutover.

@@ -9,6 +9,7 @@ import {
     type PointerEvent as ReactPointerEvent,
     type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Anchor,
     AlertTriangle,
@@ -1043,6 +1044,8 @@ export function App() {
     const [vesselResponse, setVesselResponse] = useState<ApiEnvelope<VesselView[]> | null>(null);
     const [mateResponse, setMateResponse] = useState<ApiEnvelope<TerminalMateView[]> | null>(null);
     const [crossingRows, setCrossingRows] = useState<CrossingView[]>([]);
+    const [crossingsReady, setCrossingsReady] = useState(false);
+    const [shellState, setShellState] = useState('pending');
     const [scheduleResponse, setScheduleResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
     const [catchResponse, setCatchResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
     const [inboundResponse, setInboundResponse] = useState<ApiEnvelope<SailingView[]> | null>(null);
@@ -1164,6 +1167,9 @@ export function App() {
             .then((response) => setCrossingRows(response.data))
             .catch(() => {
                 /* No measured crossings just means the live ETA stays in charge. */
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setCrossingsReady(true);
             });
         return () => controller.abort();
     }, [refreshVersion]);
@@ -1351,12 +1357,19 @@ export function App() {
 
     useEffect(() => {
         if (initialDataVisible) return;
-        if (hasOverview && !loading && (scheduleKey === null || settledScheduleKey === scheduleKey)) {
+        if (hasOverview && !loading && crossingsReady && (scheduleKey === null || settledScheduleKey === scheduleKey)) {
             hasRevealedRef.current = true;
             setInitialPanelTab(tab);
             setInitialDataVisible(true);
         }
-    }, [hasOverview, initialDataVisible, loading, scheduleKey, settledScheduleKey, tab]);
+    }, [hasOverview, initialDataVisible, loading, crossingsReady, scheduleKey, settledScheduleKey, tab]);
+
+    useEffect(() => {
+        if (shellState === 'pending' && (initialDataVisible || error)) setShellState(error ? 'failed' : 'ready');
+        if (shellState !== 'ready') return;
+        const timer = window.setTimeout(() => setShellState('visible'), 600);
+        return () => window.clearTimeout(timer);
+    }, [initialDataVisible, error, shellState]);
 
     useEffect(() => {
         if (initialPanelTab !== null && shownTab !== initialPanelTab) setInitialPanelTab(null);
@@ -1444,7 +1457,8 @@ export function App() {
         !backgroundRefresh &&
         (loading || (scheduleLoading && (tab === 'sailings' || tab === 'historical')));
     const initialLoading =
-        !initialDataVisible && (loading || (hasOverview && scheduleKey !== null && settledScheduleKey !== scheduleKey));
+        !initialDataVisible &&
+        (loading || (hasOverview && (!crossingsReady || (scheduleKey !== null && settledScheduleKey !== scheduleKey))));
 
     useEffect(() => {
         if (backgroundRefresh && !refreshing) setBackgroundRefresh(false);
@@ -1828,7 +1842,10 @@ export function App() {
     };
 
     return (
-        <div className="app-shell">
+        <div
+            className="app-shell"
+            data-first-load={shellState === 'pending' && initialDataVisible ? 'ready' : shellState}
+        >
             <header className={`app-header${recordedDay && !routelessTab ? ' is-recorded' : ''}`}>
                 <div className="header-inner">
                     <HintButton
@@ -2012,7 +2029,6 @@ export function App() {
                     aria-live="polite"
                     aria-busy={initialLoading || viewUpdating || backgroundRefresh}
                 >
-                    <LoadingSpinner isLoading={initialLoading} />
                     {!initialDataVisible && !initialLoading && !hasOverview && (
                         <div className="state">Ferry data is unavailable.</div>
                     )}
@@ -3361,6 +3377,13 @@ export function App() {
                     onClose={closeCamera}
                 />
             )}
+            {initialLoading &&
+                createPortal(
+                    <div className="initial-loading">
+                        <LoadingSpinner isLoading />
+                    </div>,
+                    document.body
+                )}
         </div>
     );
 }

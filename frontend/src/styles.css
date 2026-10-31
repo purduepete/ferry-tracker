@@ -779,6 +779,34 @@ h2 {
     position: relative;
     animation: data-reveal 0.6s ease-out;
 }
+.app-shell[data-first-load='pending'] {
+    opacity: 0;
+    visibility: hidden;
+}
+.app-shell[data-first-load='ready'] {
+    animation: data-reveal 0.6s ease-out;
+}
+.app-shell[data-first-load='ready'] .view-content,
+.app-shell[data-first-load='visible'] .view-content {
+    animation: none;
+    visibility: visible;
+}
+.app-shell[data-first-load='ready'] > main > .view {
+    visibility: visible;
+}
+.initial-loading {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: var(--bg);
+    z-index: 40;
+}
+@media (prefers-reduced-motion: reduce) {
+    .app-shell[data-first-load='ready'] {
+        animation: none !important;
+    }
+}
 .view-content > :not(.view-loading-cover) {
     transition: opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1) 0.14s;
 }
