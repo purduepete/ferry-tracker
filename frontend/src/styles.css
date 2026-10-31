@@ -803,6 +803,13 @@ h2 {
     place-items: center;
     animation: data-reveal 0.6s ease-out;
 }
+.loading-spinner,
+.view-loading-cover,
+[role='status'] {
+    caret-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+}
 .loading-spinner.is-panel {
     min-height: 96px;
 }
