@@ -7,6 +7,14 @@ import { ThemeProvider } from '../src/theme/ThemeProvider';
 const bootstrap = readFileSync('frontend/public/theme-init.js', 'utf8');
 
 describe('pre-paint and runtime theme agreement', () => {
+    it('applies the theme before requesting the font stylesheet', () => {
+        const html = readFileSync('frontend/index.html', 'utf8');
+        const theme = html.indexOf('<script src="/theme-init.js">');
+        const font = html.indexOf('https://fonts.googleapis.com/css2');
+        expect(theme).toBeGreaterThanOrEqual(0);
+        expect(font).toBeGreaterThan(theme);
+    });
+
     it.each([null, 'invalid', 'dark', 'light', 'midnight', 'system'])('restores %s in both OS modes', (stored) => {
         for (const dark of [false, true]) {
             localStorage.clear();
