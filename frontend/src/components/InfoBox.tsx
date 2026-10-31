@@ -13,6 +13,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { Info, AlertTriangle } from 'lucide-react';
+import { SHOW_TOOLTIPS } from '../siteSettings';
 
 interface InfoBoxProps {
     heading?: string;
@@ -87,13 +88,15 @@ export function InfoBox({ heading, children, label, warning, hover = false, cont
     }, [open]);
     // Disabled controls explain themselves on keyboard focus, not on hover.
     const opensOnHover = hover && !(control?.props as { disabled?: boolean } | undefined)?.disabled;
+    // Control hints are tooltips; Info icon boxes stay available when tooltips are off.
+    const hintsEnabled = !control || SHOW_TOOLTIPS;
     const props: HTMLAttributes<HTMLElement> = {
         'aria-describedby': [control?.props['aria-describedby'], id].filter(Boolean).join(' '),
         ...(control?.props['aria-expanded'] === undefined ? { 'aria-expanded': open } : {}),
         ...(!control ? { 'aria-controls': id } : {}),
         onPointerEnter: (event) => {
             control?.props.onPointerEnter?.(event);
-            if (!opensOnHover) return;
+            if (!opensOnHover || !hintsEnabled) return;
             trigger.current = event.currentTarget;
             cancelClose();
             setOpen(true);
@@ -104,7 +107,7 @@ export function InfoBox({ heading, children, label, warning, hover = false, cont
         },
         onMouseEnter: (event) => {
             control?.props.onMouseEnter?.(event);
-            if (!opensOnHover) return;
+            if (!opensOnHover || !hintsEnabled) return;
             trigger.current = event.currentTarget;
             cancelClose();
             setOpen(true);
@@ -115,6 +118,7 @@ export function InfoBox({ heading, children, label, warning, hover = false, cont
         },
         onFocus: (event) => {
             control?.props.onFocus?.(event);
+            if (!hintsEnabled) return;
             trigger.current = event.currentTarget;
             cancelClose();
             setOpen(true);

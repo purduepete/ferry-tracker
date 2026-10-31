@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { Help, HintButton, InfoBox } from '../src/components/InfoBox';
 
+vi.mock('../src/siteSettings', () => ({ SHOW_TOOLTIPS: true }));
+
 describe('shared contextual help', () => {
     it('opens explanations only from their icon and supports keyboard, tap and dismissal', async () => {
         const user = userEvent.setup();
