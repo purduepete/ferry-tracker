@@ -34,7 +34,8 @@
       "CAPTURE_DATA_DIR": "{data}",
       "CAPTURE_DB_PATH": "{data}\\ferry-capture.db",
       "CAPTURE_ARCHIVE_DIR": "{data}\\raw",
-      "BACKUP_DIR": "{backups}"
+      "BACKUP_DIR": "{backups}",
+      "PUSHOVER_CREDENTIAL_FILE": "{secrets}\\pushover.json"
     },
     "secretFile": "app.env",
     "stopFileEnvironment": "SOLUTIONDEPLOY_STOP_FILE"

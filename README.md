@@ -115,8 +115,9 @@ Both run modes listen on all local interfaces by default. Set `HOST=127.0.0.1` t
 
 ## Shared Pushover notifications
 
-Notifications are off by default. Set `NOTIFICATIONS_ENABLED=true` and provide
-server-only `PUSHOVER_APP_TOKEN` and `PUSHOVER_USER_KEY` in the private environment.
+Notifications are off by default. Set `NOTIFICATIONS_ENABLED=true` and point
+`PUSHOVER_CREDENTIAL_FILE` at a protected JSON file outside the repository containing
+`user` and `token` strings.
 Live notifications require explicit PostgreSQL storage and reviewed schema 2.
 Apply `deploy\postgresql\002_notifications.sql` with the migration identity before
 starting this release. The runtime never creates PostgreSQL tables. Local fixture

@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -40,10 +41,35 @@ export interface AppConfig {
     capture: CaptureConfig;
 }
 
+export function readPushoverCredentials(filePath: string | undefined): { user: string; token: string } | null {
+    const trimmedPath = filePath?.trim();
+    if (!trimmedPath) return null;
+    let value: unknown;
+    try {
+        value = JSON.parse(readFileSync(trimmedPath, 'utf8'));
+    } catch {
+        throw new Error('Cannot read Pushover credential file.');
+    }
+    if (
+        typeof value !== 'object' ||
+        value === null ||
+        !('user' in value) ||
+        !('token' in value) ||
+        typeof value.user !== 'string' ||
+        typeof value.token !== 'string' ||
+        !value.user.trim() ||
+        !value.token.trim()
+    ) {
+        throw new Error('Pushover credential file must contain nonempty user and token strings.');
+    }
+    return { user: value.user.trim(), token: value.token.trim() };
+}
+
 export function getConfig(): AppConfig {
     const dataSource = process.env.DATA_SOURCE === 'live' ? 'live' : 'fixture';
     const apiAccessCode = process.env.WSDOT_API_ACCESS_CODE;
     const catchToken = process.env.CATCH_TOKEN || undefined;
+    const pushover = readPushoverCredentials(process.env.PUSHOVER_CREDENTIAL_FILE);
     return {
         host: process.env.HOST || '0.0.0.0',
         port: Number(process.env.PORT ?? 8787),
@@ -52,16 +78,12 @@ export function getConfig(): AppConfig {
         catchToken,
         notifications: {
             enabled: process.env.NOTIFICATIONS_ENABLED === 'true',
-            appToken: process.env.PUSHOVER_APP_TOKEN,
-            userKey: process.env.PUSHOVER_USER_KEY,
+            appToken: pushover?.token,
+            userKey: pushover?.user,
         },
-        secrets: [
-            apiAccessCode,
-            catchToken,
-            process.env.DATABASE_URL,
-            process.env.PUSHOVER_APP_TOKEN,
-            process.env.PUSHOVER_USER_KEY,
-        ].filter((secret): secret is string => Boolean(secret)),
+        secrets: [apiAccessCode, catchToken, process.env.DATABASE_URL, pushover?.token, pushover?.user].filter(
+            (secret): secret is string => Boolean(secret)
+        ),
         rawInspector: process.env.ENABLE_RAW_INSPECTOR !== 'false',
         fixtureNow: dataSource === 'fixture' ? process.env.FIXTURE_NOW : undefined,
         capture: getCaptureConfig(),
